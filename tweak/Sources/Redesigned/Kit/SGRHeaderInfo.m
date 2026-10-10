@@ -313,7 +313,8 @@ UIImageView *SGRCreatorPicture(UIView *root) {
     // Play on the middle of the page, the other two hung off its sides, so it holds its place whether both
     // are there or not.
     CGFloat side = SGRActionHeight;
-    CGFloat playWidth = MAX(kPlayWidth, [_play sgr_width]);
+    // As wide as its word, short of pushing the other two off the page.
+    CGFloat playWidth = MIN(MAX(kPlayWidth, [_play sgr_width]), width - 2 * (kSide + side + kRowSpacing));
     CGRect play = CGRectMake(round((width - playWidth) / 2), y, playWidth, side);
     _play.frame = play;
     _shuffle.frame = CGRectMake(CGRectGetMinX(play) - kRowSpacing - side, y, side, side);
