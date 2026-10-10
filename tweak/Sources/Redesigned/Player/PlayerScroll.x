@@ -1,4 +1,4 @@
-// Player redesign: the player never scrolls up. Scrolling stays on because Spotify's dismiss pull rides on
+// Player redesign: the player never scrolls up, and has no top edge blur. Scrolling stays on because Spotify's dismiss pull rides on
 // the list's own pan and starts only at its top, so the offset is clamped instead; the insets stay
 // Spotify's, since changing one mid-drag moves the offset under the finger.
 //
@@ -13,6 +13,14 @@ static NSString *const kListIdentifier = @"scrolling_npv_collection_view_accessi
 
 static __weak UIScrollView *sg_loggedList;
 
+// Nothing scrolls under the header, which is in the list itself: the top edge's blur only blurs it. Set from the
+// list's own layout, since the first scroll waits for a finger.
+static void hideTopEdge(UIScrollView *list) {
+    if (@available(iOS 26.0, *)) {
+        if (!list.topEdgeEffect.hidden && [list.accessibilityIdentifier isEqualToString:kListIdentifier]) list.topEdgeEffect.hidden = YES;
+    }
+}
+
 static void holdAtTop(UIScrollView *list) {
     if (![list.accessibilityIdentifier isEqualToString:kListIdentifier]) return;
     CGFloat top = -list.adjustedContentInset.top;
@@ -25,6 +33,18 @@ static void holdAtTop(UIScrollView *list) {
     sg_loggedList = list;
     SGLog(@"redesign player: scroll held at the top, %.0fpt up taken back (%@)", past, list.isDragging ? @"drag" : @"no finger");
 }
+
+%hook UICollectionView
+- (void)didMoveToWindow {
+    %orig;
+    if (self.window) hideTopEdge(self);
+}
+
+- (void)layoutSubviews {
+    %orig;
+    hideTopEdge(self);
+}
+%end
 
 %hook _TtC21NowPlaying_ScrollImpl23NPVScrollViewController
 - (void)scrollViewDidScroll:(UIScrollView *)list {
