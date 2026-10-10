@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.0.0-beta.11](https://github.com/My-Name-Is-Jeff/vitrine/compare/v1.0.0-beta.10...v1.0.0-beta.11) (2026-10-10)
+
+
+### Features
+
+* Follow the cover paints the player's lit controls in the cover's color ([345b6ae](https://github.com/My-Name-Is-Jeff/vitrine/commit/345b6aec078c5c7d7d020f15f0b38a3d109712c6))
+* Karaoke can ignore memory warnings ([e471bac](https://github.com/My-Name-Is-Jeff/vitrine/commit/e471bac2ac6ab41ec44125eefda0d50599daf196))
+* Plain checkmark shows a saved song's tick without its circle ([873a4e4](https://github.com/My-Name-Is-Jeff/vitrine/commit/873a4e4fdbb883a7cd9a784cb5c42025ec8c5b8b))
+* the redesigned player has a volume slider under its controls ([16bb8aa](https://github.com/My-Name-Is-Jeff/vitrine/commit/16bb8aac682d8bed8b8c980c3ce5bbe37bcf2b51))
+* Top picks draws Home's first shelf large ([f5ddc29](https://github.com/My-Name-Is-Jeff/vitrine/commit/f5ddc29d042c5dda865a4cd84fb037adf814a0a4))
+
+
+### Fixes
+
+* tabs you add to the tab bar open their page again on Spotify 9.1.88 and later ([7421865](https://github.com/My-Name-Is-Jeff/vitrine/commit/7421865deb7e507e59bd5648d5e4bc190d14ddc6))
+* the player opens and closes with its morph again on Spotify 9.1.88 and later ([5dfca94](https://github.com/My-Name-Is-Jeff/vitrine/commit/5dfca94b1510a837f49809d24aa8ceee002172c2))
+* the redesigned Home has no double gap where it drops a section ([c294690](https://github.com/My-Name-Is-Jeff/vitrine/commit/c2946905ff14ff9f3de14d91d28af6bcd58e15c2))
+* the redesigned pages' Play button is as wide as "Shuffle Play" ([3bb8cd5](https://github.com/My-Name-Is-Jeff/vitrine/commit/3bb8cd5ac8ce152a7a700a54477a51ce47ddf223))
+* the redesigned player's cover is full size and centered on a song with lyrics ([d188502](https://github.com/My-Name-Is-Jeff/vitrine/commit/d18850278e47aa714ff4b39579d8f01378dcaf4f)), closes [#21](https://github.com/My-Name-Is-Jeff/vitrine/issues/21)
+* the redesigned player's header is no longer blurred ([4184748](https://github.com/My-Name-Is-Jeff/vitrine/commit/4184748928d2e000d027922d193f9afa3e5d4753))
+* Top picks cards have no empty band under their text ([22bcc7f](https://github.com/My-Name-Is-Jeff/vitrine/commit/22bcc7ff9852de72aaac521beea132ec90ae837f))
+
 ## [1.0.0-beta.10](https://github.com/My-Name-Is-Jeff/vitrine/compare/v1.0.0-beta.9...v1.0.0-beta.10) (2026-10-10)
 
 
