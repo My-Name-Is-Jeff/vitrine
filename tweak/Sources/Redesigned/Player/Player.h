@@ -91,6 +91,14 @@ void SGRPlayerLyricsChanged(void);
 // hides them either way.
 #define SGRKeyLyricsAutoHide @"spotifyglass.redesign.lyrics.autoHide"
 
+// A volume slider under the controls (PlayerVolume.m), the system's: this iPhone's, or the Connect device's.
+// On until switched off. Placed by the footer's layout, between the controls (`controls`) and the footer row
+// (`row`), both arranged in Spotify's bottom stack, `margin` in from each side.
+#define SGRKeyPlayerVolume @"spotifyglass.redesign.player.volume"
+BOOL SGRPlayerVolumeOn(void);
+// YES when the row shows; NO when it is off, has no controls to sit under or no room between them and the footer.
+BOOL SGRPlayerPlaceVolume(UIView *stack, UIView *controls, UIView *row, CGFloat margin);
+
 // The lyrics turn sideways with the phone onto a landscape screen of their own (PlayerLandscape.x). On
 // until switched off. Shown or put away by hand for the harness.
 #define SGRKeyLyricsLandscape @"spotifyglass.redesign.lyrics.landscape"

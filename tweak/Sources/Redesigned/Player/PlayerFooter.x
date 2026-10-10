@@ -40,6 +40,10 @@ static const CGFloat kRowAboveSafeArea = 20, kRowMinBottom = 34;
 // The controls follow a share of the row's move when nothing stands between them, so the gaps above
 // and below them even out instead of all the room opening under them.
 static const CGFloat kControlsShare = 0.3;
+// The volume row's sides, the player's own margin.
+static const CGFloat kVolumeMargin = 24;
+// And the controls go up this much over it, so the gaps above and below the volume row match.
+static const CGFloat kVolumeLift = 10;
 
 static char kConnectKey, kShareKey, kTrimmerKey, kSharedByKey, kQueueKey, kLyricsGlyphKey, kReachKey;
 static __weak SGRGlyphButton *sg_lyricsGlyph;
@@ -192,8 +196,20 @@ static void lowerRow(UIView *row) {
     // Only the controls, and only straight above: a volume row between them keeps its place and theirs.
     UIView *above = rowAbove(row);
     BOOL controls = [NSStringFromClass(unitOf(above).class) containsString:@"PlaybackControlsElementsUnit"];
-    CGAffineTransform follow = CGAffineTransformMakeTranslation(0, controls ? round(move * kControlsShare) : 0);
+    // With the volume row, the controls stay where Spotify put them and the row takes the room the footer leaves.
+    // The volume row is placed against the controls where they would stand for it; one that does not show leaves them
+    // following the footer as they do without it.
+    BOOL volume = SGRPlayerVolumeOn() && controls;
+    CGFloat share = volume ? 0 : kControlsShare, lift = volume ? kVolumeLift : 0;
+    CGAffineTransform follow = CGAffineTransformMakeTranslation(0, controls ? round(move * share) - lift : 0);
     if (above && controls && !CGAffineTransformEqualToTransform(above.transform, follow)) above.transform = follow;
+    if (volume && !SGRPlayerPlaceVolume(stack, above, row, kVolumeMargin)) {
+        share = kControlsShare;
+        follow = CGAffineTransformMakeTranslation(0, round(move * share));
+        if (!CGAffineTransformEqualToTransform(above.transform, follow)) above.transform = follow;
+    } else if (!volume) {
+        SGRPlayerPlaceVolume(stack, nil, row, kVolumeMargin);
+    }
 
     SGRFooterReach *reach = objc_getAssociatedObject(row, &kReachKey);
     if (!reach) {
@@ -210,8 +226,8 @@ static void lowerRow(UIView *row) {
 
     static dispatch_once_t once;
     dispatch_once(&once, ^{
-        SGLog(@"redesign player: footer row from %.0f to %.0f of %.0f (safe area %.0f), controls %@ %.0f", middle, middle + move, height,
-              window.safeAreaInsets.bottom, controls ? @"follow" : @"stay", controls ? round(move * kControlsShare) : 0);
+        SGLog(@"redesign player: footer row from %.0f to %.0f of %.0f (safe area %.0f), controls %@ %.0f, volume %@", middle, middle + move, height,
+              window.safeAreaInsets.bottom, controls ? @"follow" : @"stay", controls ? round(move * share) : 0, SGRPlayerVolumeOn() ? @"on" : @"off");
     });
 }
 
