@@ -39,5 +39,6 @@ NSArray<SGModRow *> *SGRAppearanceRows(void) {
     return @[
         SGWithSymbol(menu, @"paintpalette"),
         SGWithSymbol(colour, @"eyedropper"),
+        SGWithSymbol(SGOptionRow(@"Plain checkmark", @"A saved song's tick without its circle, in the accent", SGRKeyPlainCheck), @"checkmark"),
     ];
 }
