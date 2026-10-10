@@ -27,6 +27,8 @@ Values that belong to one person's phone live in `.phone.env` at the repo root (
       for i in $(seq 1 15); do sleep 2; scripts/phone.py state >/dev/null 2>&1 && break; done
 
 - After a version change, What's New covers the screen. Close it with `scripts/phone.py tap --text Continue`.
+- A launch on a locked phone fails with `BSErrorCodeDescription = Locked`, and every driver call after it
+  says the app did not answer. That is not a crash. Ask the user to unlock the phone.
 
 ## Drive
 
@@ -38,6 +40,9 @@ needs `PHONE_HOST` and the token the app logs at launch, which it reads from the
   user to open the page instead of probing further.
 - A swipe that only sets `contentOffset` (`scroll`) does not trigger scroll-driven behavior like the tab
   bar's minimize. Use `swipe` with a duration for that.
+- There is no previous-track command. `scripts/phone.py seek 0`, then
+  `scripts/phone.py tap --id SPTNowPlayingPreviousTrackButton` with the player open.
+- `ls` in this shell is eza, which takes other flags (`ls -t` fails). Use `/bin/ls`.
 
 ## Screenshots
 
@@ -48,6 +53,13 @@ The driver's `screenshot` can come back blank. Take them through the tunnel inst
     uv run -q --no-project --with pillow python -c "from PIL import Image; im=Image.open('$TMPDIR/shot.png'); w,h=im.size; im.crop((0,int(h*.8),w,h)).save('$TMPDIR/crop.png')"
 
 Read the cropped file with the Read tool. A full-height image is hard to judge; crop to the part in question.
+
+Measure from the full-resolution PNG (3 px to the point on this phone) when the question is "a little off":
+
+- Alignment: the first and last rows in a column band that have pixels brighter than a threshold give an
+  element's vertical center. The volume glyphs sat at y 2271 against the track's 2264.5, 2 pt low.
+- Blur: the mean absolute difference between pixels 3 px apart, across a band of rows. The redesigned
+  player's header row read 0.72 blurred and about 5 sharp.
 
 Privacy: a tunnel screenshot captures whatever is on screen. Check `scripts/phone.py state` first, and do
 not take one while the user is in another app.
@@ -65,6 +77,30 @@ not take one while the user is in another app.
 - Grep the file for the feature's log prefix (`lock lyrics:`, `sing:`, `redesign home:`). When a feature
   says nothing about why it did nothing, add one log line per track or per change and rebuild, rather than
   guessing.
+
+## Crashes
+
+When the driver stops answering and the app's process is gone (`xcrun devicectl device info processes
+--device "$PHONE_UDID" | grep Spotify.app`), copy the crash reports off the phone, outside the sandbox:
+
+    mkdir -p out/rep/crash && idevicecrashreport -k -f Spotify out/rep/crash
+
+Every copied file gets the same modification time, so `ls -t` does not find the newest. Pick it by the
+timestamp in its name (`Spotify-2026-10-10-171127.ips`), then print the faulting thread:
+
+    python3 - out/rep/crash/Spotify-<stamp>.ips <<'EOF'
+    import json, sys
+    d = json.loads(open(sys.argv[1]).read().split('\n', 1)[1])
+    print(d['captureTime'], d['exception'])
+    images = d['usedImages']
+    for f in d['threads'][d['faultingThread']]['frames'][:20]:
+        print(images[f['imageIndex']].get('name'), f.get('symbol'), hex(f['imageOffset']))
+    EOF
+
+Frames in `spotifyglass.dylib` carry symbols. Frames in `Spotify` carry only an offset: add `0x100000000` and
+find the method with the nearest start address at or below it in that version's `di-objc-<ver>.txt`
+(`spotify-version-check`). A 9.1.90 crash at `0x105DBA98C` sat in `internalNavigateToURI:…`, which starts at
+`0x105DBA91C`.
 
 ## View tree
 

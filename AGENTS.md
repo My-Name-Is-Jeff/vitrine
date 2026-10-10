@@ -77,4 +77,8 @@ Rules:
   stacks (the tab bar, the now playing bar, the player) that is the system's: set every pane of the
   mod's to `overrideUserInterfaceStyle = UIUserInterfaceStyleDark`, or it goes light in light mode. Present a
   controller of the mod's through `SGPresentDark` (`Core/SGGlass.h`): a sheet's glass is its presentation's, and the
-  controller's own override does not reach it.
+  controller's own override does not reach it. ARC does not know that `init` consumes its receiver: calling
+  `alloc`/`init` through a cast `objc_msgSend` over-releases when `init` returns another object, so do both on
+  `void *` and hand the result to `CFBridgingRelease`. A Logos hook on an `init…` that returns another object
+  returns it with `CFBridgingRetain`, or the app crashes at launch. iOS 26's scroll edge effect blurs any header
+  that sits inside its own scroll view; hide that list's `topEdgeEffect` (`Redesigned/Player/PlayerScroll.x`).
