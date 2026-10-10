@@ -1,5 +1,5 @@
 // The Home redesign: Spotify's Home page kept, with its controllers, lists and cards, decluttered to a
-// music app on black and restyled from the Kit. No settings of its own.
+// music app on black and restyled from the Kit. Its one setting, Top picks, is on the Appearance page.
 //
 //     HomeSections.x   an allow list of the feed's sections: the shortcuts grid, the DJ and the shelves of
 //                      cards stay; video and episode previews, episode cards and any new kind collapse. The
@@ -9,11 +9,17 @@
 //     HomeCards.x      the Encore button every card is: shortcut tiles (HomeTiles.m), continuous corners on the
 //                      shelf covers, the DJ card at the card radius without its talking transcript
 //     HomeTiles.m      a shortcut tile's picture run across the tile, blurred behind its title
+//     HomeTopPicks.x   Top picks: the shelf nearest the top drawn large, as the Music app draws its first
 //     HomePerf.x       FLEX builds: the frames of each scroll of Home and the time the hooks above took
 //
 // Every hook installs only while Redesigned UI is on (SGRedesignedUI).
 // Threading: main thread only.
 #import <UIKit/UIKit.h>
+
+// Top picks (HomeTopPicks.x): the shelf nearest the top drawn large, as the Music app draws its first. On until switched off.
+#define SGRKeyHomeTopPicks @"spotifyglass.redesign.home.topPicks"
+@class SGModRow;
+SGModRow *SGRHomeTopPicksRow(void);   // for the Appearance page (App/Pages.m)
 
 // Whether HomeSections.x has collapsed the section in this cell.
 BOOL SGRHomeSectionCollapsed(UIView *cell);
