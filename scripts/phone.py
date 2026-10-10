@@ -13,7 +13,7 @@
     scripts/phone.py player.open | player.close | player.more
     scripts/phone.py menu.pick "Sleep timer"
     scripts/phone.py play | pause | next
-    scripts/phone.py seek 42
+    scripts/phone.py seek 42 | seek --by -15            # to a position, or by an amount as Spotify's relative seeks do
     scripts/phone.py tab 0 | tab Search
     scripts/phone.py settings.open
     scripts/phone.py settings.page "Appearance"
