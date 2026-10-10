@@ -79,6 +79,13 @@ static CGFloat screenRadius(void) {
     CGFloat _cardRadius, _spotifyAlpha;
     CGColorRef _overlayColor;
     BOOL _coverHidden;
+    BOOL _follows;   // 9.1.90: Spotify animates the player's frame and alpha, which the morph then only reads
+}
+
+// 9.1.90's CompactOverlayTransition animates the player itself, so the morph follows where it is drawn.
+- (void)follow {
+    _follows = YES;
+    _bar.hidden = YES;
 }
 
 - (instancetype)initWithContainer:(UIView *)container overlay:(UIView *)overlay bar:(UIView *)bar barRest:(CGRect)barRest {
@@ -137,6 +144,11 @@ static CGFloat screenRadius(void) {
     _spotifyAlpha = overlay.alpha;
     _spotifyFrame = overlay.frame;
 
+    if (_follows) {
+        // Where Spotify's animation has the player now: its frame's model value is already the end.
+        CALayer *drawn = overlay.layer.presentationLayer ?: overlay.layer;
+        _spotifyFrame = drawn.frame;
+    }
     CGRect full = container.bounds;
     CGRect sheet = lerpRect(_card, full, t);
     CGFloat radius = lerp(_cardRadius, screenRadius(), t);
@@ -144,7 +156,7 @@ static CGFloat screenRadius(void) {
     // The player's top goes to the sheet's: a mask clips nothing above the layer's bounds, so content
     // raised above Spotify's frame would show square corners. Spotify reads back only the player's
     // height (0x109815b4c, 0x109815c28), which stays.
-    CGPoint origin = CGPointMake(_spotifyFrame.origin.x, sheet.origin.y);
+    CGPoint origin = _follows ? _spotifyFrame.origin : CGPointMake(_spotifyFrame.origin.x, sheet.origin.y);
     CGSize size = overlay.bounds.size;
     CGPoint middle = CGPointMake(size.width / 2, size.height / 2);
     CGPoint target = CGPointMake(sheet.origin.x - origin.x, sheet.origin.y - origin.y);
@@ -155,13 +167,13 @@ static CGFloat screenRadius(void) {
     [CATransaction setDisableActions:YES];
     [UIView performWithoutAnimation:^{
         overlay.layer.sublayerTransform = CATransform3DIdentity;
-        overlay.frame = (CGRect){origin, self->_spotifyFrame.size};
+        if (!self->_follows) overlay.frame = (CGRect){origin, self->_spotifyFrame.size};
         CGRect coverInPlayer = SGRPlayerCoverFrameIn(overlay);
 
         overlay.layer.sublayerTransform = CATransform3DScale(CATransform3DMakeTranslation(shift.x, shift.y, 0), scale, scale, 1);
         self->_mask.frame = CGRectMake(target.x, target.y, sheet.size.width, sheet.size.height);
         self->_mask.cornerRadius = radius;
-        overlay.alpha = ramp(0.08, 0.55, t);
+        if (!self->_follows) overlay.alpha = ramp(0.08, 0.55, t);
 
         self->_sheet.frame = sheet;
         self->_sheet.layer.cornerRadius = radius;
@@ -169,7 +181,7 @@ static CGFloat screenRadius(void) {
 
         // The card's top edge is the sheet's.
         CGFloat rise = sheet.origin.y - self->_card.origin.y;
-        if (bar) {
+        if (bar && !self->_follows) {
             CGRect frame = bar.frame;
             frame.origin.y = self->_barRest.origin.y + rise;
             bar.frame = frame;
@@ -211,8 +223,9 @@ static CGFloat screenRadius(void) {
     [CATransaction setDisableActions:YES];
     overlay.layer.sublayerTransform = CATransform3DIdentity;
     if (overlay.layer.mask == _mask) overlay.layer.mask = nil;
-    overlay.alpha = _spotifyAlpha;
-    if (overlay) overlay.frame = _spotifyFrame;
+    if (!_follows) overlay.alpha = _spotifyAlpha;
+    if (overlay && !_follows) overlay.frame = _spotifyFrame;
+    if (_follows) _bar.hidden = NO;
     if (!overlay.layer.backgroundColor) overlay.layer.backgroundColor = _overlayColor;
     CGColorRelease(_overlayColor);
     _overlayColor = NULL;
@@ -255,6 +268,102 @@ static SGRPlayerMorph *morphFor(SPTBarOverlayPresentationTransition *transition,
         objc_setAssociatedObject(self, &kMorphKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     %orig;
+}
+%end
+
+#pragma mark - 9.1.90
+
+// 9.1.90 presents the player with MainUI_TabBarUIImpl.CompactOverlayTransition, a UIKit animator that moves the
+// player up from below the screen (animateTransition:, and startInteractiveTransition: for a drag) with its own
+// stand-ins (npbSnapshotView, tabBarSnapshotView; BarTransition.x). A display link reads how far up Spotify's animation
+// has the player and morphs to match, so Spotify's frame, alpha and completion stay its own. It is let go once the
+// transition is no longer interactive and the player has no animation left and holds still a few frames.
+static const CFTimeInterval kGiveUp = 0.9;   // UIKit's presentation runs about 0.5 s
+
+@interface SGRMorphFollower : NSObject
+@property (nonatomic, strong) SGRPlayerMorph *morph;
+@property (nonatomic, weak) UIView *container, *overlay;
+@property (nonatomic, weak) id<UIViewControllerContextTransitioning> context;
+@property (nonatomic, strong) CADisplayLink *link;
+@property (nonatomic) NSInteger still;
+@property (nonatomic) CGFloat lastY;
+@property (nonatomic) CFTimeInterval settledSince;   // when it was last driven by a finger, or began
+@end
+
+@implementation SGRMorphFollower
+- (void)tick:(CADisplayLink *)link {
+    UIView *container = self.container, *overlay = self.overlay;
+    if (!container || !overlay || !overlay.window) {
+        [self finish];
+        return;
+    }
+    CALayer *drawn = overlay.layer.presentationLayer ?: overlay.layer;
+    CGFloat y = drawn.frame.origin.y, height = container.bounds.size.height;
+    [self.morph apply:height > 0 ? 1 - y / height : 1];
+    BOOL interactive = self.context.isInteractive;
+    BOOL moving = overlay.layer.animationKeys.count > 0 || fabs(y - self.lastY) > 0.5 || interactive;
+    self.lastY = y;
+    self.still = moving ? 0 : self.still + 1;
+    // Let go once still, or kGiveUp after a finger last drove it whatever the layer holds: a mask and a transform left
+    // on the player would keep its glass buttons from drawing.
+    CFTimeInterval now = CACurrentMediaTime();
+    if (interactive || !self.settledSince) self.settledSince = now;
+    if (self.still >= 3 || now - self.settledSince > kGiveUp) [self finish];
+}
+- (void)finish {
+    if (!self.link) return;
+    static NSUInteger logged;
+    if (logged++ < 3) SGLog(@"player morph: let go after %.2f s, %@", CACurrentMediaTime() - self.settledSince, self.still >= 3 ? @"settled" : @"given up");
+    [self.link invalidate];
+    self.link = nil;
+    [self.morph tearDown];
+    self.morph = nil;
+}
+@end
+
+static id ivarOf(id object, const char *name) {
+    Ivar ivar = class_getInstanceVariable(object_getClass(object), name);
+    return ivar ? object_getIvar(object, ivar) : nil;
+}
+
+static char kFollowerKey;
+
+static void followTransition(id transition, id<UIViewControllerContextTransitioning> context) {
+    if (SGRReduceMotion() || !context) return;
+    UIView *container = context.containerView;
+    if (container.traitCollection.horizontalSizeClass == UIUserInterfaceSizeClassRegular) return;
+    UIViewController *to = [context viewControllerForKey:UITransitionContextToViewControllerKey];
+    UIView *overlay = to.isBeingPresented ? [context viewForKey:UITransitionContextToViewKey] : [context viewForKey:UITransitionContextFromViewKey];
+    if (!overlay || overlay.superview != container) return;
+    SGRMorphFollower *old = objc_getAssociatedObject(transition, &kFollowerKey);
+    [old finish];
+    SGRPlayerMorph *morph = [[SGRPlayerMorph alloc] initWithContainer:container overlay:overlay bar:ivarOf(transition, "npbSnapshotView") barRest:CGRectZero];
+    if (!morph) return;
+    [morph follow];
+    ((UIView *)ivarOf(transition, "tabBarSnapshotView")).alpha = 0;
+    SGRMorphFollower *follower = [SGRMorphFollower new];
+    follower.morph = morph;
+    follower.container = container;
+    follower.overlay = overlay;
+    follower.context = context;
+    follower.lastY = CGFLOAT_MAX;
+    follower.link = [CADisplayLink displayLinkWithTarget:follower selector:@selector(tick:)];
+    follower.link.preferredFrameRateRange = CAFrameRateRangeMake(80, 120, 120);
+    [follower.link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
+    objc_setAssociatedObject(transition, &kFollowerKey, follower, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [follower tick:follower.link];
+    static NSUInteger logged;
+    if (logged++ < 3) SGLog(@"player morph: follows CompactOverlayTransition (%@)", to.isBeingPresented ? @"open" : @"close");
+}
+
+%hook _TtC19MainUI_TabBarUIImpl24CompactOverlayTransition
+- (void)animateTransition:(id<UIViewControllerContextTransitioning>)context {
+    %orig;
+    followTransition(self, context);
+}
+- (void)startInteractiveTransition:(id<UIViewControllerContextTransitioning>)context {
+    %orig;
+    followTransition(self, context);
 }
 %end
 
