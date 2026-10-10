@@ -2,10 +2,10 @@
 //
 // A shelf is a Home_CarouselKit.TouchCancellingCollectionView in a cell of the page's list (HomeSections.x), a
 // compositional layout of its own with cards 149 by 195 under a 40pt heading (trees: the 393x235 shelf, cards at
-// {149, 195}). Its sizes are Spotify's, made by the layout's section provider each time the layout is asked for one.
-// So every compositional layout's provider is wrapped, and while the large shelf's provider runs, the absolute and
-// estimated sizes it makes of kSmallest or more are scaled by kScale: the cards and their group, not the heading or
-// the spacing. The page's cell is made that much taller to hold it.
+// {149, 195}: a square picture over 46pt of text). Its sizes are Spotify's, made by the layout's section provider each
+// time the layout is asked for one. So every compositional layout's provider is wrapped, and while the large shelf's
+// provider runs, a size kSmallest or more wide is made kScale as wide and taller by as much as it widened: the
+// picture grows, the text under it does not. The page's cell is made taller by the same amount.
 //
 // The shelf drawn large is the one nearest the top of the page: the lowest index any shelf has been measured at.
 // Cells are reused across shelves, so each measuring sets or clears the mark on the layout it holds.
@@ -16,8 +16,10 @@
 #import "Home.h"
 
 static const CGFloat kScale = 1.7, kSmallest = 120, kHeading = 40;
-static char kLargeKey, kNaturalKey, kWrappedKey;
+static char kLargeKey, kNaturalKey, kWrappedKey, kWidthKey;
 static _Thread_local BOOL sg_enlarging;
+// The narrowest size kSmallest or more wide the running provider made, at Spotify's width: its cards.
+static _Thread_local CGFloat sg_cardWidth;
 static NSInteger sg_topIndex = NSIntegerMax;
 
 // The layout a wrapped provider belongs to, set once the layout is made.
@@ -31,9 +33,13 @@ static UICollectionViewCompositionalLayoutSectionProvider wrapped(UICollectionVi
     return ^NSCollectionLayoutSection *(NSInteger section, id<NSCollectionLayoutEnvironment> environment) {
         UICollectionViewCompositionalLayout *layout = box.layout;
         BOOL was = sg_enlarging;
+        CGFloat wasWidth = sg_cardWidth;
         sg_enlarging = layout && objc_getAssociatedObject(layout, &kLargeKey) != nil;
+        sg_cardWidth = 0;
         NSCollectionLayoutSection *made = provider(section, environment);
+        if (layout && sg_cardWidth > 0) objc_setAssociatedObject(layout, &kWidthKey, @(sg_cardWidth), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         sg_enlarging = was;
+        sg_cardWidth = wasWidth;
         return made;
     };
 }
@@ -58,14 +64,23 @@ static UICollectionViewCompositionalLayout *boxed(UICollectionViewCompositionalL
 }
 %end
 
-%hook NSCollectionLayoutDimension
-+ (instancetype)absoluteDimension:(CGFloat)dimension {
-    if (sg_enlarging && dimension >= kSmallest) dimension = round(dimension * kScale);
-    return %orig(dimension);
+// How much a card of Spotify's `width` grows: its picture is as wide as it is, so it grows as much in height.
+static CGFloat growth(CGFloat width) {
+    return round(width * kScale) - width;
 }
-+ (instancetype)estimatedDimension:(CGFloat)dimension {
-    if (sg_enlarging && dimension >= kSmallest) dimension = round(dimension * kScale);
-    return %orig(dimension);
+
+%hook NSCollectionLayoutSize
++ (instancetype)sizeWithWidthDimension:(NSCollectionLayoutDimension *)width heightDimension:(NSCollectionLayoutDimension *)height {
+    if (!width.isAbsolute || width.dimension < kSmallest) return %orig;
+    // The cards come first, then the row that holds them all (1634 by 195 on the phone): the row is as many cards
+    // wide, so it widens by kScale too, but grows in height only as much as a card does.
+    sg_cardWidth = sg_cardWidth > 0 ? MIN(sg_cardWidth, width.dimension) : width.dimension;
+    if (!sg_enlarging || !(height.isAbsolute || height.isEstimated)) return %orig;
+    CGFloat grow = growth(sg_cardWidth);
+    NSCollectionLayoutDimension *wider = [NSCollectionLayoutDimension absoluteDimension:round(width.dimension * kScale)];
+    NSCollectionLayoutDimension *taller = height.isAbsolute ? [NSCollectionLayoutDimension absoluteDimension:height.dimension + grow]
+                                                            : [NSCollectionLayoutDimension estimatedDimension:height.dimension + grow];
+    return %orig(wider, taller);
 }
 %end
 
@@ -99,9 +114,15 @@ static UICollectionViewCompositionalLayout *boxed(UICollectionViewCompositionalL
         });
     }
     NSNumber *natural = objc_getAssociatedObject(layout, &kNaturalKey);
-    // Large, the natural height scaled; small again in a cell that was large, the natural height, since this measuring
-    // was of the cards still drawn large.
-    if (natural && large) result.size = CGSizeMake(result.size.width, round(kHeading + (natural.doubleValue - kHeading) * kScale));
+    // Spotify's height for the shelf: its first measuring can be an estimate (244 for 235), so a lower one replaces
+    // it. Measured with its cards drawn large it comes out taller, and is not taken: grown again, it would grow on
+    // every pass.
+    if (large && natural && result.size.height < natural.doubleValue) {
+        natural = @(result.size.height);
+        objc_setAssociatedObject(layout, &kNaturalKey, natural, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    NSNumber *card = objc_getAssociatedObject(layout, &kWidthKey);
+    if (natural && large && card) result.size = CGSizeMake(result.size.width, natural.doubleValue + growth(card.doubleValue));
     else if (natural && was) result.size = CGSizeMake(result.size.width, natural.doubleValue);
     return result;
 }
