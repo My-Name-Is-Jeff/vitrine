@@ -1304,6 +1304,10 @@ static void readHeat(void) {
         }];
         // Low on memory, the model goes at once, before iOS closes Spotify for it.
         [center addObserverForName:UIApplicationDidReceiveMemoryWarningNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
+            if (SGHidden(SGKeySingIgnoreMemory)) {
+                SGLog(@"sing: iOS warned that memory is low; the model is kept (Ignore memory warnings)");
+                return;
+            }
             SGSingLoaderPurge(@"iOS warned that memory is low");
             // Over a stop for falling behind, which would load the model again with the next track whatever the memory.
             if (!SGSingOn() || (sg_stopped && sg_stopKind != SGSingStopBehind)) return;

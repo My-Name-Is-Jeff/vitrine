@@ -38,6 +38,9 @@ extern NSNotificationName const SGSingButtonDidChangeNotification;
 #define SGKeySingLevel @"spotifyglass.sing.level"
 // Keeps the model running on a hot iPhone, which otherwise lets it go from the thermal state Serious up.
 #define SGKeySingIgnoreHeat @"spotifyglass.sing.ignoreHeat"
+// Keeps the model through iOS's memory warnings, which otherwise let it go and stop Karaoke until the next song.
+// Off until switched on: with it on, iOS may close Spotify instead.
+#define SGKeySingIgnoreMemory @"spotifyglass.sing.ignoreMemory"
 // Where the model runs: an index into SGSingComputeUnitNames(), Automatic (0: a Neural Engine copy beside the CPU's,
 // where the iPhone has a Neural Engine) unless CPU only (1) is chosen. The GPU, Neural Engine and GPU and Neural Engine
 // stored before (2-4), and the earlier key's every value, are Automatic now, carried over at launch.
