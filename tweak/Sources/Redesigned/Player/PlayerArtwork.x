@@ -298,6 +298,10 @@ static void fillRoom(UIView *tilt) {
     CGPoint middle = CGPointMake(CGRectGetMidX(bounds), CGRectGetMidY(bounds));
     if (!CGSizeEqualToSize(cover.bounds.size, bounds.size)) cover.bounds = (CGRect){cover.bounds.origin, bounds.size};
     if (!CGPointEqualToPoint(cover.center, middle)) cover.center = middle;
+    // Its image is placed again for the new size (the ImageViewProxy hook below makes it fill the cover).
+    for (UIView *image in cover.subviews) {
+        if (!CGRectEqualToRect(image.frame, cover.bounds)) image.bounds = image.bounds, image.center = image.center;
+    }
 
     cover.layer.cornerRadius = SGRRadiusArtwork;
     cover.layer.cornerCurve = kCACornerCurveContinuous;
@@ -310,6 +314,53 @@ static void fillRoom(UIView *tilt) {
 
     static dispatch_once_t once;
     dispatch_once(&once, ^{ SGLog(@"redesign player: cover %@ rounded %.0f with a shadow plate, scale %.2f", NSStringFromClass(cover.class), SGRRadiusArtwork, currentScale()); });
+}
+%end
+
+// The cover's image (ImageViewProxy > Encore.ImageView) keeps the size Spotify gave it for a cell with the preview,
+// 317 in a 345 box on a track with lyrics, at the box's top left: the image sat off center with a blank band right
+// and under it (issue #21). In the player's cover it fills the box the cover now is, whatever size it is given.
+// Auto Layout places it through its bounds and center, a frame set by hand through its frame.
+static UIView *coverOfImage(UIView *image) {
+    UIView *box = image.superview;
+    return box && coverIn(box.superview) == box ? box : nil;
+}
+
+%hook _TtC22NowPlaying_ElementsKitP33_1D6A1393FEB35D7207F503DA17E7748E14ImageViewProxy
+- (void)setFrame:(CGRect)frame {
+    UIView *box = coverOfImage((UIView *)self);
+    %orig(box ? box.bounds : frame);
+}
+- (void)setBounds:(CGRect)bounds {
+    UIView *box = coverOfImage((UIView *)self);
+    %orig(box ? (CGRect){bounds.origin, box.bounds.size} : bounds);
+}
+- (void)setCenter:(CGPoint)center {
+    UIView *box = coverOfImage((UIView *)self);
+    %orig(box ? CGPointMake(CGRectGetMidX(box.bounds), CGRectGetMidY(box.bounds)) : center);
+}
+// What it holds keeps its own 317 unless it is laid out to this view's size again: the Encore image view here,
+// and the image and placeholder in that (below).
+- (void)layoutSubviews {
+    %orig;
+    UIView *proxy = (UIView *)self;
+    if (!coverOfImage(proxy)) return;
+    for (UIView *image in proxy.subviews) {
+        if (!CGRectEqualToRect(image.frame, proxy.bounds)) image.frame = proxy.bounds;
+    }
+}
+%end
+
+%hook _TtCE15Encore_MediaKitO16EncoreFoundation6Encore9ImageView
+- (void)layoutSubviews {
+    %orig;
+    UIView *view = (UIView *)self;
+    static Class proxyClass;
+    if (!proxyClass) proxyClass = NSClassFromString(@"_TtC22NowPlaying_ElementsKitP33_1D6A1393FEB35D7207F503DA17E7748E14ImageViewProxy");
+    if (![view.superview isKindOfClass:proxyClass] || !coverOfImage(view.superview)) return;
+    for (UIView *part in view.subviews) {
+        if (!CGRectEqualToRect(part.frame, view.bounds)) part.frame = view.bounds;
+    }
 }
 %end
 
