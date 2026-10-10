@@ -99,6 +99,14 @@ BOOL SGRPlayerVolumeOn(void);
 // YES when the row shows; NO when it is off, has no controls to sit under or no room between them and the footer.
 BOOL SGRPlayerPlaceVolume(UIView *stack, UIView *controls, UIView *row, CGFloat margin);
 
+// Follow the cover (PlayerCoverAccent.x): the player's lit controls painted in the cover's color instead of the accent.
+// Off until switched on, read at launch. The cover's color (a gray one gives the accent back), and a paint of Spotify's
+// bottom stack, which the footer's layout asks for.
+#define SGRKeyPlayerFollowsCover @"spotifyglass.redesign.player.followsCover"
+BOOL SGRPlayerFollowsCover(void);
+void SGRPlayerSetCoverAccent(UIColor *cover);
+void SGRPlayerPaintCover(UIView *stack);
+
 // The lyrics turn sideways with the phone onto a landscape screen of their own (PlayerLandscape.x). On
 // until switched off. Shown or put away by hand for the harness.
 #define SGRKeyLyricsLandscape @"spotifyglass.redesign.lyrics.landscape"

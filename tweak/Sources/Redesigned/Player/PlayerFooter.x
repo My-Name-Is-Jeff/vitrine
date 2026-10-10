@@ -203,6 +203,7 @@ static void lowerRow(UIView *row) {
     CGFloat share = volume ? 0 : kControlsShare, lift = volume ? kVolumeLift : 0;
     CGAffineTransform follow = CGAffineTransformMakeTranslation(0, controls ? round(move * share) - lift : 0);
     if (above && controls && !CGAffineTransformEqualToTransform(above.transform, follow)) above.transform = follow;
+    SGRPlayerPaintCover(stack);
     if (volume && !SGRPlayerPlaceVolume(stack, above, row, kVolumeMargin)) {
         share = kControlsShare;
         follow = CGAffineTransformMakeTranslation(0, round(move * share));
