@@ -21,9 +21,10 @@
 // The DJ stays without its heading ("Your own personal DJ" over a card that says DJ): the stack is a plain
 // UIStackView, so the heading's LazyElementView is hidden before the cell is measured and the stack closes up.
 //
-// A dropped section still leaves the list's 24pt gap on either side of it (the shortcuts end at 216, the
-// next section starts at 240, 01.txt:30, :325): the spacing is the list layout's, which a cell's height
-// does not reach. Taking the sections out of the casita feed itself is what would close it.
+// Each section is a section of the list's own, one item under a 24pt top inset its layout's provider gives it
+// (the first, the shortcuts, has none). A dropped section is marked on the list's layout and asked for again
+// without that inset, so the list closes up around it with one 24pt gap, not two.
+#import <objc/runtime.h>
 #import "Core/SGCore.h"
 #import "Redesigned/Kit/SGRKit.h"
 #import "Home.h"
@@ -34,7 +35,62 @@ typedef NS_ENUM(NSInteger, SGRHomeKind) {
     SGRHomeKindDrop,
 };
 
-static char kCollapsedKey;
+static char kCollapsedKey, kDroppedKey;
+
+#pragma mark - the dropped sections' gap
+
+// The provider's sections, a dropped one without its top inset. `layout` gives the layout once it is made.
+static UICollectionViewCompositionalLayoutSectionProvider withoutDroppedInsets(UICollectionViewCompositionalLayoutSectionProvider inner,
+                                                                               UICollectionViewCompositionalLayout *(^layout)(void)) {
+    return ^NSCollectionLayoutSection *(NSInteger section, id<NSCollectionLayoutEnvironment> environment) {
+        NSCollectionLayoutSection *made = inner(section, environment);
+        UICollectionViewCompositionalLayout *owner = layout();
+        NSIndexSet *dropped = owner ? objc_getAssociatedObject(owner, &kDroppedKey) : nil;
+        if ([dropped containsIndex:(NSUInteger)section]) {
+            NSDirectionalEdgeInsets insets = made.contentInsets;
+            insets.top = 0;
+            made.contentInsets = insets;
+        }
+        return made;
+    };
+}
+
+%hook UICollectionViewCompositionalLayout
+- (instancetype)initWithSectionProvider:(UICollectionViewCompositionalLayoutSectionProvider)provider
+                          configuration:(UICollectionViewCompositionalLayoutConfiguration *)configuration {
+    if (!provider) return %orig;
+    __block __weak UICollectionViewCompositionalLayout *made = nil;
+    UICollectionViewCompositionalLayout *layout = %orig(withoutDroppedInsets(provider, ^{ return made; }), configuration);
+    made = layout;
+    return layout;
+}
+- (instancetype)initWithSectionProvider:(UICollectionViewCompositionalLayoutSectionProvider)provider {
+    if (!provider) return %orig;
+    __block __weak UICollectionViewCompositionalLayout *made = nil;
+    UICollectionViewCompositionalLayout *layout = %orig(withoutDroppedInsets(provider, ^{ return made; }));
+    made = layout;
+    return layout;
+}
+%end
+
+// Marks or clears the list section `index` as dropped, and has the layout ask for it again when that changes.
+static void markDropped(UICollectionViewCell *cell, NSInteger index, BOOL dropped) {
+    UIView *v = cell.superview;
+    while (v && ![v isKindOfClass:UICollectionView.class]) v = v.superview;
+    UICollectionViewLayout *layout = ((UICollectionView *)v).collectionViewLayout;
+    if (!layout || index < 0) return;
+    NSMutableIndexSet *set = objc_getAssociatedObject(layout, &kDroppedKey);
+    if ([set containsIndex:(NSUInteger)index] == dropped) return;
+    if (!set) {
+        set = [NSMutableIndexSet indexSet];
+        objc_setAssociatedObject(layout, &kDroppedKey, set, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    if (dropped) [set addIndex:(NSUInteger)index];
+    else [set removeIndex:(NSUInteger)index];
+    // Not from inside the list's own sizing pass.
+    __weak UICollectionViewLayout *weakLayout = layout;
+    dispatch_async(dispatch_get_main_queue(), ^{ [weakLayout invalidateLayout]; });
+}
 
 static BOOL classNames(Class cls, NSString *marker, NSMutableDictionary<NSString *, NSMutableDictionary *> *cache) {
     if (!cls || !marker) return NO;
@@ -146,10 +202,12 @@ static void expand(UICollectionViewCell *cell) {
     if (kind == SGRHomeKindDrop) {
         collapse(cell, MAX(1, result.size.height));
         result.size = CGSizeMake(result.size.width, 0);
+        markDropped(cell, attributes.indexPath.section, YES);
         logOnce([@"dropped a section of " stringByAppendingString:rootName]);
     } else if (kind == SGRHomeKindKeep) {
         // Cells are reused across kinds: one collapsed before holds a section to keep now.
         if (collapsed) expand(cell);
+        markDropped(cell, attributes.indexPath.section, NO);
         logOnce([@"kept a section of " stringByAppendingString:rootName]);
     } else {
         logOnce([@"sized a section before its root was in, left as it is: " stringByAppendingString:rootName ?: @"no root"]);
