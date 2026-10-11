@@ -126,7 +126,7 @@ static NSAttributedString *linkedBody(NSString *body) {
     _body.backgroundColor = UIColor.clearColor;
     _body.textContainerInset = UIEdgeInsetsZero;
     _body.textContainer.lineFragmentPadding = 0;
-    _body.dataDetectorTypes = UIDataDetectorTypeNone;
+    _body.adjustsFontForContentSizeCategory = YES;
     _body.linkTextAttributes = @{NSForegroundColorAttributeName: SGRAccent(),
                                  NSUnderlineStyleAttributeName: @(NSUnderlineStyleSingle)};
     [_scroll addSubview:_body];
