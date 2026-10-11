@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.0.0-beta.12](https://github.com/My-Name-Is-Jeff/vitrine/compare/v1.0.0-beta.11...v1.0.0-beta.12) (2026-10-11)
+
+
+### Features
+
+* a swiped close of the redesigned player also finishes faster ([210dc7e](https://github.com/My-Name-Is-Jeff/vitrine/commit/210dc7e7e6faf42ec2701a4dab7067e7453476d4))
+* AirPods gestures get a Chime on activation switch and Apple's names ([3f9d5b5](https://github.com/My-Name-Is-Jeff/vitrine/commit/3f9d5b55840ae2d64c83903ed5f97e22cca30a62))
+* Hide controls automatically leaves only the lyrics ([e145ea5](https://github.com/My-Name-Is-Jeff/vitrine/commit/e145ea5e8ba12aea2f8186d262b962c185dfa5b7))
+* Lossless files plays your own FLACs in place of Spotify's stream ([6db05b2](https://github.com/My-Name-Is-Jeff/vitrine/commit/6db05b212213137344f88f4ea5dc243fd941d73d))
+* Lyrics for every track is on by default ([f4fe287](https://github.com/My-Name-Is-Jeff/vitrine/commit/f4fe287559a868b4d004eb5042e2054a57a1b4dd))
+* the redesign's Albums & artists page splits into Albums and Artists ([b46ac4c](https://github.com/My-Name-Is-Jeff/vitrine/commit/b46ac4c4a113829b6c32ba92f6b3e1201777ce2c))
+* the redesign's Artists page hides Artist pick, Release countdown and About ([0a5e765](https://github.com/My-Name-Is-Jeff/vitrine/commit/0a5e765e7fcf884654bc48cfa713ab1ec30f2edc))
+* the redesigned player collapses into the now playing bar faster ([7a51053](https://github.com/My-Name-Is-Jeff/vitrine/commit/7a51053c3edb888cde26fa495edc127ff480b547))
+* the tour ends with an Easy to miss card ([739d14f](https://github.com/My-Name-Is-Jeff/vitrine/commit/739d14f21e0945dbac5fd8f10f2d083c524183cb))
+* the tour offers one No ads switch ([02aaada](https://github.com/My-Name-Is-Jeff/vitrine/commit/02aaadab9a804c007219baa2a8c88ddc79fbb56a))
+
+
+### Fixes
+
+* Add to Liked Songs in the ⋯ menu shows a heart, not a white square ([74ca9ec](https://github.com/My-Name-Is-Jeff/vitrine/commit/74ca9ec1bc7469cacb1995b888ac7c744bd9cda5))
+* album pages show the whole cover, not one cut at the sides ([64a0e00](https://github.com/My-Name-Is-Jeff/vitrine/commit/64a0e0086da385f6a279ffda0d23913c9990e146))
+* an artist page's pinned title bar shows the page's color, not a black band ([#28](https://github.com/My-Name-Is-Jeff/vitrine/issues/28)) ([cc44038](https://github.com/My-Name-Is-Jeff/vitrine/commit/cc440384feaa26d2cff98b1f06f9e237551fc32b))
+* Home's large top shelf no longer scrolls inside its own cell ([008e0ff](https://github.com/My-Name-Is-Jeff/vitrine/commit/008e0ffd35f9cb5dc4ae2b78e56f606f202c90a6))
+* Live Activity buttons and AirPods route changes cannot hang Spotify at launch ([abe8256](https://github.com/My-Name-Is-Jeff/vitrine/commit/abe82564591d9faf887b061ce1e745c95e01cf9d))
+* lock screen lyrics keep moving while the screen is off ([2888e4e](https://github.com/My-Name-Is-Jeff/vitrine/commit/2888e4e23a99584d0e3a590e72b7a8585e0bd1cf))
+* Music Haptics plays again when iOS does not play the song in the background ([72b7f78](https://github.com/My-Name-Is-Jeff/vitrine/commit/72b7f789e2da92fc7f81c7aa2456a9f5eef9ced9))
+* the album header no longer jumps when Play turns to Pause ([#25](https://github.com/My-Name-Is-Jeff/vitrine/issues/25)) ([53e9922](https://github.com/My-Name-Is-Jeff/vitrine/commit/53e9922ffccd218fea8e0540bfe1e27b7cf51088))
+* the redesigned player shrinks into the now playing bar on close, not above it ([#27](https://github.com/My-Name-Is-Jeff/vitrine/issues/27)) ([06aa1cf](https://github.com/My-Name-Is-Jeff/vitrine/commit/06aa1cf08d6ad21b682645934c33b19747f4b11f))
+
 ## [1.0.0-beta.11](https://github.com/My-Name-Is-Jeff/vitrine/compare/v1.0.0-beta.10...v1.0.0-beta.11) (2026-10-10)
 
 
