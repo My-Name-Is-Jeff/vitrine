@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.0.0-beta.13](https://github.com/My-Name-Is-Jeff/vitrine/compare/v1.0.0-beta.12...v1.0.0-beta.13) (2026-10-12)
+
+
+### Features
+
+* Karaoke can use a light voice model for older iPhones ([a663fcf](https://github.com/My-Name-Is-Jeff/vitrine/commit/a663fcf8389677abc4e4a5c32361f498ed2071f8))
+* Mod Settings' main page has new groups and icons ([31db7ae](https://github.com/My-Name-Is-Jeff/vitrine/commit/31db7aedc342899697ae8946d5ce5550831aaf9c))
+* the links in a Genius line meaning can be tapped ([#31](https://github.com/My-Name-Is-Jeff/vitrine/issues/31)) ([39704a2](https://github.com/My-Name-Is-Jeff/vitrine/commit/39704a20228752b6583e66552f3c68b659b7d196))
+* the lock screen can show the lyrics over the moving artwork ([1aef54b](https://github.com/My-Name-Is-Jeff/vitrine/commit/1aef54bf72e9c11aef477365bb780bbbd840a63d))
+* the lock screen's star switches between moving artwork and lyrics ([720017e](https://github.com/My-Name-Is-Jeff/vitrine/commit/720017e5439e97898086945b2244e26f7e042dc6)), closes [#33](https://github.com/My-Name-Is-Jeff/vitrine/issues/33)
+* the redesign's mini player can hide its like button ([0c472c4](https://github.com/My-Name-Is-Jeff/vitrine/commit/0c472c4558e72cdaa44f2d0b3b2b9b9ab079ef36))
+* the redesigned Home gets large cards, tinted shortcuts and its own settings page ([f9f672a](https://github.com/My-Name-Is-Jeff/vitrine/commit/f9f672a08729921cdb8948bf2258663c5e3ffb5e))
+* the Visualizer glows in the cover's colors with the kick at its centre ([4c28e09](https://github.com/My-Name-Is-Jeff/vitrine/commit/4c28e0978ec94dff97ef1ce87e72e6bbdb1e3fc1))
+
+
+### Fixes
+
+* lyrics over moving artwork falls back to the right look ([1533974](https://github.com/My-Name-Is-Jeff/vitrine/commit/15339746952406e10121b032f9c8d64bf80c3064))
+* the large Home cards' covers reach the card's edges, square at the footer ([d74d05e](https://github.com/My-Name-Is-Jeff/vitrine/commit/d74d05e49ed9a3cfb729698e22963aea9cf0bdb1))
+* the light voice model loads with less free memory, and a model switch or removal leaves nothing behind ([a193d67](https://github.com/My-Name-Is-Jeff/vitrine/commit/a193d6720f3ba9f310a1e9543b64248fdf58b140))
+* the new Home look on large iPhones, its menu and test builds ([012679f](https://github.com/My-Name-Is-Jeff/vitrine/commit/012679f144607622a93f9061a0c03f2ecdff970f))
+* the redesigned Home keeps Top picks through a filter change and uses fewer hooks ([3cbb09b](https://github.com/My-Name-Is-Jeff/vitrine/commit/3cbb09b4285d0217e0998918dfc2c5d87d1caf6f))
+* the redesigned Home's large shelf keeps its footer, and its hooks stay off other screens ([eb79dca](https://github.com/My-Name-Is-Jeff/vitrine/commit/eb79dca3c3141a66e43f90f7eafd41a5e9c62d97))
+* the redesigned Home's title fades even when a shelf is taller than the page ([bb87a61](https://github.com/My-Name-Is-Jeff/vitrine/commit/bb87a61f4ca31ec6846969418d8b914b5be5d7ee))
+* the redesigned player's volume row never covers the controls ([#32](https://github.com/My-Name-Is-Jeff/vitrine/issues/32)) ([9b614c1](https://github.com/My-Name-Is-Jeff/vitrine/commit/9b614c1d7ae4b78582acfd9683d84f1ff89a583a))
+
 ## [1.0.0-beta.12](https://github.com/My-Name-Is-Jeff/vitrine/compare/v1.0.0-beta.11...v1.0.0-beta.12) (2026-10-11)
 
 
