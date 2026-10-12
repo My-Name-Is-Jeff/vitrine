@@ -193,7 +193,7 @@ static MPMediaItemAnimatedArtwork *artworkFor(NSString *artworkID, SGLockLine *l
             return;
         }
         dispatch_async(sg_previewQueue, ^{
-            completion(previewFor(artworkID, line, next, cover, size));
+            completion(previewFor(artworkID, line, size));
             static NSUInteger told;
             if (told++ < 10) SGLog(@"lock lyrics: preview of %@ was not drawn ahead", artworkID);
         });
@@ -202,27 +202,16 @@ static MPMediaItemAnimatedArtwork *artworkFor(NSString *artworkID, SGLockLine *l
     id videoBlock = ^(CGSize wanted, void (^completion)(NSURL *)) {
         sg_askedAt = CFAbsoluteTimeGetCurrent();
         dispatch_async(sg_queue, ^{
+            // A line already sung by the time its turn comes is not drawn.
             if (!stillShown(artworkID)) {
                 completion(nil);
                 return;
             }
-            dispatch_async(sg_previewQueue, ^{
-                completion(previewFor(artworkID, line, size));
-                static NSUInteger told;
-                if (told++ < 10) SGLog(@"lock lyrics: preview of %@ was not drawn ahead", artworkID);
-            });
-        }
-        videoAssetFileURLRequestHandler:^(CGSize wanted, void (^completion)(NSURL *)) {
-            sg_askedAt = CFAbsoluteTimeGetCurrent();
-            dispatch_async(sg_queue, ^{
-                // A line already sung by the time its turn comes is not drawn.
-                if (!stillShown(artworkID)) {
-                    completion(nil);
-                    return;
-                }
-                completion(writeClip(artworkID, line, size) ? clipFile(artworkID) : nil);
-            });
-        }];
+            completion(writeClip(artworkID, line, size) ? clipFile(artworkID) : nil);
+        });
+    };
+
+    return ((id (*)(id, SEL, id, id, id))objc_msgSend)(alloced, initSel, artworkID, previewBlock, videoBlock);
 }
 
 static void clear(void) {
