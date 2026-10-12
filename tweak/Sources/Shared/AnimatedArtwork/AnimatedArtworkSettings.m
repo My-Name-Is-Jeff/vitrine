@@ -18,18 +18,15 @@ SGLockArtwork SGLockScreenArtwork(void) {
 
 NSArray *SGLockScreenMotionRows(void) {
     if (@available(iOS 26.0, *)) {
-        SGLockScreenArtwork();
-        SGModRow *style = SGChoiceRow(@"Lyrics style", @"Still draws each line once; Animated breathes the cover behind it",
-                                      SGKeyLockScreenLyricsStyle, @[@"Still", @"Animated"], 0);
-        style.visible = ^BOOL { return SGLockScreenArtwork() == SGLockArtworkLyrics; };
-        
-        SGModRow *fullBrightness = SGOptionRow(@"Full Brightness Covers", @"Removes the dark overlay filter from animated covers", SGKeyAnimatedCoversFullBrightness);
-        
-        SGLockScreenArtwork();   // moves the old switch over before the row reads the new key
+        SGLockScreenArtwork();   // Migra la clave antigua antes de leer la nueva
+
         SGModRow *style = SGChoiceRow(@"Lyrics style", @"Still draws each line once; Animated breathes the cover behind it. "
                                                        @"With moving artwork, for songs that have none",
                                       SGKeyLockScreenLyricsStyle, @[@"Still", @"Animated"], 0);
         style.visible = ^BOOL { return SGLockArtworkShowsLyrics(SGLockScreenArtwork()); };
+        
+        SGModRow *fullBrightness = SGOptionRow(@"Full Brightness Covers", @"Removes the dark overlay filter from animated covers", SGKeyAnimatedCoversFullBrightness);
+        
         SGModRow *lowData = SGOptionRow(@"Download in Low Data Mode", @"Moving artwork, up to about 7 MB a song", SGKeyMotionLowData);
         lowData.visible = ^BOOL {
             SGLockArtwork artwork = SGLockScreenArtwork();
@@ -38,17 +35,20 @@ NSArray *SGLockScreenMotionRows(void) {
         
         SGModRow *sources = SGMotionSourcesRow();
         sources.visible = lowData.visible;
+        
         SGModRow *star = SGOptionRow(@"Switch with the star", @"The lock screen widget's star swaps the moving artwork for the lyrics "
-                                                             @"and back. It takes the place of Spotify's like and dislike buttons",
+                                                              @"and back. It takes the place of Spotify's like and dislike buttons",
                                      SGKeyLockScreenStar);
         star.visible = ^BOOL { return SGLockScreenArtwork() != SGLockArtworkOff; };
+        
         return @[
             SGChoiceRow(@"Full-screen artwork", @"The Canvas or Apple Music's animated cover, or the lyrics a line at a time. "
-                                                 @"Every song puts the cover over a moving blur of it where a song has neither. "
-                                                 @"Moving artwork with lyrics puts the lines over the Canvas or animated cover",
+                                                @"Every song puts the cover over a moving blur of it where a song has neither. "
+                                                @"Moving artwork with lyrics puts the lines over the Canvas or animated cover",
                         SGKeyLockScreenArtwork, @[@"Off", @"Moving artwork", @"Lyrics", @"Every song", @"Moving artwork with lyrics"],
                         SGLockArtworkOff),
             style,
+            fullBrightness,
             star,
             sources,
             lowData,
