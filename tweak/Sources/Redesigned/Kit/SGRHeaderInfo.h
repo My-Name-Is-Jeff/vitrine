@@ -10,7 +10,8 @@
 // Its content sits on its bottom edge with SGRHeaderInfoBottom under it, whatever height the page gives it,
 // so the buttons stay just above the first track; what does not fit rises over the picture. The page's
 // picture reaches SGRHeaderInfoTitleRise below the content's top, so the title and the creator sit on the
-// bottom of its dissolve.
+// bottom of its dissolve. A page whose header changes height under it (the album's, a point or more as Play
+// turns to Pause, more with a taller font) pins the content's top instead (pinnedTop).
 //
 // Ownership: the page that adds it; it keeps only weak references to Spotify's controls.
 // Threading: main thread only.
@@ -48,6 +49,9 @@ extern const CGFloat SGRHeaderInfoTitleRise;  // 56, of the content over the pic
 - (void)showTitleImage:(UIImage *)image;
 // The height the content wants at `width`, from the top of the title to the bottom of the description.
 - (CGFloat)contentHeightForWidth:(CGFloat)width;
+// Where the content starts, from the top; 0 keeps it on the bottom edge. Content that would then run past the
+// bottom goes back on the bottom edge.
+@property (nonatomic) CGFloat pinnedTop;
 @end
 
 // The image view of the leading face on Spotify's creator line `root` -- the playlist header's collaborators

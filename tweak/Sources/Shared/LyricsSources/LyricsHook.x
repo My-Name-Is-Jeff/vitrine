@@ -581,14 +581,17 @@ static void completed(id delegate, NSURLSession *session, NSURLSessionTask *task
     SGLyricsMigrateLegacyKeys();
     if (!SGLyricsEnabled()) return;
     %init(SGLyricsReplies);
-    
-    SEL selector = @selector(dataTaskWithRequest:);
-    Class local = objc_getClass("__NSURLSessionLocal");
-    Method own = local ? ownMethod(local, selector) : NULL;
-    BOOL hookLocal = own && method_getImplementation(own) != method_getImplementation(class_getInstanceMethod(NSURLSession.class, selector));
-    
-    %init(SGLyricsEveryTrack);
-    if (hookLocal) %init(SGLyricsLocalSession);
-    
+    BOOL everyTrack = SGEnabled(SGKeyLyricsAllTracks);
+    if (everyTrack) {
+        // The generator gives a class that only inherits the method an override of its own, which would
+        // put a second hook in front of NSURLSession's.
+        SEL selector = @selector(dataTaskWithRequest:);
+        Class local = objc_getClass("__NSURLSessionLocal");
+        Method own = local ? ownMethod(local, selector) : NULL;
+        BOOL hookLocal = own && method_getImplementation(own) != method_getImplementation(class_getInstanceMethod(NSURLSession.class, selector));
+        %init(SGLyricsEveryTrack);
+        if (hookLocal) %init(SGLyricsLocalSession);
+    }
+    SGLog(@"lyrics: sources %@, every track %@", [SGLyricsOrder() componentsJoinedByString:@", "], everyTrack ? @"on" : @"off");
     SGRequireClasses(@[@"SPTPlayerTrack", @"SPTDataLoaderService", @"_TtC26Connectivity_HttpClientKit20HttpClientURLSession"]);
 }

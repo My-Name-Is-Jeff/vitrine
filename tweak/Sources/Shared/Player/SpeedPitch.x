@@ -38,11 +38,12 @@
 //
 // Spotify's clock keeps running at its own speed between the player's reports: -[SPTPlayerState position]
 // is positionAsOfTimestamp minus timeIntervalSinceNow times [self playbackSpeed] (disassembly,
-// 0x1057735ec), so playbackSpeed is hooked to include this speed, and the scrubber, the lyrics and the lock
-// screen move with the sound. That bets the player's reported positions follow what the decoder handed
-// over, which is what it counts. The player does not report a change of this speed, so a state stamped
-// before it would run all its time at the new speed and jump; -position takes back the difference for the
-// time each earlier speed played (speedCorrection).
+// 0x1057735ec), so playbackSpeed is hooked to include this speed. Away from 1x the player's reports fall
+// behind the sound: on 9.1.90 at 1.5x, after about 30 s it reports a stall every 3 s that the sound never
+// has, each 1.2 s, and its clock stays that far behind until a seek or the next track (24 s after 100 s).
+// So from the moment the speed leaves 1x, -position counts its own clock: Spotify's position then, plus the
+// song the mixer has handed over since (sg_clock). A seek, skip, stop or new track hands the clock back to
+// Spotify's, and away from 1x takes Spotify's next report as the new start.
 //
 // When the music's output was never connected, pitch falls back to the way it first shipped: a render notify
 // on the RemoteIO unit runs each finished buffer through a unit working in place; speed is then unavailable.
@@ -66,8 +67,10 @@
 #import "Core/SGCore.h"
 #import "Core/SGRebind.h"
 #import "Headers/SPTPlayer.h"
+#import "PlayerState.h"
 #import "SpeedPitch.h"
 #import "SGTimePitch.h"
+#import "Shared/Lossless/SGAnchor.h"
 
 // The unit stays in this long after speed and pitch both came back to normal.
 static const double kOffAfter = 1.5;
@@ -99,6 +102,9 @@ typedef struct {
     UInt32 sourceBus;
     atomic_bool taken;
     atomic_uint chunk;
+    #if SG_DRIVER
+    SGAnchorRing anchor;
+    #endif
     Float64 sourceTime;                      // its render thread only
     // Spotify's side (input scope, element 0), which the callback fills, and the hardware's (output scope),
     // which render notifies get.
@@ -123,12 +129,28 @@ static _Atomic(SGTimePitch *) sg_pull, sg_inPlace;
 static atomic_bool sg_engaged;
 static pthread_mutex_t sg_buildLock = PTHREAD_MUTEX_INITIALIZER;
 static _Atomic(SGPlayerStage) sg_stage;
+static _Atomic(SGPlayerSourceSelector) sg_sourceSelector;
+static atomic_uint_fast64_t sg_sourceEpoch = 1;
+
+uint64_t SGPlayerSourceEpoch(void) { return atomic_load(&sg_sourceEpoch); }
+void SGPlayerInvalidateSource(void) { atomic_fetch_add(&sg_sourceEpoch, 1); }
+void SGPlayerSetSourceSelector(SGPlayerSourceSelector selector) {
+    SGPlayerInvalidateSource();
+    atomic_store(&sg_sourceSelector, selector);
+}
 
 static double sg_secondsPerTick;
 static OSStatus (*sg_setProperty)(AudioUnit, AudioUnitPropertyID, AudioUnitScope, AudioUnitElement, const void *, UInt32);
 
 static Output *music(void) {
     return atomic_load(&sg_music);
+}
+
+// Microseconds of song the music's mixer has handed over with sound, the own clock's (sg_clock).
+static _Atomic uint64_t sg_playedMicros;
+
+static double playedSeconds(void) {
+    return atomic_load_explicit(&sg_playedMicros, memory_order_relaxed) / 1e6;
 }
 
 // Whether the music's output is fed through this file's callback.
@@ -167,6 +189,41 @@ static void silence(AudioBufferList *data) {
     for (UInt32 b = 0; b < data->mNumberBuffers; b++) if (data->mBuffers[b].mData) memset(data->mBuffers[b].mData, 0, data->mBuffers[b].mDataByteSize);
 }
 
+#if SG_DRIVER
+// Runs of silence from the music's mixer (speed-rebuffer test): written on the render thread only, read by
+// SGSpeedProbeSilence on main. A run is reported once it ends.
+static _Atomic uint64_t sg_runStart, sg_runFrames, sg_lastRunHost, sg_lastRunFrames, sg_runs;
+static _Atomic uint64_t sg_runRateBits;
+
+static void noteSilence(bool silent, UInt32 frames, double rate, uint64_t host) {
+    uint64_t start = atomic_load_explicit(&sg_runStart, memory_order_relaxed);
+    if (silent) {
+        if (!start) atomic_store_explicit(&sg_runStart, host, memory_order_relaxed);
+        atomic_fetch_add_explicit(&sg_runFrames, frames, memory_order_relaxed);
+    } else if (start) {
+        uint64_t bits;
+        memcpy(&bits, &rate, sizeof bits);
+        atomic_store_explicit(&sg_runRateBits, bits, memory_order_relaxed);
+        atomic_store_explicit(&sg_lastRunHost, start, memory_order_relaxed);
+        atomic_store_explicit(&sg_lastRunFrames, atomic_load_explicit(&sg_runFrames, memory_order_relaxed), memory_order_relaxed);
+        atomic_fetch_add_explicit(&sg_runs, 1, memory_order_release);
+        atomic_store_explicit(&sg_runStart, 0, memory_order_relaxed);
+        atomic_store_explicit(&sg_runFrames, 0, memory_order_relaxed);
+    }
+}
+
+uint64_t SGSpeedProbeSilence(uint64_t *host, double *ms, bool *silentNow) {
+    uint64_t runs = atomic_load_explicit(&sg_runs, memory_order_acquire);
+    uint64_t bits = atomic_load_explicit(&sg_runRateBits, memory_order_relaxed);
+    double rate;
+    memcpy(&rate, &bits, sizeof rate);
+    *host = atomic_load_explicit(&sg_lastRunHost, memory_order_relaxed);
+    *ms = rate > 0 ? atomic_load_explicit(&sg_lastRunFrames, memory_order_relaxed) * 1000.0 / rate : 0;
+    *silentNow = atomic_load_explicit(&sg_runStart, memory_order_relaxed) != 0;
+    return runs;
+}
+#endif
+
 // The output's mixer's next `frames` frames into `data`, in chunks of at most its largest slice, each with a
 // sample time of the output's own, so Spotify's units never see a time twice (an AU renders a time it has
 // seen from cache). With `sounding`, it stops at the first chunk marked silent (SGPlayerPull).
@@ -195,8 +252,47 @@ static OSStatus pullSource(Output *output, AudioUnit source, const AudioTimeStam
         time.mSampleTime = output->sourceTime;
         time.mFlags |= kAudioTimeStampSampleTimeValid;
         AudioUnitRenderActionFlags flags = 0;
+        uint64_t epoch = SGPlayerSourceEpoch();
+        double sourceFrame = output->sourceTime;
+        #if SG_DRIVER
+        uint64_t anchorHost = mach_absolute_time();
+        #endif
         OSStatus status = AudioUnitRender(source, &flags, &time, output->sourceBus, count, target);
         output->sourceTime += count;
+        // This counter advances through silent/error pulls, whereas the recording may not. Once a
+        // native stall occurs, a future playback owner must establish a fresh recording/frame anchor.
+        // Conservatively invalidate even natural silence; never resume an external cursor by guessing.
+        BOOL observesSource = atomic_load(&sg_sourceSelector) != NULL;
+        #if SG_DRIVER
+        observesSource = YES;
+        #endif
+        if ((status != noErr || (flags & kAudioUnitRenderAction_OutputIsSilence))
+            && observesSource && output == music()) SGPlayerInvalidateSource();
+        #if SG_DRIVER
+        if (output == music()) {
+            // Silent as flagged, or as heard: every sample of the first channel under -80 dBFS.
+            bool quiet = status == noErr && !(flags & kAudioUnitRenderAction_OutputIsSilence) && target->mBuffers[0].mData;
+            const float *samples = target->mBuffers[0].mData;
+            for (UInt32 i = 0; quiet && i < count; i++) if (fabsf(samples[i]) > 1e-4f) quiet = false;
+            noteSilence((flags & kAudioUnitRenderAction_OutputIsSilence) || status != noErr || quiet, count, rateOf(&output->client), anchorHost);
+        }
+        if (output == music()) {
+            double rate = rateOf(&output->client);
+            // About ten samples per second at the current speed. Sing's refill may burst.
+            double speed = MAX(0.25, loadFloat(&sg_speedBits));
+            unsigned every = (unsigned)MAX(1, round(rate * speed / (10.0 * count)));
+            SGAnchorRing *ring = &output->anchor;
+            if (++ring->pulls >= every || ring->lastEpoch != epoch) {
+                SGAnchorSample sample = {sourceFrame, rate, anchorHost, epoch,
+                    (uint64_t)(uintptr_t)atomic_load(&output->unit), count, status,
+                    (flags & kAudioUnitRenderAction_OutputIsSilence) != 0};
+                if (SGAnchorPush(ring, sample)) {
+                    ring->pulls = 0;
+                    ring->lastEpoch = epoch;
+                }
+            }
+        }
+        #endif
         if (status != noErr) return status;
         // Asked to stop at silence: Spotify has none of its sound from here on yet, so the rest is not rendered.
         if ((flags & kAudioUnitRenderAction_OutputIsSilence) && sounding) {
@@ -208,7 +304,26 @@ static OSStatus pullSource(Output *output, AudioUnit source, const AudioTimeStam
             return noErr;
         }
         // A buffer marked silent may still hold what was in it before; nothing after this reads the mark.
-        if (flags & kAudioUnitRenderAction_OutputIsSilence) silence(target);
+        if (flags & kAudioUnitRenderAction_OutputIsSilence) {
+            silence(target);
+        } else if (output == music()) {
+            double rate = rateOf(&output->client);
+            if (rate > 0) atomic_fetch_add_explicit(&sg_playedMicros, (uint64_t)(count * 1e6 / rate), memory_order_relaxed);
+        }
+        SGPlayerSourceSelector selector = atomic_load(&sg_sourceSelector);
+        if (selector && output == music()) {
+            // Keep output ownership based on Spotify's original samples, not the replacement's sound.
+            BOOL audible = NO;
+            for (UInt32 b = 0; !audible && b < target->mNumberBuffers; ++b) {
+                const float *samples = target->mBuffers[b].mData;
+                for (UInt32 i = 0; samples && i < target->mBuffers[b].mDataByteSize / sizeof(float); ++i) {
+                    if (fabsf(samples[i]) > 1e-4f) { audible = YES; break; }
+                }
+            }
+            if (audible) atomic_store_explicit(&output->loudAt, mach_absolute_time(), memory_order_relaxed);
+            if (!(flags & kAudioUnitRenderAction_OutputIsSilence))
+                selector(atomic_load(&output->unit), epoch, sourceFrame, rateOf(&output->client), count, target);
+        }
         done += count;
     }
     return noErr;
@@ -414,7 +529,8 @@ static OSStatus rendered(void *refCon, AudioUnitRenderActionFlags *flags, const 
                          UInt32 frames, AudioBufferList *data) {
     if (!(*flags & kAudioUnitRenderAction_PostRender) || bus != 0 || !data || !data->mNumberBuffers || !frames) return noErr;
     Output *output = refCon;
-    if (hasSound(&output->hardware, *flags, data)) atomic_store_explicit(&output->loudAt, mach_absolute_time(), memory_order_relaxed);
+    BOOL sourceMetered = atomic_load(&sg_sourceSelector) && atomic_load(&output->taken) && output == music();
+    if (!sourceMetered && hasSound(&output->hardware, *flags, data)) atomic_store_explicit(&output->loudAt, mach_absolute_time(), memory_order_relaxed);
     if (output != music()) return noErr;
     applyGain(&output->hardware, flags, frames, data);
     if (atomic_load(&output->taken) || !atomic_load(&sg_engaged)) return noErr;
@@ -596,6 +712,7 @@ static void reselect(BOOL always, NSString *why) {
         SGLog(@"audio: the processors move from %@ to %@%@", describe(previous), describe(next), why ? [@", " stringByAppendingString:why] : @"");
     }
     if (next != previous || always) {
+        SGPlayerInvalidateSource();
         tellWatchers();
         applyToFormat();
     }
@@ -614,6 +731,7 @@ static void formatChanged(void *refCon, AudioUnit unit, AudioUnitPropertyID prop
     if (scope != kAudioUnitScope_Input && scope != kAudioUnitScope_Output) return;
     // Off the thread setting it: settling may set the unit's connection, which is not done from inside its own listener.
     Output *output = refCon;
+    if (output == music()) SGPlayerInvalidateSource();
     dispatch_async(sg_outputsQueue, ^{
         pthread_mutex_lock(&sg_outputsLock);
         if (atomic_load(&output->unit) == unit) {
@@ -636,6 +754,7 @@ static void sourceChanged(AudioUnit unit) {
         Output *output = &sg_outputs[i];
         AudioUnit outputUnit = atomic_load(&output->unit);
         if (!outputUnit || atomic_load(&output->source) != unit) continue;
+        if (output == music()) SGPlayerInvalidateSource();
         dispatch_async(sg_outputsQueue, ^{
             pthread_mutex_lock(&sg_outputsLock);
             AudioStreamBasicDescription client, hardware;
@@ -653,11 +772,17 @@ static OSStatus setProperty(AudioUnit unit, AudioUnitPropertyID property, AudioU
                             const void *data, UInt32 size) {
     if (property != kAudioUnitProperty_MakeConnection || scope != kAudioUnitScope_Input || element != 0 || !data
         || size < sizeof(AudioUnitConnection) || !isRemoteIO(unit)) {
+        // Invalidate before applying a format change: Core Audio's listener may arrive later. Even
+        // setting the same format conservatively invalidates a prepared source's negotiated contract.
+        Output *current = music();
+        if (property == kAudioUnitProperty_StreamFormat && current
+            && (unit == atomic_load(&current->unit) || unit == atomic_load(&current->source))) SGPlayerInvalidateSource();
         OSStatus status = sg_setProperty(unit, property, scope, element, data, size);
         if (status == noErr && (property == kAudioUnitProperty_StreamFormat || property == kAudioUnitProperty_MaximumFramesPerSlice)) sourceChanged(unit);
         return status;
     }
     const AudioUnitConnection *connection = data;
+    SGPlayerInvalidateSource();
     pthread_mutex_lock(&sg_outputsLock);
     Output *output = outputFor(unit);
     if (!output) {
@@ -743,6 +868,7 @@ static OSStatus startOutput(AudioUnit unit) {
 static OSStatus (*sg_stopOutput)(AudioUnit unit);
 
 static OSStatus stopOutput(AudioUnit unit) {
+    if (unit == SGPlayerMusicOutput()) SGPlayerInvalidateSource();
     OSStatus status = sg_stopOutput(unit);
     pthread_mutex_lock(&sg_outputsLock);
     Output *output = outputOf(unit);
@@ -759,6 +885,7 @@ static OSStatus (*sg_dispose)(AudioComponentInstance unit);
 // Every output fed by the unit loses it, and the unit's own output is forgotten, before it goes; renders in
 // progress end first.
 static OSStatus disposeUnit(AudioComponentInstance unit) {
+    SGPlayerInvalidateSource();
     pthread_mutex_lock(&sg_outputsLock);
     BOOL changed = NO;
     for (int i = 0; i < kMaxOutputs; i++) {
@@ -885,45 +1012,85 @@ BOOL SGPlayerSpeedAllowed(void) {
     return tapped();
 }
 
-// The speed's changes, oldest first: when each came and the speed before it, for speedCorrection.
-// ponytail: the last 16 only. A state stamped before them runs its oldest part at the wrong speed, but every
-// seek, skip and pause stamps a new one.
-typedef struct {
-    CFAbsoluteTime at;
-    float before;
-} SpeedChange;
-enum { kSpeedChanges = 16 };
-static SpeedChange sg_speedChanges[kSpeedChanges];
-static unsigned sg_speedChangeCount;
-static os_unfair_lock sg_speedChangesLock = OS_UNFAIR_LOCK_INIT;
+// The position Spotify counted in the last -position on this thread, before the own clock and before Sing's lead.
+static _Thread_local double sg_spotifyPosition;
+
+// The own clock (see the top), in what is heard: `on` while it counts, from `position` song seconds heard when
+// `played` was playedSeconds() and Sing held `lead` ahead, for `track`. `armed` takes the first report stamped at or
+// after `notBefore` as its start. What it hands back is in Spotify's terms, a report's own lead on top, which Sing's
+// -position (outside this one) takes off again: a report after the lead was built carries all of it, one before it none.
+static struct {
+    BOOL on, armed;
+    CFAbsoluteTime notBefore;
+    double position, played, lead;
+} sg_clock;
+
+// Sing's -position asks [self position] again for the raw one, and its readers below may too, so this hook may run
+// inside itself; only the outer one corrects.
+static _Thread_local BOOL sg_correcting;
+
+// Sing's lead (Shared/Sing): what it holds ahead now, and a report's correction. 0 without Sing.
+static SGPlayerHeldLead sg_heldLead;
+static SGPlayerLeadOf sg_leadOf;
+
+void SGPlayerSetLeadReaders(SGPlayerHeldLead held, SGPlayerLeadOf of) {
+    sg_heldLead = held;
+    sg_leadOf = of;
+}
+
+static double heldLeadNow(void) {
+    return sg_heldLead ? sg_heldLead() : 0;
+}
+
+static double leadOfState(SPTPlayerState *state) {
+    if (!sg_leadOf || !state) return 0;
+    BOOL was = sg_correcting;
+    sg_correcting = YES;
+    double lead = sg_leadOf(state);
+    sg_correcting = was;
+    return lead;
+}
+// The newest report seen, to tell a seek from elsewhere (another device over Connect) by its position: one
+// further than kSeekGap from where the report before would be by then, both made since the speed last changed
+// (sg_speedChangedAt). A false stall moves it 1.2 s at most.
+static struct {
+    CFAbsoluteTime stamp;
+    double asOf, speed;
+} sg_lastReport;
+static CFAbsoluteTime sg_speedChangedAt;
+static const double kSeekGap = 3;
+static NSString *sg_clockTrack;
+static os_unfair_lock sg_clockLock = OS_UNFAIR_LOCK_INIT;
+
+static NSString *trackOf(SPTPlayerState *state) {
+    return [state.track.URI description];
+}
+
+// Spotify's clock again from here; away from 1x, its next report starts the own clock over.
+static void handBack(void) {
+    os_unfair_lock_lock(&sg_clockLock);
+    sg_clock = (typeof(sg_clock)){.armed = loadFloat(&sg_speedBits) != 1, .notBefore = CFAbsoluteTimeGetCurrent()};
+    os_unfair_lock_unlock(&sg_clockLock);
+}
 
 void SGSetPlayerSpeed(double speed) {
     if (!tapped()) return;
-    os_unfair_lock_lock(&sg_speedChangesLock);
-    if ((float)speed != sg_speed) {
-        sg_speedChanges[sg_speedChangeCount++ % kSpeedChanges] = (SpeedChange){CFAbsoluteTimeGetCurrent(), sg_speed};
+    // Spotify's clock is right until the speed leaves 1x, so it is read before, as Spotify counts it: Sing's
+    // -position, outside this file's, takes its lead off what this one returns.
+    SPTPlayerState *state = SGPlayerState();
+    sg_spotifyPosition = -1;
+    [state position];
+    double position = sg_spotifyPosition, lead = leadOfState(state), held = heldLeadNow();
+    os_unfair_lock_lock(&sg_clockLock);
+    if (!sg_clock.on && !sg_clock.armed && speed != 1 && state && position >= 0) {
+        sg_clock = (typeof(sg_clock)){.on = YES, .position = position - lead, .played = playedSeconds(), .lead = held};
+        sg_clockTrack = trackOf(state);
     }
+    if ((float)speed != sg_speed) sg_speedChangedAt = CFAbsoluteTimeGetCurrent();
+    os_unfair_lock_unlock(&sg_clockLock);
     sg_speed = (float)speed;
     storeFloat(&sg_speedBits, sg_speed);
-    os_unfair_lock_unlock(&sg_speedChangesLock);
     apply();
-}
-
-// Song seconds that -position, running all the time since `stamp` at today's speed, counts too many (negative)
-// or too few: each stretch before a change since then played at the speed before it.
-static double speedCorrection(CFAbsoluteTime stamp) {
-    double seconds = 0;
-    os_unfair_lock_lock(&sg_speedChangesLock);
-    float now = loadFloat(&sg_speedBits);
-    CFAbsoluteTime from = stamp;
-    for (unsigned i = MIN(sg_speedChangeCount, (unsigned)kSpeedChanges); i > 0; i--) {
-        SpeedChange change = sg_speedChanges[(sg_speedChangeCount - i) % kSpeedChanges];
-        if (change.at <= from) continue;
-        seconds += (change.before - now) * (change.at - from);
-        from = change.at;
-    }
-    os_unfair_lock_unlock(&sg_speedChangesLock);
-    return seconds;
 }
 
 float SGPlayerPitch(void) {
@@ -1011,9 +1178,6 @@ BOOL SGPlayerWatchMusicOutput(SGPlayerOutputWatcher watcher) {
 
 #pragma mark - Spotify's clock
 
-// Sing's -position asks [self position] again for the raw one, so this hook may run inside itself; only the
-// outer one corrects.
-static _Thread_local BOOL sg_correcting;
 
 %hook SPTPlayerState
 - (double)playbackSpeed {
@@ -1027,14 +1191,55 @@ static _Thread_local BOOL sg_correcting;
     sg_correcting = YES;
     double position = %orig;
     sg_correcting = NO;
-    NSDate *stamp = self.timestamp;
-    if (position < 0 || self.isPaused || !stamp) return position;
-    double correction = speedCorrection(stamp.timeIntervalSinceReferenceDate);
-    if (correction == 0) return position;
-    // Spotify's own speed, a podcast's, runs under ours.
-    float ours = loadFloat(&sg_speedBits);
-    double rate = self.playbackSpeed, spotify = ours > 0 && ours != 1 ? rate / ours : rate;
-    return MAX(0, position + correction * spotify);
+    sg_spotifyPosition = position;
+    if (position < 0) return position;
+    NSString *track = trackOf(self);
+    double played = playedSeconds();
+    CFAbsoluteTime stamp = self.timestamp.timeIntervalSinceReferenceDate;
+    // Spotify's own, from the position it counted: Sing's positionAsOfTimestamp has its lead taken off, which
+    // turning Sing on or off would show as a seek.
+    double speed = self.isPaused ? 0 : self.playbackSpeed, asOf = position - (CFAbsoluteTimeGetCurrent() - stamp) * speed;
+    // Read before the lock, as Sing's readers may come back through this hook.
+    BOOL counting = sg_clock.on || sg_clock.armed;
+    double lead = counting ? leadOfState(self) : 0, held = counting ? heldLeadNow() : 0;
+    os_unfair_lock_lock(&sg_clockLock);
+    BOOL seeked = NO;
+    if (stamp > sg_lastReport.stamp) {
+        if (sg_lastReport.stamp > sg_speedChangedAt) seeked = fabs(asOf - (sg_lastReport.asOf + (stamp - sg_lastReport.stamp) * sg_lastReport.speed)) > kSeekGap;
+        sg_lastReport = (typeof(sg_lastReport)){stamp, asOf, speed};
+    }
+    BOOL seekedAway = sg_clock.on && seeked;
+    if (seekedAway || (sg_clock.on && ![track isEqualToString:sg_clockTrack])) {
+        sg_clock = (typeof(sg_clock)){.armed = loadFloat(&sg_speedBits) != 1};
+    }
+    if (!sg_clock.on && sg_clock.armed && stamp >= sg_clock.notBefore) {
+        sg_clock = (typeof(sg_clock)){.on = YES, .position = position - lead, .played = played, .lead = held};
+        sg_clockTrack = track;
+    }
+    // Paused too: the paused report is as far behind. Heard is what was pulled less what Sing holds ahead of it.
+    if (sg_clock.on) position = sg_clock.position + (played - sg_clock.played) - (held - sg_clock.lead) + lead;
+    os_unfair_lock_unlock(&sg_clockLock);
+    if (seekedAway) SGLog(@"speed: Spotify moved to %.1f s without a seek here; its clock starts over", asOf);
+    return position;
+}
+%end
+
+%hook SPTEsperantoPlayer
+- (id)seekTo:(double)position relative:(long long)relative options:(id)options creatorTimestampPositionMs:(double)creator {
+    handBack();
+    return %orig;
+}
+- (id)skipToNextTrackWithOptions:(id)options track:(id)track loggingParams:(id)params {
+    handBack();
+    return %orig;
+}
+- (id)skipToPreviousTrackWithOptions:(id)options track:(id)track loggingParams:(id)params {
+    handBack();
+    return %orig;
+}
+- (id)stop {
+    handBack();
+    return %orig;
 }
 %end
 
@@ -1045,3 +1250,28 @@ static _Thread_local BOOL sg_correcting;
     %init;
     SGRequireClasses(@[@"SPTPlayerState"]);
 }
+
+#if SG_DRIVER
+bool SGPlayerAnchorRead(SGAnchorSample *latest, unsigned *dropped) {
+    bool found = false;
+    *dropped = 0;
+    for (unsigned i = 0; i < kMaxOutputs; ++i) {
+        SGAnchorSample sample;
+        while (SGAnchorPop(&sg_outputs[i].anchor, &sample)) {
+            if (!found || sample.host >= latest->host) *latest = sample;
+            found = true;
+        }
+        *dropped += atomic_load_explicit(&sg_outputs[i].anchor.dropped, memory_order_relaxed);
+    }
+    return found;
+}
+
+double SGPlayerAnchorLatency(bool *engaged) {
+    pthread_mutex_lock(&sg_buildLock);
+    *engaged = atomic_load(&sg_engaged);
+    SGTimePitch *unit = atomic_load(tapped() ? &sg_pull : &sg_inPlace);
+    double latency = *engaged && unit ? SGTimePitchLatency(unit) : 0;
+    pthread_mutex_unlock(&sg_buildLock);
+    return latency;
+}
+#endif

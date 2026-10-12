@@ -278,7 +278,9 @@ UIImageView *SGRCreatorPicture(UIView *root) {
 - (void)layoutSubviews {
     [super layoutSubviews];
     CGFloat width = self.bounds.size.width, text = MAX(0, width - 2 * kSide);
-    CGFloat y = round(self.bounds.size.height - SGRHeaderInfoBottom - [self contentHeightForWidth:width]);
+    CGFloat content = [self contentHeightForWidth:width];
+    CGFloat y = round(self.bounds.size.height - SGRHeaderInfoBottom - content);
+    if (self.pinnedTop > 0 && self.pinnedTop + content <= self.bounds.size.height) y = round(self.pinnedTop);
     // No name, no picture: it belongs to the line.
     _picture.hidden = !_picture.image || _creator.hidden;
 
@@ -313,7 +315,8 @@ UIImageView *SGRCreatorPicture(UIView *root) {
     // Play on the middle of the page, the other two hung off its sides, so it holds its place whether both
     // are there or not.
     CGFloat side = SGRActionHeight;
-    CGFloat playWidth = MAX(kPlayWidth, [_play sgr_width]);
+    // As wide as its word, short of pushing the other two off the page.
+    CGFloat playWidth = MIN(MAX(kPlayWidth, [_play sgr_width]), width - 2 * (kSide + side + kRowSpacing));
     CGRect play = CGRectMake(round((width - playWidth) / 2), y, playWidth, side);
     _play.frame = play;
     _shuffle.frame = CGRectMake(CGRectGetMinX(play) - kRowSpacing - side, y, side, side);

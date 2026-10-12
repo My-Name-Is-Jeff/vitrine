@@ -17,6 +17,7 @@
 #import "Native/NowPlayingBar/NowPlayingBar.h"
 #import "Native/Player/NowPlaying.h"
 #import "Shared/LiveActivity/LiveActivity.h"
+#import "Shared/Lossless/SGLossless.h"
 #import "Redesigned/Lyrics/LyricsText.h"
 #import "Redesigned/Lyrics/LyricsLook.h"
 #import "Redesigned/Navbar/Navbar.h"
@@ -71,7 +72,7 @@ static SGModRow *untestedRow(void) {
         }]];
         [SGTopController() presentViewController:alert animated:YES completion:nil];
     };
-    return SGWithTile(row, @"sparkles", UIColor.systemPurpleColor);
+    return SGWithTile(row, @"sparkles", UIColor.systemIndigoColor);
 }
 
 SGModRow *SGRedesignedUIRow(void) {
@@ -83,7 +84,7 @@ SGModRow *SGRedesignedUIRow(void) {
         SGSetRedesignedUI(on);
         offerRestart(on);
     };
-    return SGWithTile(redesign, @"sparkles", UIColor.systemPurpleColor);
+    return SGWithTile(redesign, @"sparkles", UIColor.systemIndigoColor);
 }
 
 // The stored look's own rows, then the font and the app icon, which work under either look on any iOS.
@@ -159,6 +160,13 @@ UIViewController *SGPlayerSettingsPage(void) {
     [sections addObject:SGSection(native ? nil : @"Hide on the player", @[
         SGHideRow(@"Switch to video", @"The chip over the title of a song with a music video", SGKeyHideVideoSwitch),
     ])];
+
+    [sections addObject:SGNotedSection(@"Lossless", @[
+        SGOptionRow(@"Lossless files", @"Your own FLACs in place of Spotify's stream", SGKeyLossless),
+    ], @"Put FLAC or ALAC files in Files › Spotify › Lossless. A file plays when its title and length match the song "
+       @"and its sound matches what Spotify plays, from about 4 s after the song starts or you seek. Spotify still "
+       @"streams its own copy, at its lowest quality while the next song has a file. Karaoke and speeds other than "
+       @"1x keep Spotify's sound. Applies after you restart Spotify.")];
 
     // The redesign's page leads with a card of its player and the background's control, the background's
     // rows and the Mini player section under it.

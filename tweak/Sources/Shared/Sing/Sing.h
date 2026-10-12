@@ -21,7 +21,9 @@
 // notice): Vitrine's export of that checkpoint for the Neural Engine (its layout (B, C, 1, S), 1x1 convolutions,
 // attention per head, an RMSNorm that divides by the row's largest value first so half precision does not overflow),
 // palettized to 6 bits. Every operation runs on the Neural Engine, and the CPU runs it too, more slowly. Its floor is
-// iOS 18, the Core ML it was built with. No audio leaves the phone.
+// iOS 18, the Core ML it was built with. No audio leaves the phone. Voice model can choose a light model instead, from
+// the same repo's separator-light.mlmodelc: the vocals of HiDolen's Mini-BS-RoFormer-18M (MIT), exported in float16
+// by harness/sing/export_light.py with the same input and output, smaller and less clean.
 //
 // Threading: main thread, but for what Sing.x's render side and the engine say.
 #import <UIKit/UIKit.h>
@@ -38,6 +40,9 @@ extern NSNotificationName const SGSingButtonDidChangeNotification;
 #define SGKeySingLevel @"spotifyglass.sing.level"
 // Keeps the model running on a hot iPhone, which otherwise lets it go from the thermal state Serious up.
 #define SGKeySingIgnoreHeat @"spotifyglass.sing.ignoreHeat"
+// Keeps the model through iOS's memory warnings, which otherwise let it go and stop Karaoke until the next song.
+// Off until switched on: with it on, iOS may close Spotify instead.
+#define SGKeySingIgnoreMemory @"spotifyglass.sing.ignoreMemory"
 // Where the model runs: an index into SGSingComputeUnitNames(), Automatic (0: a Neural Engine copy beside the CPU's,
 // where the iPhone has a Neural Engine) unless CPU only (1) is chosen. The GPU, Neural Engine and GPU and Neural Engine
 // stored before (2-4), and the earlier key's every value, are Automatic now, carried over at launch.
@@ -49,6 +54,13 @@ extern NSNotificationName const SGSingButtonDidChangeNotification;
 // Spatial voice: through headphones that track the head, the vocals stay in front as it turns; off until
 // switched on, and at once.
 #define SGKeySingSpatial @"spotifyglass.sing.spatial"
+// Spatial voice's sound: how far ahead the voice is (meters, 1.5 until set), how much of it is the room (percent, 25
+// until set), how long a head that stays turned takes to bring it back in front (seconds, 5 until set), and how wide
+// the instruments spread (percent, 110 until set).
+#define SGKeySingSpatialDistance @"spotifyglass.sing.spatial.distance"
+#define SGKeySingSpatialRoom @"spotifyglass.sing.spatial.room"
+#define SGKeySingSpatialFront @"spotifyglass.sing.spatial.front"
+#define SGKeySingSpatialWidth @"spotifyglass.sing.spatial.width"
 
 // Posted on the main thread whenever what Sing is doing, or its model's download, changes.
 extern NSString *const SGSingChangedNotification;
@@ -98,6 +110,13 @@ BOOL SGSingSpatialAvailable(void);
 BOOL SGSingSpatial(void);
 // Stored, the motion's permission asked for when it goes on, and applied at once.
 void SGSetSingSpatial(BOOL on);
+// Distance, Room, Back in front and Instruments width: read as stored, and stored and applied at once. Any thread for
+// the getters.
+double SGSingSpatialDistance(void);
+double SGSingSpatialRoom(void);
+double SGSingSpatialFront(void);
+double SGSingSpatialWidth(void);
+void SGSetSingSpatialSound(double meters, double roomPercent, double frontSeconds, double widthPercent);
 
 // The top of the Spatial voice page: listener and voice on a field of dots seen from behind the head, which
 // follows the head through HeadGestures' motion while it is on screen and the motion is allowed, and idles
@@ -115,6 +134,24 @@ NSString *SGSingSummary(void);
 UIViewController *SGSingSettingsPage(void);
 
 #pragma mark - the model (SGSingModel.m)
+
+// Which voice model Karaoke downloads and runs, an SGSingModelKind: the full one until Light is chosen. Read live, so
+// a switch loads the other model for what plays next, without a restart.
+#define SGKeySingModel @"spotifyglass.sing.model"
+typedef NS_ENUM(NSInteger, SGSingModelKind) {
+    SGSingModelFull,    // separator-ane.mlmodelc, 210 MB: the cleanest separation
+    SGSingModelLight,   // separator-light.mlmodelc, 31 MB: Mini-BS-RoFormer-18M's vocals, for older iPhones
+};
+SGSingModelKind SGSingChosenModel(void);
+// Stored, a running download stopped (it keeps what came in for when its model is chosen again), and announced.
+void SGSetSingChosenModel(SGSingModelKind kind);
+// A model's download size, for the rows that choose it.
+NSString *SGSingModelSizeTextOf(SGSingModelKind kind);
+// The bytes the model not chosen takes on the iPhone, downloaded or partly (the old model with the full one), and
+// their removal.
+long long SGSingOtherModelBytes(void);
+void SGSingDeleteOtherModel(void);
+// Everything below is about the chosen model.
 
 typedef NS_ENUM(NSInteger, SGSingModelState) {
     SGSingModelMissing,
@@ -141,9 +178,9 @@ NSString *SGSingModelSizeText(void);
 void SGSingDownloadModel(void);
 void SGSingCancelModelDownload(void);
 void SGSingDeleteModel(void);
-// The compiled model's folder: separator-ane.mlmodelc once it is downloaded and checked, else the old model
-// (separator.mlmodelc) where it is still on the iPhone, else nil. On a FLEX build a copy put in Application
-// Support/Vitrine/Sing/dev/ by hand comes first, unchecked.
+// The chosen model's compiled folder once it is downloaded and checked; for the full model, else the old model
+// (separator.mlmodelc) where it is still on the iPhone; else nil. On a FLEX build a copy put in Application
+// Support/Vitrine/Sing/dev/<separator-ane or separator-light>.mlmodelc by hand comes first, unchecked.
 NSURL *SGSingModelURL(void);
 // The model is the old one: it runs on the CPU alone, and the download is its update.
 BOOL SGSingModelUpdateAvailable(void);
@@ -152,8 +189,15 @@ BOOL SGSingModelUpdateDownloading(void);
 // The size of the model on the iPhone now, for the row that removes it.
 NSString *SGSingModelInUseSizeText(void);
 // Deletes what the old model's download left, and the old model (separator.mlmodelc) itself once separator-ane.mlmodelc
-// is in, logging the space freed; from any thread, at launch and as the download ends.
+// is in, logging the space freed; from any thread, at launch and as the download ends. The light model is not touched.
 void SGSingRemoveOldModel(void);
 NSArray<NSString *> *SGSingComputeUnitNames(void);
 // Whether this OS can load the model (iOS 18). Memory is checked as the model loads (SGSingLoader.m).
 BOOL SGSingOSSupported(void);
+
+// Spotify's position before Sing's lead correction, for discontinuity observation. Off render.
+double SGSingSourcePosition(SPTPlayerState *state);
+#if SG_DRIVER
+// Whether the most recent stage call entered Sing's engine, rather than passing straight through.
+BOOL SGSingAnchorStageActive(void);
+#endif

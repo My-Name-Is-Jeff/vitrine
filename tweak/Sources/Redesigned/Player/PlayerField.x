@@ -63,10 +63,31 @@ void SGRPlayerHoldField(void) {
 
 #pragma mark - the field
 
+// Follow the cover: the most colorful of the cover's five colors (its quarters and the whole), once per artwork. A
+// white wall behind a pink subject has the wall as the whole's color, too gray to give an accent.
+static void followCover(UIImage *image, NSString *identity) {
+    static NSString *followed;
+    if (!SGRPlayerFollowsCover() || !image || (identity && [identity isEqualToString:followed])) return;
+    followed = identity;
+    [SGRPalette paletteForImage:image request:(SGRPaletteRequest){.flow = YES} completion:^(SGRPalette *palette) {
+        UIColor *best = nil;
+        CGFloat bestSaturation = -1;
+        for (UIColor *color in palette.flowColors) {
+            CGFloat h, saturation, v, a;
+            if ([color getHue:&h saturation:&saturation brightness:&v alpha:&a] && saturation > bestSaturation) {
+                best = color;
+                bestSaturation = saturation;
+            }
+        }
+        SGRPlayerSetCoverAccent(best);
+    }];
+}
+
 static void showArtwork(SGRArtworkField *field, BOOL animated) {
     NSString *identity = nil;
     UIImage *image = SGRNowPlayingArtwork(NULL, &identity);
     if (field && image) [field setArtwork:image identity:identity animated:animated];
+    followCover(image, identity);
 }
 
 static SGRArtworkField *fieldIn(UIView *plane) {

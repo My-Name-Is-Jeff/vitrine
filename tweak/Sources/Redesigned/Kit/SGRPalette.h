@@ -40,13 +40,15 @@ typedef struct {
 // nil to the completion when the image has no bitmap to read (a symbol, a CIImage).
 + (void)paletteForImage:(UIImage *)image request:(SGRPaletteRequest)request completion:(void (^)(SGRPalette *palette))completion;
 
-// `surface` tinted a little toward the artwork's dominant color (brought down to a luminance of 0.05, then
-// 35% of it mixed in), so a tile or row on the surface quietly takes its cover's color while white text on
-// it keeps its contrast. Never dimmer than `surface`: a mix that came out darker is lifted back to its
+// The artwork's dominant color as a surface: its saturation lifted a fifth, brought down to a luminance of 0.04
+// (the reference's card and tile surfaces), so a tile or card wears its cover's color while white text on it
+// keeps better than 11:1. Never dimmer than `surface`: a color that came out darker is lifted back to its
 // luminance keeping its hue, so a near-black cover cannot cost the tile the step of elevation it stands on,
 // nor sink it into the gray band SGRAmoled.x turns pure black. nil to the completion when the image has no
 // bitmap to read.
-+ (void)tintForImage:(UIImage *)image surface:(UIColor *)surface completion:(void (^)(UIColor *tint))completion;
+// `strong` NO is the tint as it was before the Home look (2026-10-11): the dominant color at a luminance of 0.05
+// with 35% of it mixed into `surface`, a faint cast rather than the cover's color.
++ (void)tintForImage:(UIImage *)image surface:(UIColor *)surface strong:(BOOL)strong completion:(void (^)(UIColor *tint))completion;
 @end
 
 // Any color made fit to be a field, the same way the edge color is: for a color Spotify hands over

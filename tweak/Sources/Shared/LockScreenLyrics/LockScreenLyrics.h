@@ -4,3 +4,7 @@
 #import <Foundation/Foundation.h>
 
 #define SGKeyLockScreenLyrics @"spotifyglass.lockScreenLyrics"
+
+// Moving artwork with lyrics: the moving artwork clip found for the track `uri`, a local file, which
+// LyricsArtwork.x draws the lines over while that track plays. Main queue.
+void SGLyricsArtworkSetMotion(NSString *uri, NSURL *file);

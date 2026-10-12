@@ -56,11 +56,12 @@ static SGModRow *actionRow(NSString *title, SGHeadGesture gesture) {
 }
 
 UIViewController *SGHeadGesturesSettingsPage(void) {
-    SGModRow *toggle = SGOptionRow(@"AirPods gestures", @"Nod twice or shake your head to control the music", SGKeyHeadGestures);
+    SGModRow *toggle = SGOptionRow(@"Head gestures", @"Nod twice or shake your head to control the music", SGKeyHeadGestures);
     toggle.changed = ^(BOOL on) { SGHeadGesturesSettingsChanged(); };
 
-    SGModRow *nodAction = SGWithSymbol(actionRow(@"Double nod", SGHeadGestureDoubleNod), @"arrow.up.and.down");
-    SGModRow *shakeAction = SGWithSymbol(actionRow(@"Shake", SGHeadGestureShake), @"arrow.left.and.right");
+    SGModRow *nodAction = SGWithSymbol(actionRow(@"Nod twice", SGHeadGestureDoubleNod), @"arrow.up.and.down");
+    SGModRow *shakeAction = SGWithSymbol(actionRow(@"Shake your head", SGHeadGestureShake), @"arrow.left.and.right");
+    SGModRow *chime = SGWithSymbol(SGSwitchRow(@"Chime on activation", nil, SGKeyHeadChime), @"bell");
 
     __block __weak SGModPage *page;
     SGModRow *teach = SGStatActionRow(@"Teach your gestures", @"Five of each, one after each tone", ^NSString *{ return learnedValue(); }, ^{
@@ -88,7 +89,7 @@ UIViewController *SGHeadGesturesSettingsPage(void) {
         SGHeadGesturesCue(SGHeadCueReady);
         SGHeadGesturesTry(kTrySeconds, ^(SGHeadGesture gesture, BOOL heard) {
             trying = NO;
-            tried = gesture == SGHeadGestureDoubleNod ? @"Double nod" : gesture == SGHeadGestureShake ? @"Shake" : heard ? @"Nothing" : @"No motion";
+            tried = gesture == SGHeadGestureDoubleNod ? @"Nod twice" : gesture == SGHeadGestureShake ? @"Head shake" : heard ? @"Nothing" : @"No motion";
             SGHeadGesturesCue(gesture != SGHeadGestureNone ? SGHeadCueWorked : SGHeadCueFailed);
             NSString *spoken = gesture != SGHeadGestureNone ? [@"Picked up: " stringByAppendingString:tried]
                              : heard ? @"Picked up nothing. Try a bigger move, or raise Sensitivity."
@@ -101,14 +102,15 @@ UIViewController *SGHeadGesturesSettingsPage(void) {
     SGModRow *forgetRow = SGActionRow(@"Forget what it learned", nil, ^{ forget(^{ [page refreshVisibility]; }); });
     forgetRow.color = SGRed();
     forgetRow.visible = ^BOOL { return anythingLearned(); };
-    for (SGModRow *row in @[nodAction, shakeAction, teach, sensitivity, tryRow, forgetRow]) row.waitsOn = SGKeyHeadGestures;
+    for (SGModRow *row in @[nodAction, shakeAction, chime, teach, sensitivity, tryRow, forgetRow]) row.waitsOn = SGKeyHeadGestures;
 
     SGModPage *shown = [[SGModPage alloc] initWithTitle:@"AirPods gestures" intro:nil sections:@[
         SGSection(nil, @[SGWithSymbol(toggle, @"airpods.pro")]),
-        SGNotedSection(@"Gestures", @[nodAction, shakeAction],
-            @"They work while Spotify plays through headphones that track head motion: AirPods Pro, AirPods 3 or later, "
-            "AirPods Max and some Beats. Set to Play or pause, they listen with a song paused too. A tone in the music "
-            "confirms each, a rising pair when it worked and a low one when it did not, with the iPhone on silent too."),
+        SGNotedSection(@"Gestures", @[nodAction, shakeAction, chime],
+            @"They work while Spotify plays through headphones that track head motion: AirPods Pro, AirPods (3rd "
+            "generation and later), AirPods Max and some Beats. Set to Play or pause, they listen with a song paused too. With the chime on, a "
+            "tone in the music confirms each, a rising pair when it worked and a low one when it did not, with the "
+            "iPhone on silent too. iOS asks once for Motion & Fitness access, which is how Spotify reads the movement."),
         SGNotedSection(@"Fit to you", @[teach, sensitivity, tryRow, forgetRow],
             @"Teaching sets how big a move counts from five of your own. Sensitivity scales that for both. Try it does "
             "nothing to the music, so you can tune it while a song plays."),

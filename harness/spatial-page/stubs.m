@@ -80,6 +80,11 @@ NSString *SGSingModelInUseSizeText(void) { return SGSingModelUpdateAvailable() ?
 void SGSingDownloadModel(void) {}
 void SGSingCancelModelDownload(void) {}
 void SGSingDeleteModel(void) {}
+SGSingModelKind SGSingChosenModel(void) { return [NSUserDefaults.standardUserDefaults integerForKey:SGKeySingModel] == 1 ? SGSingModelLight : SGSingModelFull; }
+void SGSetSingChosenModel(SGSingModelKind kind) { [NSUserDefaults.standardUserDefaults setInteger:kind forKey:SGKeySingModel]; }
+NSString *SGSingModelSizeTextOf(SGSingModelKind kind) { return kind == SGSingModelLight ? @"30.8 MB" : @"210.4 MB"; }
+long long SGSingOtherModelBytes(void) { return 0; }
+void SGSingDeleteOtherModel(void) {}
 NSArray<NSString *> *SGSingComputeUnitNames(void) { return @[@"Automatic", @"CPU only"]; }
 BOOL SGSingOSSupported(void) { return YES; }
 BOOL SGSingDeviceSupported(void) { return YES; }

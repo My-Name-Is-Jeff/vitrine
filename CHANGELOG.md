@@ -1,12 +1,105 @@
 # Changelog
 
-## [1.0.0-beta.10](https://github.com/Sadayeos/vitrine/compare/v1.0.0-beta.9...v1.0.0-beta.10) (2026-10-10)
+## [1.0.0-beta.13](https://github.com/My-Name-Is-Jeff/vitrine/compare/v1.0.0-beta.12...v1.0.0-beta.13) (2026-10-12)
+
+
+### Features
+
+* Karaoke can use a light voice model for older iPhones ([a663fcf](https://github.com/My-Name-Is-Jeff/vitrine/commit/a663fcf8389677abc4e4a5c32361f498ed2071f8))
+* Mod Settings' main page has new groups and icons ([31db7ae](https://github.com/My-Name-Is-Jeff/vitrine/commit/31db7aedc342899697ae8946d5ce5550831aaf9c))
+* the links in a Genius line meaning can be tapped ([#31](https://github.com/My-Name-Is-Jeff/vitrine/issues/31)) ([39704a2](https://github.com/My-Name-Is-Jeff/vitrine/commit/39704a20228752b6583e66552f3c68b659b7d196))
+* the lock screen can show the lyrics over the moving artwork ([1aef54b](https://github.com/My-Name-Is-Jeff/vitrine/commit/1aef54bf72e9c11aef477365bb780bbbd840a63d))
+* the lock screen's star switches between moving artwork and lyrics ([720017e](https://github.com/My-Name-Is-Jeff/vitrine/commit/720017e5439e97898086945b2244e26f7e042dc6)), closes [#33](https://github.com/My-Name-Is-Jeff/vitrine/issues/33)
+* the redesign's mini player can hide its like button ([0c472c4](https://github.com/My-Name-Is-Jeff/vitrine/commit/0c472c4558e72cdaa44f2d0b3b2b9b9ab079ef36))
+* the redesigned Home gets large cards, tinted shortcuts and its own settings page ([f9f672a](https://github.com/My-Name-Is-Jeff/vitrine/commit/f9f672a08729921cdb8948bf2258663c5e3ffb5e))
+* the Visualizer glows in the cover's colors with the kick at its centre ([4c28e09](https://github.com/My-Name-Is-Jeff/vitrine/commit/4c28e0978ec94dff97ef1ce87e72e6bbdb1e3fc1))
 
 
 ### Fixes
 
-* a wider chosen font no longer breaks words mid-line ([0a395e6](https://github.com/Sadayeos/vitrine/commit/0a395e6276b60f7002add1ed7af3f9620b6ccbea)), closes [#14](https://github.com/Sadayeos/vitrine/issues/14)
-* the chosen font reaches all of Spotify's text, not just titles ([e9a9181](https://github.com/Sadayeos/vitrine/commit/e9a918119463f058e62e6d23b0ee7a74a3ae8530)), closes [#14](https://github.com/Sadayeos/vitrine/issues/14)
+* lyrics over moving artwork falls back to the right look ([1533974](https://github.com/My-Name-Is-Jeff/vitrine/commit/15339746952406e10121b032f9c8d64bf80c3064))
+* the large Home cards' covers reach the card's edges, square at the footer ([d74d05e](https://github.com/My-Name-Is-Jeff/vitrine/commit/d74d05e49ed9a3cfb729698e22963aea9cf0bdb1))
+* the light voice model loads with less free memory, and a model switch or removal leaves nothing behind ([a193d67](https://github.com/My-Name-Is-Jeff/vitrine/commit/a193d6720f3ba9f310a1e9543b64248fdf58b140))
+* the new Home look on large iPhones, its menu and test builds ([012679f](https://github.com/My-Name-Is-Jeff/vitrine/commit/012679f144607622a93f9061a0c03f2ecdff970f))
+* the redesigned Home keeps Top picks through a filter change and uses fewer hooks ([3cbb09b](https://github.com/My-Name-Is-Jeff/vitrine/commit/3cbb09b4285d0217e0998918dfc2c5d87d1caf6f))
+* the redesigned Home's large shelf keeps its footer, and its hooks stay off other screens ([eb79dca](https://github.com/My-Name-Is-Jeff/vitrine/commit/eb79dca3c3141a66e43f90f7eafd41a5e9c62d97))
+* the redesigned Home's title fades even when a shelf is taller than the page ([bb87a61](https://github.com/My-Name-Is-Jeff/vitrine/commit/bb87a61f4ca31ec6846969418d8b914b5be5d7ee))
+* the redesigned player's volume row never covers the controls ([#32](https://github.com/My-Name-Is-Jeff/vitrine/issues/32)) ([9b614c1](https://github.com/My-Name-Is-Jeff/vitrine/commit/9b614c1d7ae4b78582acfd9683d84f1ff89a583a))
+
+## [1.0.0-beta.12](https://github.com/My-Name-Is-Jeff/vitrine/compare/v1.0.0-beta.11...v1.0.0-beta.12) (2026-10-11)
+
+
+### Features
+
+* a swiped close of the redesigned player also finishes faster ([210dc7e](https://github.com/My-Name-Is-Jeff/vitrine/commit/210dc7e7e6faf42ec2701a4dab7067e7453476d4))
+* AirPods gestures get a Chime on activation switch and Apple's names ([3f9d5b5](https://github.com/My-Name-Is-Jeff/vitrine/commit/3f9d5b55840ae2d64c83903ed5f97e22cca30a62))
+* Hide controls automatically leaves only the lyrics ([e145ea5](https://github.com/My-Name-Is-Jeff/vitrine/commit/e145ea5e8ba12aea2f8186d262b962c185dfa5b7))
+* Lossless files plays your own FLACs in place of Spotify's stream ([6db05b2](https://github.com/My-Name-Is-Jeff/vitrine/commit/6db05b212213137344f88f4ea5dc243fd941d73d))
+* Lyrics for every track is on by default ([f4fe287](https://github.com/My-Name-Is-Jeff/vitrine/commit/f4fe287559a868b4d004eb5042e2054a57a1b4dd))
+* the redesign's Albums & artists page splits into Albums and Artists ([b46ac4c](https://github.com/My-Name-Is-Jeff/vitrine/commit/b46ac4c4a113829b6c32ba92f6b3e1201777ce2c))
+* the redesign's Artists page hides Artist pick, Release countdown and About ([0a5e765](https://github.com/My-Name-Is-Jeff/vitrine/commit/0a5e765e7fcf884654bc48cfa713ab1ec30f2edc))
+* the redesigned player collapses into the now playing bar faster ([7a51053](https://github.com/My-Name-Is-Jeff/vitrine/commit/7a51053c3edb888cde26fa495edc127ff480b547))
+* the tour ends with an Easy to miss card ([739d14f](https://github.com/My-Name-Is-Jeff/vitrine/commit/739d14f21e0945dbac5fd8f10f2d083c524183cb))
+* the tour offers one No ads switch ([02aaada](https://github.com/My-Name-Is-Jeff/vitrine/commit/02aaadab9a804c007219baa2a8c88ddc79fbb56a))
+
+
+### Fixes
+
+* Add to Liked Songs in the ⋯ menu shows a heart, not a white square ([74ca9ec](https://github.com/My-Name-Is-Jeff/vitrine/commit/74ca9ec1bc7469cacb1995b888ac7c744bd9cda5))
+* album pages show the whole cover, not one cut at the sides ([64a0e00](https://github.com/My-Name-Is-Jeff/vitrine/commit/64a0e0086da385f6a279ffda0d23913c9990e146))
+* an artist page's pinned title bar shows the page's color, not a black band ([#28](https://github.com/My-Name-Is-Jeff/vitrine/issues/28)) ([cc44038](https://github.com/My-Name-Is-Jeff/vitrine/commit/cc440384feaa26d2cff98b1f06f9e237551fc32b))
+* Home's large top shelf no longer scrolls inside its own cell ([008e0ff](https://github.com/My-Name-Is-Jeff/vitrine/commit/008e0ffd35f9cb5dc4ae2b78e56f606f202c90a6))
+* Live Activity buttons and AirPods route changes cannot hang Spotify at launch ([abe8256](https://github.com/My-Name-Is-Jeff/vitrine/commit/abe82564591d9faf887b061ce1e745c95e01cf9d))
+* lock screen lyrics keep moving while the screen is off ([2888e4e](https://github.com/My-Name-Is-Jeff/vitrine/commit/2888e4e23a99584d0e3a590e72b7a8585e0bd1cf))
+* Music Haptics plays again when iOS does not play the song in the background ([72b7f78](https://github.com/My-Name-Is-Jeff/vitrine/commit/72b7f789e2da92fc7f81c7aa2456a9f5eef9ced9))
+* the album header no longer jumps when Play turns to Pause ([#25](https://github.com/My-Name-Is-Jeff/vitrine/issues/25)) ([53e9922](https://github.com/My-Name-Is-Jeff/vitrine/commit/53e9922ffccd218fea8e0540bfe1e27b7cf51088))
+* the redesigned player shrinks into the now playing bar on close, not above it ([#27](https://github.com/My-Name-Is-Jeff/vitrine/issues/27)) ([06aa1cf](https://github.com/My-Name-Is-Jeff/vitrine/commit/06aa1cf08d6ad21b682645934c33b19747f4b11f))
+
+## [1.0.0-beta.11](https://github.com/My-Name-Is-Jeff/vitrine/compare/v1.0.0-beta.10...v1.0.0-beta.11) (2026-10-10)
+
+
+### Features
+
+* Follow the cover paints the player's lit controls in the cover's color ([345b6ae](https://github.com/My-Name-Is-Jeff/vitrine/commit/345b6aec078c5c7d7d020f15f0b38a3d109712c6))
+* Karaoke can ignore memory warnings ([e471bac](https://github.com/My-Name-Is-Jeff/vitrine/commit/e471bac2ac6ab41ec44125eefda0d50599daf196))
+* Plain checkmark shows a saved song's tick without its circle ([873a4e4](https://github.com/My-Name-Is-Jeff/vitrine/commit/873a4e4fdbb883a7cd9a784cb5c42025ec8c5b8b))
+* the redesigned player has a volume slider under its controls ([16bb8aa](https://github.com/My-Name-Is-Jeff/vitrine/commit/16bb8aac682d8bed8b8c980c3ce5bbe37bcf2b51))
+* the redesigned player shows the lyrics preview as Spotify's lyrics setting has it ([40c9146](https://github.com/My-Name-Is-Jeff/vitrine/commit/40c914663fe32260e386ee335502815bec053e3c))
+* Top picks draws Home's first shelf large ([f5ddc29](https://github.com/My-Name-Is-Jeff/vitrine/commit/f5ddc29d042c5dda865a4cd84fb037adf814a0a4))
+
+
+### Fixes
+
+* Hide ads drops the ad card under the native player ([036283a](https://github.com/My-Name-Is-Jeff/vitrine/commit/036283a6f65078866c89454f3d65fd72ff84ece1)), closes [#10](https://github.com/My-Name-Is-Jeff/vitrine/issues/10)
+* tabs you add to the tab bar open their page again on Spotify 9.1.88 and later ([7421865](https://github.com/My-Name-Is-Jeff/vitrine/commit/7421865deb7e507e59bd5648d5e4bc190d14ddc6))
+* the player opens and closes with its morph again on Spotify 9.1.88 and later ([5dfca94](https://github.com/My-Name-Is-Jeff/vitrine/commit/5dfca94b1510a837f49809d24aa8ceee002172c2))
+* the redesigned Home has no double gap where it drops a section ([c294690](https://github.com/My-Name-Is-Jeff/vitrine/commit/c2946905ff14ff9f3de14d91d28af6bcd58e15c2))
+* the redesigned pages' Play button is as wide as "Shuffle Play" ([3bb8cd5](https://github.com/My-Name-Is-Jeff/vitrine/commit/3bb8cd5ac8ce152a7a700a54477a51ce47ddf223))
+* the redesigned player's cover is full size and centered on a song with lyrics ([d188502](https://github.com/My-Name-Is-Jeff/vitrine/commit/d18850278e47aa714ff4b39579d8f01378dcaf4f)), closes [#21](https://github.com/My-Name-Is-Jeff/vitrine/issues/21)
+* the redesigned player's header is no longer blurred ([4184748](https://github.com/My-Name-Is-Jeff/vitrine/commit/4184748928d2e000d027922d193f9afa3e5d4753))
+* Top picks cards have no empty band under their text ([22bcc7f](https://github.com/My-Name-Is-Jeff/vitrine/commit/22bcc7ff9852de72aaac521beea132ec90ae837f))
+
+## [1.0.0-beta.10](https://github.com/My-Name-Is-Jeff/vitrine/compare/v1.0.0-beta.9...v1.0.0-beta.10) (2026-10-10)
+
+
+### Features
+
+* Spatial voice has Distance, Room, Back in front and Instruments width ([f2330a0](https://github.com/My-Name-Is-Jeff/vitrine/commit/f2330a0a2d2b549e104c1c0444f89881ffec6cdd))
+* the lyrics credit comes after the last line ([f4e0a1c](https://github.com/My-Name-Is-Jeff/vitrine/commit/f4e0a1c9bcc9cf45fa4ea6c827c9b443adc1ec71))
+
+
+### Fixes
+
+* a wider chosen font no longer breaks words mid-line ([0a395e6](https://github.com/My-Name-Is-Jeff/vitrine/commit/0a395e6276b60f7002add1ed7af3f9620b6ccbea)), closes [#14](https://github.com/My-Name-Is-Jeff/vitrine/issues/14)
+* Hide ads blocks the ad requests that Spotify's core sends ([34681b5](https://github.com/My-Name-Is-Jeff/vitrine/commit/34681b548434cc312b4c1ac9b773ef38b277c69d))
+* lyrics and the scrubber stay with the sound at other speeds ([1240ba1](https://github.com/My-Name-Is-Jeff/vitrine/commit/1240ba1f5908e9afcdd3adb9c6833dadd758f5fc))
+* lyrics opened again after a scroll show the line being sung ([72de07e](https://github.com/My-Name-Is-Jeff/vitrine/commit/72de07ee76a0fe96a3802563be601127ab5df6eb))
+* Music Haptics says where it is paused ([3c62384](https://github.com/My-Name-Is-Jeff/vitrine/commit/3c623848a5213045bff3da416d086f26d7bca9df))
+* Show source says that Spicy Lyrics is always credited ([836a378](https://github.com/My-Name-Is-Jeff/vitrine/commit/836a378b5f2afb51d245d041b8d0076d05116aca))
+* the chosen font reaches all of Spotify's text, not just titles ([e9a9181](https://github.com/My-Name-Is-Jeff/vitrine/commit/e9a918119463f058e62e6d23b0ee7a74a3ae8530)), closes [#14](https://github.com/My-Name-Is-Jeff/vitrine/issues/14)
+* the cover no longer covers the animated artwork after a relaunch ([52d602b](https://github.com/My-Name-Is-Jeff/vitrine/commit/52d602b10a750b9172e53a9fdf0dc6d1580440dc)), closes [#19](https://github.com/My-Name-Is-Jeff/vitrine/issues/19)
+* the redesign has no dark band at the bottom on Spotify 9.1.90 ([f37c4a6](https://github.com/My-Name-Is-Jeff/vitrine/commit/f37c4a6cac13226e97be5307d19f78e10e35a8e6))
+* with Karaoke on, lyrics stay with the sound at other speeds ([19a418c](https://github.com/My-Name-Is-Jeff/vitrine/commit/19a418cf29ee07046da1561f567a27d73ba5e63a))
 
 ## [1.0.0-beta.9](https://github.com/My-Name-Is-Jeff/vitrine/compare/v1.0.0-beta.8...v1.0.0-beta.9) (2026-10-10)
 

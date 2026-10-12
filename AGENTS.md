@@ -59,6 +59,13 @@ Rules:
 
 ## Working on it
 
+- Lossless (`Shared/Lossless/`, `SGLossless.h`; off unless `spotifyglass.lossless` is set): a local FLAC or ALAC of
+  the same recording plays in place of Spotify's sound. The anchor comes from cross-correlating 4 s of Spotify's
+  output with the file, never from Spotify's position reports, and every seek, skip, pause or route change drops it
+  (`SGSourceEvents.x`). Spotify still streams its own copy, so the switch lowers its quality only while the next song
+  has a file. Sources (providers, downloads) are a design only: `docs/lossless-sources.md`. Do not take Sing's
+  `SGPlayerSetStage` slot. After audio edits, run the handoff harness (`harness/lossless/handoff-build.sh`).
+
 - Build: `make install` (signs and pushes to the phone), `make quick` (a tweak-only change, in seconds), `make release` (IPA only). Tweak only:
   `env -u MAKELEVEL gmake -C tweak clean package`.
 - Look at Spotify's views through recorded trees (`make session` records clean ones into
@@ -77,4 +84,8 @@ Rules:
   stacks (the tab bar, the now playing bar, the player) that is the system's: set every pane of the
   mod's to `overrideUserInterfaceStyle = UIUserInterfaceStyleDark`, or it goes light in light mode. Present a
   controller of the mod's through `SGPresentDark` (`Core/SGGlass.h`): a sheet's glass is its presentation's, and the
-  controller's own override does not reach it.
+  controller's own override does not reach it. ARC does not know that `init` consumes its receiver: calling
+  `alloc`/`init` through a cast `objc_msgSend` over-releases when `init` returns another object, so do both on
+  `void *` and hand the result to `CFBridgingRelease`. A Logos hook on an `init…` that returns another object
+  returns it with `CFBridgingRetain`, or the app crashes at launch. iOS 26's scroll edge effect blurs any header
+  that sits inside its own scroll view; hide that list's `topEdgeEffect` (`Redesigned/Player/PlayerScroll.x`).

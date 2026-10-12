@@ -150,7 +150,26 @@ Shared:
                   Still (one frame) or Animated (15 fps). The backdrop is blurred small and drawn large, on the CPU as the
                   lock screen asks in the background; previews are drawn on a queue apart from the clips, and while the
                   lock screen is asking, the next line's preview and clip are drawn ahead and a ready preview is handed
-                  over at once. iOS still shows the plain cover for about half a second at each change of artwork. Picking it or another artwork applies at once. Rendered on the Mac against harness/lyrics-clip/. What reaches the
+                  over at once. iOS still shows the plain cover for about half a second at each change of artwork. Picking it or another artwork applies at once.
+                  Moving artwork with lyrics (the choice's fifth value, 4) draws each line over the track's moving
+                  artwork, which LockScreenMotion.x finds and hands over (SGLyricsArtworkSetMotion): the clip is the
+                  stretch of the video the song is at while the line shows (its start taken round the video's length,
+                  from the line's start to the next's plus a second, 2 to 8 s; a video no longer than that is written
+                  whole, turned to start there, so its loop has no seam), at the video's own 3:4 cut and frame rate up
+                  to 30 fps, with the line sung last dimmed above (dim, bright, dim). The video is decoded as BGRA, the
+                  rows behind the words are blurred (Accelerate's tent blur) and faded in, every row of the cut is
+                  darkened in one pass (0.25, and 0.6 across the words), and the words with a tight dark shadow are
+                  drawn on; the encoder cuts the 3:4 middle as SGMotionClip.m does, so nothing is scaled on the CPU.
+                  The IDs end in the style and, over moving artwork, m and the first 16 characters of the file's name
+                  (SGLyricsClipLook), so the clip arriving, a Canvas after an animated cover, or a change of style
+                  re-offers the line showing. Until it comes, and for a track with no moving artwork, the lines are drawn
+                  as Lyrics draws them, in the chosen style; so are they over a video that will not draw (turned, its
+                  frames another size than it states, as a video with non-square pixels has, cut short or gone from the
+                  store), which is remembered for the launch and tried again only when handed over again. A track with
+                  no synced lines, or whose lines are not in yet, shows its moving artwork plain, as Moving artwork does:
+                  LyricsArtwork.x says so (SGLockMotionShowPlain) and LockScreenMotion.x shows it and takes it off for
+                  the lyrics' clips. Rendered on the Mac against harness/lyrics-clip/ (`motion`, over a
+                  bright busy, a dark and any given videos). What reaches the
                   system's now playing through this hook and Player/NowPlayingExtras.x is checked by harness/now-playing/
     AnimatedArtwork/ moving artwork (AnimatedArtwork.h): the track's Canvas, else Apple Music's animated album cover
                   (SGMotionCatalog.m: searched without the album's edition, the edition of the same name first, and
@@ -163,7 +182,15 @@ Shared:
                   looked up again when its Canvas comes in a later state, and the next track's clip is fetched ahead
                   (SGMotionFollower.m). The lock screen takes a clip under a key the system lists, cut to that key's
                   shape when it is not, with its still filled to the size asked (SGMotionClip.m), and a change of the
-                  choice applies at once, but to or from Lyrics. The cut and the service's wire format are checked on
+                  choice applies at once, Lyrics too. Switch with the star (spotifyglass.lockscreen.star, off;
+                  LockScreenStar.x) puts a star on the lock screen widget, MediaPlayer's like command, whose tap swaps
+                  the choice for the one the star last left (kept under spotifyglass.lockscreen.star.back) when that one
+                  is on the other side, with lyrics or without, else for Lyrics or Moving artwork: Lyrics swaps with the
+                  moving artwork it left (Moving artwork or Every song), and Moving artwork with lyrics counts as lyrics,
+                  so it swaps with Moving artwork. The star is filled while the lyrics show; the choice is the setting, so the
+                  mode outlives a relaunch and the page's row follows it. The star takes the slot of Spotify's like
+                  and dislike buttons, so their flag is forced off at launch while the switch is on, over the row's
+                  own override, and the row shows it locked. The cut and the service's wire format are checked on
                   the Mac against harness/motion/
     LocalFiles/   local files (LocalFiles.h lists its files): Edit info in the player's ⋯ menu, the table's footer
                   under Speed and pitch, which closes the menu and opens a form sheet (the three names, the cover
@@ -256,19 +283,26 @@ Shared:
                   Tested on the Mac against harness/audio-effects/ and harness/autoeq/, the hook in the simulator
                   against its sim/, the page against harness/audio-effects-page/
     Sing/         Karaoke (Sing in the code and its keys), a song's vocals turned down while it plays (Sing.h lists
-                  its files): one voice model (Mel-Band RoFormer, MIT, exported by Vitrine for the Neural Engine and
-                  palettized to 6 bits: separator-ane.mlmodelc, 210 MB, from Hugging Face; on a FLEX build a copy in
-                  Sing/dev/ comes first) downloaded and checked file by file over Wi-Fi unless cellular is allowed,
+                  its files): the voice model Voice model chooses (spotifyglass.sing.model, read live: Best quality,
+                  the default, is Mel-Band RoFormer, MIT, exported by Vitrine for the Neural Engine and palettized to
+                  6 bits: separator-ane.mlmodelc, 210 MB; Light is the vocals of HiDolen's Mini-BS-RoFormer-18M, MIT,
+                  exported in float16 by harness/sing/export_light.py with the same input and output:
+                  separator-light.mlmodelc, 31 MB, more of the voice left in and the music dipping under it; both
+                  from the same Hugging Face repo, each with its own pins, staging folder, resume data and paused
+                  bytes; on a FLEX build a copy of the chosen one in Sing/dev/<its folder> comes first; a switch
+                  stops a running download, keeping what came in, and Sing.x loads the chosen model at once, no
+                  restart, or lets the old one go if the chosen one is not downloaded) downloaded and checked file by
+                  file over Wi-Fi unless cellular is allowed,
                   a stop keeping what came in for the next download to carry on from; the 489 MB model downloaded
                   before is kept and loaded on the CPU alone until this one is in (the Voice model row then reads
                   Update available), and deleted as its download ends or at a launch that finds both
                   (SGSingRemoveOldModel, which logs the space freed), Sing moving to the new one at its next load;
                   loaded only while Spotify
                   is active (SGSingLoader.m), on any iPhone with iOS 18, a CPU copy first and warmed, only with 1 GB left to the
-                  process (no floor on the iPhone's memory: both copies warm add 0.1 GB of footprint), then on Automatic, where the iPhone has a
+                  process (0.4 GB for Light, and 1.6 or 0.65 GB beside a load still out; no floor on the iPhone's memory: both copies warm add 0.1 GB of footprint), then on Automatic, where the iPhone has a
                   Neural Engine, a Neural Engine copy of the same model beside it, which takes every window once it is
                   in, in the background too, each load with a deadline and kept a minute after the mic goes off; the
-                  Neural Engine copy loads only with 0.5 GB left to the process, its first load after every install
+                  Neural Engine copy loads only with 0.5 GB left to the process (0.25 GB for Light), its first load after every install
                   compiling it for up to ten minutes while Karaoke runs on the CPU (while it loads, the CPU's falling
                   behind spends none of the 8 s after which Karaoke gives a song up, nor counts toward its three in a
                   row), unless Prepare after updates (on by default) compiled it already: with the model in and the mic off, 15 s after
@@ -312,9 +346,11 @@ Shared:
                   thermal state Serious up Karaoke is held and lets the model go,
                   unless Ignore heat warnings is on, and runs again at Fair. Spatial
                   voice holds the separated vocals in front as the head turns: HeadGestures' motion gives the yaw off a
-                  front that follows the head over 20 s, and the render thread pans the vocals' middle at equal power,
+                  front that follows the head (Back in front, 5 s unless set), and the render thread pans the vocals' middle at equal power,
                   narrowed, with the far ear up to 0.65 ms late and low-passed; it stands down for iOS's own spatial
-                  audio. The Spatial voice page's preview (SGSpatialPreview.m) turns a disc of dots under the listener by
+                  audio. Its Sound section sets Distance (the voice down by the square root of the distance), Room
+                  (a wet-only AUReverb2 fed the voice's middle, emptied by a seek) and Instruments width (the rest's side
+                  scaled); off, all three leave the song exactly as it was. The Spatial voice page's preview (SGSpatialPreview.m) turns a disc of dots under the listener by
                   the same front (SGSpatialVoiceAngle, SGSingEngine.h), on Core Animation alone and only while the page
                   shows. The mic is on the redesign's lyrics (Redesigned/Lyrics/SGRSingButton.m). Tested on the Mac
                   against harness/sing/ (the lead, its cap, a slow decoder, a track boundary, spatial voice and its front without the model: `build/sing spatial`; the
@@ -332,9 +368,11 @@ Shared:
                   ISRC with Spotify's own spclient headers, asks Apple Music's catalog for that ISRC (the phone's own country first, then the US), and names the
                   matched song's catalog id (same ISRC, length within 2 s, a haptic track) or else the ISRC in the now
                   playing info for iOS's own Music Haptics, which plays on the lock screen and in other apps too
-                  (SystemMusicHaptics.x, its pure steps in SGHapticTrack.m). Both may be on: while it asks and while
-                  iOS has a haptic track for the song, the mod's own stays quiet, since iOS plays the track in front
-                  of Spotify too; once iOS has none, the mod's own plays while Spotify is in front. The analyzer is
+                  (SystemMusicHaptics.x, its pure steps in SGHapticTrack.m). Both may be on: while iOS reports the named song
+                  playing, the mod's own stays quiet, since iOS plays the track in front of Spotify too, and also while
+                  it asks (10 s at most) and for 3 s after a song is named; with no report by then, once iOS has none,
+                  while iOS's is paused in Control Center or in an install iOS does not list, the mod's own plays while
+                  Spotify is in front. The analyzer is
                   scored on the Mac against harness/haptics/, as are the pure steps (build/track), the hook, the two
                   switches, the stand-down and the move from the old choice in the simulator against its sim/, the
                   settings against harness/haptics-page/
@@ -343,7 +381,8 @@ Shared:
                   says: Nothing, back or forward 15 s, play or pause (which listens with the song paused too), next or
                   previous track, shuffle, repeat, or Like, which adds the track to Liked Songs through Spotify's
                   collection platform (addURL:showUIConfirmation:completion:); Like and Next track until changed. A
-                  tone played through Spotify's playback session confirms each, whatever the Ring/Silent switch says.
+                  tone played through Spotify's playback session confirms each, whatever the Ring/Silent switch says,
+                  unless Chime on activation is off (spotifyglass.headgestures.chime; Try it and teaching always sound).
                   Try it listens a few seconds and names in its row what it picked up, doing nothing to the song. A
                   sheet teaches one's own nod and shake, five of each after a tone, a ring showing the head live (a dot
                   that moves with it, ticks lighting toward where it went; SGHeadMotionListen) and five dots counting
@@ -496,8 +535,13 @@ Redesigned:
                   Contrast), from 0.10 to 0.80 and 0.15 more behind the lyrics. A track that changes while the player
                   cannot be seen (no window, or the app not in front) takes the last clip away at once. Checked in the simulator against
                   harness/player/ (`motion`). The Visualizer
-                  (PlayerVisualiser.m) draws two soft hills of the song's spectrum across the foot of the player in the
-                  cover's flow colors, over the Fluid field held still, blurred behind the lyrics: the audio effects'
+                  (PlayerVisualiser.m) draws two soft hills of the song's spectrum across the foot of the player, the kick
+                  a mound in the middle (the two bands under 80 Hz are left out, and the kick's bands stand at least as
+                  tall as the bands beside them, so the middle is never a notch), as light in the cover's flow colors
+                  added to the Fluid field held still (plusL, every color at one luminance with its saturation lifted, so
+                  a red cover glows warm and a black one is a gray mist, never a silhouette), clear toward the tallest crest so a peak
+                  thins out instead of ending in an edge, the front hill brightening on the kick, blurred behind the
+                  lyrics: the audio effects'
                   render notify on the music's output hands what it plays, mixed to mono, to one reader (SGAudioSetOutputReader), and
                   SGRSpectrum.m cuts it into 24 bands with Accelerate's FFT on the render thread, without allocating or
                   locking, and publishes them atomically; a display link of at most 60 Hz (30 behind the lyrics, 15
@@ -506,7 +550,9 @@ Redesigned:
                   a paused song's hills have settled. The spectrum is checked on the Mac against harness/visualiser/,
                   the view in the simulator against harness/player/ (`visualiser`)
     Lyrics/       the full screen lyrics page on glass with Apple Music style lyrics over it, always on (SGRKaraokeView,
-                  which the player shows in itself too, Player/PlayerLyrics.x): lines sung over each other lit together,
+                  which the player shows in itself too, Player/PlayerLyrics.x, where with Hide the controls on
+                  everything else -- the header row, the thumbnail, the title row and the controls -- fades a few
+                  seconds after the last touch and the lines take the whole safe area until a tap): lines sung over each other lit together,
                   the stack moving on once the first is sung out; an instrumental break of 7 s or more held by three dots
                   that breathe and fill over its length on a Core Animation timeline laid against the song's clock; and
                   a line's pronunciation (under the words it spells) and translation, switched on from a glass button in
@@ -520,9 +566,15 @@ Redesigned:
                   preview of the view playing a song of its own (LyricsLookSettings.m). Laid out on the Mac against
                   harness/lyrics/; the page against harness/lyrics-page/
     Home/         Home decluttered to music on black (an allow list of its sections: shortcuts, the DJ without its heading and
-                  transcript, the shelves of cards), a large title where the filter pills were with the avatar at the trailing
-                  edge, the title rising and fading with the feed as it scrolls, as the Music app's does, the shelves' headings at the Music app's size, each shortcut tile's cover run across it blurred
-                  (SGRPalette's extension), continuous corners on the covers, and in FLEX builds a meter of each scroll's
+                  transcript, the shelves of cards, each with a switch on the Home page of Mod Settings; the previews and the
+                  song suggestions only when switched on), a large title where the filter pills were, the title rising and
+                  fading with the feed as it scrolls, as the Music app's does, the shelves' headings at the Music app's size,
+                  continuous corners on the covers, and, under the Home look switch (the Home page's first row; off, none of
+                  its hooks install and Home is as before it): at the trailing edge a glass pill of the filter (a menu that
+                  drives Spotify's own chips, with the device picker and the top shelf's Show all) and the avatar, Top picks
+                  (the first shelf, or the one Cards from names, moved above the shortcuts and drawn as large cards in their
+                  covers' colors with no heading, the page tinted by the first card) and each shortcut tile as a glass pill
+                  in its cover's color with its name in bold on up to two lines; in FLEX builds a meter of each scroll's
                   frames and the hooks' time (Home.h lists its files)
     Search/       the Browse page decluttered to its category cards (an allow list of the list's cells: the watch feed
                   carousels and promos collapse, and the cards move up by the spacing they leave), the header the way Home
@@ -552,12 +604,20 @@ Redesigned:
                   there and the row carries the Kit's stand-ins, which draw their glyph and fire them. A track's artist line
                   goes where it only repeats the album's artist (with the guests the title names after "feat." and the
                   like), its explicit badge drawn after the title instead (AlbumCredits.m decides, checked on the Mac
-                  by harness/album-credits/; a switch on the Albums & artists page). Under the tracks
+                  by harness/album-credits/; a switch on the Albums page). Under the tracks
                   everything the server sends is dropped -- more by the artist, videos, concerts, merch, you might also
                   like, and whatever it adds next -- but the album's own line and its copyright, each section back
-                  once its switch on the Albums & artists page is off (told apart by its English heading; in another
+                  once its switch on the Albums page is off (told apart by its English heading; in another
                   language Everything else covers them all; Album.h lists its files). A podcast's episode page is the same template, so it is given the same field, and what it
                   paints over it is taken off. Laid out on the Mac against harness/album/
+    Artist/       the artist page on the same field and header (Artist.h lists its files), its Music / Video / Merch
+                  strip gone so the Music list is the page, and off that list its videos (on until switched off) and,
+                  off until switched on, the Artist pick, the Release Countdown and About
+                  (spotifyglass.redesign.artist.hide.pick, .countdown, .about). Each is told apart by the identifier
+                  its content carries in any language (Components.UI.PinnedItemUI, Components.UI.UpcomingReleaseRow,
+                  Components.UI.CreatorBiographyCard; strings of the 9.1.78 and 9.1.90 binaries) and dropped with its
+                  heading and spacer (ArtistSections.x). Laid out on the simulator against harness/artist/, whose
+                  recorded artist has no countdown
 
 App:
 
@@ -569,7 +629,12 @@ App:
                    release brings up on its own a few seconds after Spotify opens, once per release; backup, the
                    signing warning, the date the provisioning profile runs out (on the Mod page, and at the top of
                    Mod Settings for a free Apple ID's week) and the Mod page with the reset
-    Onboarding/    the welcome page over Home on the first launch, opening on the logo in glass, with Redesigned UI;
+    Onboarding/    the welcome page over Home on the first launch, opening on the logo in glass, with Redesigned UI and
+                   a No ads switch that sets Hide ads, Hide upsells and Spoof Premium together (off leaves each as it is;
+                   on, like a changed look, ends the tour in a restart, as all are read at launch), and under "Easy to miss"
+                   a card of pointers, each what it is and where in Mod Settings: Split Tabs (with the redesign picked),
+                   Lyrics (sources, lyrics for every track, the redesign's live preview with it picked) and AirPods
+                   gestures with the Live Activity (iOS 17 on);
                    on the first launch of a new version instead, What's new (WhatsNew.m), this version's section of
                    CHANGELOG.md, which scripts/whats-new.sh writes into a gitignored header at each make (a section
                    that came over from upstream is left out, so a build without its own has no sheet). The Mod
@@ -592,23 +657,27 @@ change shows after Spotify restarts; the tab editor on the Navbar page is the ex
 out again, as are the Home gradient's color, strength and height, but not the switch that turns it on, and Vibrations
 and Live Activity. The root page in `App/ModSettings.x` links the Appearance page and the page of each part of Spotify, and only the stored look's.
 
-## Planned lossless sources
+## Lossless
 
-The researched design is in [Lossless sources and automatic upgrades](lossless-sources.md), including
-pinned BitChord/Monochrome sources, the HTTP contract, playback integration choices and acceptance tests.
-It targets immediate Spotify playback followed by a prepared FLAC/ALAC upgrade at the current position,
-with separate Wi-Fi and cellular ceilings. Use HTTP/JSON addons; no downloaded provider JavaScript runs
-inside the app. Resolution and settings would live in `Shared/Lossless/`, shared by both looks, with
-look-specific player presentation kept separate. This is not implemented: player-state observation and
-the existing PCM hook do not establish a working external-stream handoff. Sing already owns the single
-`SGPlayerSetStage` slot. Prove synchronization, cancellation, output format and fallback before enabling
-automatic replacement; do not present provider access as a Spotify entitlement or an output-quality guarantee.
-The [addon compatibility notes](lossless-addons.md) cover the concrete self-hosted providers and
-unverified hosted-service leads, including secret URLs, ISRC matching, request budgets and client restrictions.
-The [playback investigation](lossless-playback.md) identifies a proposed source selector before Sing
-and static external-audio leads in Spotify 9.1.78. [harness/lossless](../harness/lossless/README.md) proves
-native file decode/seek on iOS 27's simulator and records HTTP-reader, container and EOF limits.
-These experiments do not establish synchronized Spotify playback or support on older iOS versions.
+Off unless `spotifyglass.lossless` is set; there is no settings row yet. A FLAC or ALAC file in Spotify's
+Documents/Lossless folder (Files app › Spotify › Lossless) plays in place of Spotify's sound for the same recording.
+
+- **Which file:** the folder's index (`.index.plist`, track URI to file name), else a file whose title tag (or
+  name) is the track's title and whose length is within 2 s. Artists are not compared. A file goes in the index
+  once its sound matched (`SGLosslessStore.m`).
+- **Where in the file:** at each track start, seek and resume, 4 s of Spotify's output are matched against the
+  file near Spotify's position: first on a mono copy at 1/16 of the rate, then exactly on a full-rate window. A
+  normalized correlation under 0.8 is another recording or master, and Spotify's sound stays. The file plays
+  from that frame at the gain that matches Spotify's loudness (`SGLosslessEngine.m`).
+- **Playback:** a static 2^19-frame ring that a worker thread fills ahead of where Spotify plays. A block the
+  ring does not hold yet keeps Spotify's sound. The swap is in Shared/Player's source selector, before Sing.
+- **Data:** Spotify still downloads and decodes its own copy, and it downloads a song as it starts. So while
+  the next song in its queue has a file, Spotify's quality is set to low, and the user's value comes back
+  afterwards, also at the next launch (`LosslessQuality.x`).
+- **Not yet:** Karaoke and speeds other than 1 keep Spotify's sound; the first 4 s after each start, seek or
+  resume are Spotify's; a silent block drops the anchor until the next try. Sources that download files are a
+  design only: [Lossless sources](lossless-sources.md), [addons](lossless-addons.md),
+  [playback investigation](lossless-playback.md), [prototype history](lossless-prototype.md).
 
 ## Make targets
 
@@ -673,9 +742,10 @@ page. It sorts every
 setting by the part of Spotify it changes, so a part's glass, its hide switches and its flags sit on
 one page, the mod's own rows first and Spotify's flags below them or on a sub page named after what
 they change. Its main page groups the rows by what they are, in cards with no headings as Settings has its own,
-under the signing and environment warnings: Redesigned UI, Appearance and Tab bar; Player, Lyrics and Albums &
-artists (Home & Library in the native look); Karaoke, Spatial voice (where the iPhone reads headphone motion), Audio
-effects, Vibrations, Live Activity, AirPods gestures and Listening stats; Lock screen and Premium, ads & privacy; Labs and All flags; Mod. It is checked in the simulator
+under the signing and environment warnings: Redesigned UI, Appearance and Tab bar, with a restart note; Home (Home &
+Library in the native look), Player, Lyrics, Albums and Artists; Karaoke, Spatial voice (where the iPhone reads headphone
+motion), Audio effects, Live Activity, AirPods gestures and Listening stats; Lock screen, Vibrations and Premium, ads &
+privacy; Labs and All flags; Mod. It is checked in the simulator
 against harness/mod-settings/. The Appearance page has, in the native look, AMOLED (the redesign is always black), then the stored look's Accent color
 preset, a pull-down of Spotify, Apple Music and Custom read off the color stored (a color set before the presets
 existed reads as Custom, Apple Music's red as Apple Music), and Accent color, the hex and a swatch of the color in
@@ -690,8 +760,8 @@ the files are gone. Swiping the row deletes the family. An import from before fa
 spotifyglass.font.file) moves to spotifyglass.font.files and the family name on first use. Then the App icon. Everything on the page applies after a restart. Redesigned UI, the main page's
 first row, is the one switch between the two looks (see Layers): it glows (Settings/SGGlowSwitch), its ⓘ says what
 it changes, and flipping it offers to restart Spotify. The pages show only what the stored look has: a page opened
-after flipping the switch already shows what the restart will bring, and the main page swaps Home & Library and
-Albums & artists as it is flipped. Tab bar: the tab editor of the stored look, each with
+after flipping the switch already shows what the restart will bring, and the main page swaps Home & Library for
+Albums and Artists as it is flipped. Tab bar: the tab editor of the stored look, each with
 its own list of tabs. Lyrics, on the main page of its own: in the redesign a live preview of the lyrics first, with the presets of their look
 under it and their sliders in a sheet (Text size, Line spacing, Blur, Glow, Wave), applying at once; then Karaoke, then the ordered list of lyrics sources,
 lyrics for every track, naming the source in the redesign, the lock screen, and glass lyrics in the native look; in
@@ -703,13 +773,16 @@ and the rest traced live from the engine's loudness, Karaoke running on the play
 from gone through as sung to the vocals alone, with Sing along, Original and Vocals only under it), Spatial voice
 (where the iPhone reads headphone motion; a page of its own, reading out On or Off, with a live preview at its top that
 follows the head through AirPods, or sways gently without them and holds still under Reduce Motion, a line under it
-saying which, then the switch; its row is on the main page too, under Karaoke's), the voice model's download (Paused and
-Checking among its states) and its removal, Toggle from lyrics (the redesign's mic, on until switched off, issue #12),
+saying which, then the switch; its row is on the main page too, under Karaoke's), a Voice model section (Best quality
+and Light, a checkmark against the chosen one, each with its size; then the chosen model's download, Paused and Checking
+among its states, and its removal; and Remove the other model, with its size, while the one not chosen, or the old
+model with the full one, is on the iPhone), Toggle from lyrics (the redesign's mic, on until switched off, issue #12),
 Ignore heat warnings, and under Advanced Runs on (Automatic: the Neural Engine
 beside the CPU; CPU only) and Prepare after updates, all applying straight away. Lock screen, on the main
-page under either look, opens the lock screen widget's page, titled Lock screen (Moving artwork, Lyrics or Every song, and the lyrics' style,
-Still or Animated, and Spotify's like and dislike buttons' flag; its podcast, audiobook and artwork flags stay in
-All flags). Player: Gestures and Blocked artists (with the count on the row), which work with either look;
+page under either look, opens the lock screen widget's page, titled Lock screen: Widget (the line in place of the artist,
+and Spotify's like and dislike buttons' flag, locked off while the star is on) then Artwork (Off, Moving artwork, Lyrics,
+Every song or Moving artwork with lyrics, the lyrics' style, Still or Animated, Switch with the star, the sources and Low Data Mode; below iOS 26
+one row saying why not). Spotify's podcast, audiobook and artwork flags stay in All flags. Player: Gestures and Blocked artists (with the count on the row), which work with either look;
 in the native look also Now playing bar (its device button and its flags), Queue & devices, and
 Spotify's own player screen (artwork background, glass header buttons, Disable Canvas and the sheet,
 header, slider and sticky header flags, the cards under the player and the lyrics preview and player
@@ -728,7 +801,8 @@ light that the luminance ceiling for the player's text, 0.07 or 0.04 with Increa
 card and the player follow each step at once through SGRFluidSettingsDidChangeNotification, the last three by
 blurring the cover again off the main thread, and Animated and Visualizer's Fluid with them,
 and Mini player: Apple Music style (the tab bar's minimize on scroll), Device button (the now playing bar keeps
-Spotify's device button in that minimized row, off by default) and the device button hidden on the full bar,
+Spotify's device button in that minimized row, off by default), the device button hidden on the full bar, and the
+like button hidden (Spotify's own flag ios-feature-nowplayingbar.add_button forced off),
 checked in the simulator against harness/player/ (`settings`). Vibrations, a page of its own under either
 look opened from the main page (the row reads out which of the two are on), leads with a preview (Shared/Haptics/SGVibrationsPreview.m): rings of dots that a tap sends a crest across, out
 from the middle in the accent color, higher and further the stronger the Strength, while the first of Controls and
@@ -744,7 +818,7 @@ has its Strength under it, grayed out while the switch is off (10 to 100%, a tap
 Music Haptics its Strength (20 to 200%, 100% being how it first shipped, a kick at the new strength with each step) and
 Follows, grayed out the same way, Everything (a tap on each kick and snare and a rumble under the bass), Beat (the
 taps without the rumble) or Bass (the kicks' taps and the rumble); In the Background a Status row (Paused, Waiting,
-Checking, Ready, Playing or Unavailable) while it is on, or, while Music Haptics is off in Settings > Accessibility, a
+Checking, "Sent, iOS not playing yet", Playing or Unavailable) while it is on, or, while Music Haptics is off in Settings > Accessibility, a
 row saying so whose tap opens its ⓘ, all applying straight away. Live Activity, on iOS 17 and up under either look: its switch and which view it
 shows, Lyrics, Queue or Control menu, and for Lyrics its Without lyrics (Note or Track), Alignment (Center, or Left),
 Translations (off until switched on) and Text size (Small, Medium or Large); then for every view a Card section of

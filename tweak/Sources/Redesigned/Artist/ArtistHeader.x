@@ -26,6 +26,7 @@
 // section. The Kit's SGRHeaderInfo reads the name and the listeners off Spotify's concealed labels and draws
 // and fires Spotify's shuffle, play and Follow, Follow as a glyph from the collection (ArtistFollow.x). More stays in Spotify's row, where the row needs it (ArtistField.x), and the Kit's pinned ⋯
 // (SGRPinnedMore) draws and fires it from the top trailing corner of the page, level with the back button.
+#import <objc/runtime.h>
 #import "Core/SGCore.h"
 #import "Redesigned/Kit/SGRKit.h"
 #import "Shared/AnimatedArtwork/AnimatedArtwork.h"
@@ -340,10 +341,36 @@ static void applyHeader(UIView *header) {
     }
 }
 
+// Scrolled, Spotify fades UIKit's navigation bar in over the artist page with an opaque black background
+// (SPNavigationBar's _UIBarBackground, 116pt), where the album's own bar lets the page's field show through
+// (issue #28). The page's item gets the same bar with no background, again whenever Spotify sets its own.
+static void clearNavigationBar(UIView *header) {
+    static char kClearKey;
+    UIResponder *responder = header;
+    while (responder && !([responder isKindOfClass:UIViewController.class]
+                          && [((UIViewController *)responder).parentViewController isKindOfClass:UINavigationController.class]))
+        responder = responder.nextResponder;
+    UIViewController *page = (UIViewController *)responder;
+    if (!page) return;
+    UINavigationItem *item = page.navigationItem;
+    UINavigationBarAppearance *clear = objc_getAssociatedObject(page, &kClearKey);
+    if (clear && item.standardAppearance == clear && item.scrollEdgeAppearance == clear) return;
+    if (!clear) {
+        clear = [page.navigationController.navigationBar.standardAppearance copy] ?: [UINavigationBarAppearance new];
+        [clear configureWithTransparentBackground];
+        objc_setAssociatedObject(page, &kClearKey, clear, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    item.standardAppearance = clear;
+    item.scrollEdgeAppearance = clear;
+    item.compactAppearance = clear;
+    item.compactScrollEdgeAppearance = clear;
+}
+
 %hook _TtC35CreativeWorkPlatform_ImageHeaderKit15ImageHeaderView
 - (void)layoutSubviews {
     %orig;
     applyHeader((UIView *)self);
+    clearNavigationBar((UIView *)self);
 }
 %end
 

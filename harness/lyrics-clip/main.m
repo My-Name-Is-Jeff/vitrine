@@ -95,7 +95,7 @@ static void verify(NSURL *url, CGImageRef backdrop, CGSize size, SGLyricsClipSty
         if (CMSampleBufferGetNumSamples(sample)) samples++;
         CFRelease(sample);
     }
-    int wantedSamples = style == SGLyricsClipAnimated ? 96 : 1;
+    int wantedSamples = style == SGLyricsClipAnimated ? 60 : 1;
     check(samples == wantedSamples, [NSString stringWithFormat:@"holds %d frames (want %d)", samples, wantedSamples]);
 
     AVAssetImageGenerator *generator = [AVAssetImageGenerator assetImageGeneratorWithAsset:asset];
@@ -119,9 +119,16 @@ static void verify(NSURL *url, CGImageRef backdrop, CGSize size, SGLyricsClipSty
     CGImageRelease(late);
 }
 
+int motionMain(NSURL *out, int argc, char **argv);
+
 int main(int argc, char **argv) {
     @autoreleasepool {
         NSString *here = [[NSString stringWithUTF8String:argv[0]] stringByDeletingLastPathComponent];
+        if (argc > 1 && !strcmp(argv[1], "motion")) {
+            NSURL *motionOut = [NSURL fileURLWithPath:[here stringByAppendingPathComponent:@"motion"] isDirectory:YES];
+            [NSFileManager.defaultManager createDirectoryAtURL:motionOut withIntermediateDirectories:YES attributes:nil error:nil];
+            return motionMain(motionOut, argc - 2, argv + 2);
+        }
         NSURL *out = [NSURL fileURLWithPath:[here stringByAppendingPathComponent:@"clips"] isDirectory:YES];
         [NSFileManager.defaultManager createDirectoryAtURL:out withIntermediateDirectories:YES attributes:nil error:nil];
         CGImageRef cover = argc > 1 ? newImageAt([NSString stringWithUTF8String:argv[1]]) : newCover();

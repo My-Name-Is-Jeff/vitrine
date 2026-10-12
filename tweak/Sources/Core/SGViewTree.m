@@ -18,6 +18,13 @@ BOOL SGIsInside(UIView *view, UIView *root) {
     return NO;
 }
 
+BOOL SGShownUnder(UIView *view, UIView *root) {
+    for (UIView *v = view; v && v != root; v = v.superview) {
+        if (v.hidden) return NO;
+    }
+    return YES;
+}
+
 UIStackView *SGRowIn(UIView *host) {
     __block UIStackView *row = nil;
     SGForEachView(host, ^(UIView *v) {

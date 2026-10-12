@@ -2,6 +2,7 @@
 import ActivityKit
 import Foundation
 import os
+import UIKit
 
 @available(iOS 17.0, *)
 @objc(SGLiveActivityBridge)
@@ -60,7 +61,31 @@ public final class SGLiveActivityBridge: NSObject {
         if start { Task { await send() } }
     }
 
+    // In the background, iOS lets a process update its activity only while it does more than play audio
+    // (liveactivitiesd: "Process is only playing background media so is forbidden to update activity"),
+    // and ActivityKit drops a refused update without a word. A background task is that something more. Begun and
+    // ended off the main thread (UIKit allows both there), so a busy main thread cannot hold a send up; ended once.
+    private final class BackgroundTask: @unchecked Sendable {
+        private let id = OSAllocatedUnfairLock(initialState: UIBackgroundTaskIdentifier.invalid)
+
+        init() {
+            let begun = UIApplication.shared.beginBackgroundTask(withName: "live activity") { [weak self] in self?.end() }
+            id.withLock { $0 = begun }
+        }
+
+        func end() {
+            let ending = id.withLock { id -> UIBackgroundTaskIdentifier in
+                defer { id = .invalid }
+                return id
+            }
+            if ending != .invalid { UIApplication.shared.endBackgroundTask(ending) }
+        }
+    }
+
     private static func send() async {
+        // One task over the whole run of queued changes, so none of them goes out without it.
+        let task = BackgroundTask()
+        defer { task.end() }
         while let change = pending.withLock({ pending -> Change? in
             if pending.changes.isEmpty {
                 pending.sending = false

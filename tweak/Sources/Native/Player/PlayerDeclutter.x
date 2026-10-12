@@ -8,6 +8,7 @@
 // hold shuffle, previous, play, next, repeat; the footer holds connect, a hidden button, share
 // and the queue; track info ends with the add-to button.
 #import "Core/SGCore.h"
+#import "Shared/AdBlock/AdBlock.h"
 #import "NowPlaying.h"
 
 #pragma mark - cards and sections
@@ -36,12 +37,27 @@ static NSString *classNamesIn(UIView *cell) {
     return names;
 }
 
+// An ad among the cards (a sponsored playlist's "Advertisement" card, 9.1.78): built of Encore's own views, it is
+// told apart only by its identifiers, Components.UI.Ads.FullbleedDisplayAd and the like. Hide ads drops it.
+static BOOL holdsAd(UIView *cell) {
+    __block BOOL found = NO;
+    SGForEachView(cell, ^(UIView *v) {
+        if (!found && [v.accessibilityIdentifier hasPrefix:@"Components.UI.Ads."]) found = YES;
+    });
+    return found;
+}
+
 static NSString *hiddenKeyFor(UICollectionViewCell *cell) {
     // A cell inside another card's list: the outer card decides.
     for (UIView *v = cell.superview; v; v = v.superview) {
         if ([v isKindOfClass:cell.class]) return nil;
     }
     NSString *names = nil;
+    // Only the player's cards are looked into: their content view names the page, which every other list's does not.
+    if (SGHidden(SGKeyHideAds)) {
+        UIView *content = cell.contentView.subviews.firstObject;
+        if ([NSStringFromClass(content.class) containsString:@"NowPlaying_ScrollAPI"] && holdsAd(cell)) return SGKeyHideAds;
+    }
     for (size_t i = 0; i < sizeof(cards) / sizeof(cards[0]); i++) {
         if (!SGHidden(cards[i].key)) continue;
         if (!names) names = classNamesIn(cell);

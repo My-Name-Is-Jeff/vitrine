@@ -10,9 +10,15 @@ static const CGFloat kMaxLuminance = 0.07, kMaxLuminanceContrast = 0.04;
 static const CGFloat kBackdropWidth = 160, kBackdropMaxHeight = 400, kBackdropSigma = 12;
 static const CGFloat kDissolveWidth = 96, kDissolveSigma = 5;
 static const CGFloat kFadeFrom = 0.55, kDissolveOpaque = 0.85;
-// A tint: the artwork's dominant color brought down to this luminance, then this share of it mixed into
-// the surface it tints.
-static const CGFloat kTintLuminance = 0.05, kTintShare = 0.35;
+// A tint: the artwork's dominant color, its saturation lifted by kTintSaturationLift up to kTintSaturationMax,
+// brought down to kTintLuminance, then kTintShare of it mixed into the surface it tints. Measured off the
+// reference's Home (IMG_4025, 2026-10-11): its card and tile surfaces sit at a luminance of 0.03 to 0.04 with the
+// cover's saturation about 1.2 times (0.73 to 0.86, 0.57 to 0.71, 0.29 to 0.36). White text keeps better than
+// 11:1 on anything under 0.04.
+static const CGFloat kTintLuminance = 0.04, kTintShare = 1.0;
+static const CGFloat kTintSaturationLift = 1.2, kTintSaturationMax = 0.85;
+// The faint tint of before (strong NO): no lift, 35% of the color held under 0.05 mixed into the surface.
+static const CGFloat kFaintTintLuminance = 0.05, kFaintTintShare = 0.35;
 // A moving field's colors: luminance held between these (the ceiling 0.07 with Increase Contrast, as a
 // field's), saturation lifted by this much up to a cap, and a near-black one lifted by at most this factor.
 static const CGFloat kFlowLuminanceMin = 0.03, kFlowLuminanceMax = 0.13;
@@ -204,15 +210,22 @@ static BOOL dominantColorOf(CGImageRef image, CGFloat out[3]) {
     return found;
 }
 
+// Saturation lifted by `lift` up to `max`, in HSB on the encoded color; `linear` in and out in linear light.
+static void liftSaturation(CGFloat linear[3], CGFloat lift, CGFloat max) {
+    CGFloat r = toEncoded(linear[0]), g = toEncoded(linear[1]), b = toEncoded(linear[2]), h = 0, s = 0, v = 0, a = 1;
+    [[UIColor colorWithRed:r green:g blue:b alpha:1] getHue:&h saturation:&s brightness:&v alpha:&a];
+    [[UIColor colorWithHue:h saturation:MIN(max, MAX(s, s * lift)) brightness:v alpha:1] getRed:&r green:&g blue:&b alpha:&a];
+    linear[0] = toLinear(r), linear[1] = toLinear(g), linear[2] = toLinear(b);
+}
+
 #pragma mark - flow
 
 // A dominant color in linear light made fit for a moving field: a little more colorful, and within
 // the luminance band that keeps white text readable on it.
 static UIColor *flowColorFor(const CGFloat linear[3], CGFloat ceiling) {
-    CGFloat r = toEncoded(linear[0]), g = toEncoded(linear[1]), b = toEncoded(linear[2]), h = 0, s = 0, v = 0, a = 1;
-    [[UIColor colorWithRed:r green:g blue:b alpha:1] getHue:&h saturation:&s brightness:&v alpha:&a];
-    [[UIColor colorWithHue:h saturation:MIN(kFlowSaturationMax, MAX(s, s * kFlowSaturationLift)) brightness:v alpha:1] getRed:&r green:&g blue:&b alpha:&a];
-    CGFloat lr = toLinear(r), lg = toLinear(g), lb = toLinear(b);
+    CGFloat lifted[3] = {linear[0], linear[1], linear[2]};
+    liftSaturation(lifted, kFlowSaturationLift, kFlowSaturationMax);
+    CGFloat lr = lifted[0], lg = lifted[1], lb = lifted[2];
     CGFloat luminance = 0.2126 * lr + 0.7152 * lg + 0.0722 * lb;
     CGFloat k = 1;
     if (luminance > ceiling) k = ceiling / luminance;
@@ -240,15 +253,17 @@ static NSArray<UIColor *> *flowColorsOf(CGImageRef image, CGFloat ceiling) {
     return colors.count == 5 ? colors : nil;
 }
 
-static UIColor *tintOf(CGImageRef image, UIColor *surface) {
+static UIColor *tintOf(CGImageRef image, UIColor *surface, BOOL strong) {
     CGFloat linear[3];
     CGFloat r = 0, g = 0, b = 0, a = 1;
     if (!dominantColorOf(image, linear) || ![surface getRed:&r green:&g blue:&b alpha:&a]) return nil;
+    if (strong) liftSaturation(linear, kTintSaturationLift, kTintSaturationMax);
+    CGFloat cap = strong ? kTintLuminance : kFaintTintLuminance;
     CGFloat luminance = 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
-    if (luminance > kTintLuminance) {
-        for (int k = 0; k < 3; k++) linear[k] *= kTintLuminance / luminance;
+    if (luminance > cap) {
+        for (int k = 0; k < 3; k++) linear[k] *= cap / luminance;
     }
-    CGFloat t = kTintShare;
+    CGFloat t = strong ? kTintShare : kFaintTintShare;
     CGFloat mixed[3] = {r * (1 - t) + toEncoded(linear[0]) * t,
                         g * (1 - t) + toEncoded(linear[1]) * t,
                         b * (1 - t) + toEncoded(linear[2]) * t};
@@ -312,11 +327,11 @@ static UIColor *tintOf(CGImageRef image, UIColor *surface) {
     });
 }
 
-+ (void)tintForImage:(UIImage *)image surface:(UIColor *)surface completion:(void (^)(UIColor *tint))completion {
++ (void)tintForImage:(UIImage *)image surface:(UIColor *)surface strong:(BOOL)strong completion:(void (^)(UIColor *tint))completion {
     if (!completion) return;
     dispatch_async(paletteQueue(), ^{
         CGImageRef cg = image.CGImage;
-        UIColor *tint = cg && CGImageGetWidth(cg) && CGImageGetHeight(cg) ? tintOf(cg, surface) : nil;
+        UIColor *tint = cg && CGImageGetWidth(cg) && CGImageGetHeight(cg) ? tintOf(cg, surface, strong) : nil;
         static dispatch_once_t once;
         if (tint) dispatch_once(&once, ^{ SGLog(@"redesign kit: first tint %@", tint); });
         dispatch_async(dispatch_get_main_queue(), ^{ completion(tint); });

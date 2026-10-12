@@ -20,14 +20,13 @@
 //
 // The handover to the mod's own (MusicHaptics.x): iOS plays the haptic track of the now playing song
 // whether the app is in front or not (MAMusicHapticsManager reports its status per now playing song, with no
-// foreground or background to it), so the mod's own stands down for the song entirely, from the moment the
-// track is asked about (Checking) through an identifier with a haptic track named (Ready), paused from
-// Control Center or not. It plays again once the answer is that iOS has none (Unavailable), or with nothing
-// asked (Waiting: In the Background off, iOS's switch off, nothing playing). Ready is taken on the catalog's
-// word or iOS's availability check, not the status observer's report that iOS plays it, since when that
-// observer fires for an app's song is unproven: waiting on it could leave both playing.
-// ponytail: quiet while Checking means a song with no haptic track gets the mod's own only once the lookup
-// answers, a moment with the ISRC kept, up to kSpotifyTries * kSpotifyRetryAfter when Spotify does not answer.
+// foreground or background to it), so the mod's own stands down while iOS's status observer reports the named
+// song playing. Before that report it stands down only for a while: while the track is asked about
+// (Checking, at most kCheckingFor) and for kReadyGrace after an identifier with a haptic track is named
+// (Ready), so the two do not play at once as iOS starts. With no report by then it plays again: a named song
+// is no proof that iOS plays it (issue #22, where neither played). It also plays when iOS has none
+// (Unavailable), with nothing asked (Waiting), while iOS's is paused from Control Center, and in an install
+// that iOS does not list for Music Haptics.
 //
 // ponytail: the identifier rides on Spotify's info by title, as NowPlayingExtras matches it, so a next track
 // with the same title can carry the last one's for the moment before the player reports it. Matching by the
@@ -51,6 +50,10 @@ static NSString *const kExtendedMetadata = @"https://spclient.wg.spotify.com/ext
 static const NSUInteger kSpotifyTries = 3;
 static const NSTimeInterval kSpotifyRetryAfter = 4;
 static const NSUInteger kKeptISRCs = 100;
+// How long a track may stay Checking, and how long Ready waits for iOS to report the song playing, before the
+// mod's own plays again.
+static const NSTimeInterval kCheckingFor = 10;
+static const NSTimeInterval kReadyGrace = 3;
 
 #pragma mark - Spotify's ISRC
 
@@ -151,6 +154,7 @@ API_AVAILABLE(ios(18.0))
     id _observer;
     NSString *_observedCode;
     BOOL _observedActive;
+    BOOL _graceOver;   // Ready for kReadyGrace with no report that iOS plays the song
 }
 
 - (void)playerStateDidChange:(SPTPlayerState *)state {
@@ -159,20 +163,43 @@ API_AVAILABLE(ios(18.0))
 
 - (void)setPhase:(SGNativePhase)phase {
     _phase = phase;
-    // follow: leaves Waiting only with In the Background on, iOS's switch on and a track playing.
-    SGMusicHapticsSetSystemCovers(phase == SGNativeChecking || phase == SGNativeReady);
+    NSUInteger revision = _revision;
+    if (phase == SGNativeChecking) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kCheckingFor * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            if (revision != self->_revision || self->_phase != SGNativeChecking) return;
+            // Answers still to come for this track are dropped, so a late one cannot undo this.
+            self->_revision++;
+            SGLog(@"music haptics: no answer for %@ in %.0f s, unavailable", self->_track, kCheckingFor);
+            self.phase = SGNativeUnavailable;
+        });
+    } else if (phase == SGNativeReady) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kReadyGrace * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            if (revision != self->_revision || self->_phase != SGNativeReady || [self iOSPlays]) return;
+            self->_graceOver = YES;
+            SGLog(@"music haptics: iOS has not reported %@ playing in %.0f s, the mod's own plays", self->_track, kReadyGrace);
+            [self showStatus];
+        });
+    }
     [self showStatus];
 }
 
+// A status callback alone is not proof: it has to be for the identifier named, and iOS active for it.
+- (BOOL)iOSPlays {
+    return _observedActive && ([_observedCode isEqualToString:_isrc] || [_observedCode isEqualToString:_songID]);
+}
+
+// Every change ends here: the status, and whether the mod's own stands down.
 - (void)showStatus {
+    // follow: leaves Waiting only with In the Background on, iOS's switch on and a track playing.
+    BOOL starting = _phase == SGNativeChecking || (_phase == SGNativeReady && !_graceOver);
+    SGMusicHapticsSetSystemCovers(SGMusicHapticsListedByInstall() && _enabled && _active && ([self iOSPlays] || starting));
     NSString *status;
     if (!_enabled) status = @"Off in iOS";
-    else if (!_active) status = @"Paused";
+    else if (!_active) status = @"Paused in Control Center";
     else if (_phase == SGNativeChecking) status = @"Checking";
     else if (_phase == SGNativeUnavailable) status = @"Unavailable";
     else if (_phase == SGNativeWaiting) status = @"Waiting";
-    // A status callback alone is not proof: it has to be for the identifier named, and iOS active for it.
-    else status = _observedActive && ([_observedCode isEqualToString:_isrc] || [_observedCode isEqualToString:_songID]) ? @"Playing" : @"Ready";
+    else status = [self iOSPlays] ? @"Playing" : @"Sent, iOS not playing yet";
     SGSetMusicHapticsStatus(status);
 }
 
@@ -191,6 +218,7 @@ API_AVAILABLE(ios(18.0))
     _isrc = _songID = nil;
     _observedCode = nil;
     _observedActive = NO;
+    _graceOver = NO;
     // Off before anything is asked, so no answer can arrive while the last track's is still named.
     SGNowPlayingSetExtras(@"haptics", nil, nil);
     if (!SGMusicHapticsInBackground() || !_enabled || !track) {

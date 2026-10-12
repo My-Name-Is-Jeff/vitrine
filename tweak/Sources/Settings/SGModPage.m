@@ -28,6 +28,12 @@ SGModRow *SGHideRow(NSString *title, NSString *subtitle, NSString *key) {
     return row;
 }
 
+SGModRow *SGShownRow(NSString *title, NSString *subtitle, NSString *hideKey) {
+    SGModRow *row = SGHideRow(title, subtitle, hideKey);
+    row.inverted = YES;
+    return row;
+}
+
 // A switch for something the mod adds rather than takes away: off until it is asked for.
 SGModRow *SGOptionRow(NSString *title, NSString *subtitle, NSString *key) {
     SGModRow *row = SGSwitchRow(title, subtitle, key);
@@ -871,7 +877,8 @@ static void showWaiting(UITableViewCell *cell, BOOL waiting, NSString *switchTit
         showWaiting(cell, [self isWaiting:row], [self switchFor:row].title);
         return cell;
     }
-    UITableViewCell *cell = SGDequeueCell(table, @"row");
+    // A checked row's cells set their own accessory and traits, which no other row resets.
+    UITableViewCell *cell = SGDequeueCell(table, row.checked ? @"checked" : @"row");
     SGFillCell(cell, row.title, row.subtitle, row.color, row.symbol);
     UIListContentConfiguration *content = (UIListContentConfiguration *)cell.contentConfiguration;
     if (SGAccessibilityTextSize() && row.value) content.secondaryText = stackedValue(row);
@@ -888,7 +895,7 @@ static void showWaiting(UITableViewCell *cell, BOOL waiting, NSString *switchTit
         BOOL beats = NO;
         if (locked) SGLockedFlagValue(row.key, &beats);
         BOOL showsLock = locked && (beats || !SGFlagOverride(row.key));
-        BOOL on = row.flag ? (showsLock ? lockedRowOn(row) : flagRowOn(row)) : SGFlag(row.key, row.defaultOn);
+        BOOL on = row.flag ? (showsLock ? lockedRowOn(row) : flagRowOn(row)) : SGFlag(row.key, row.defaultOn) != row.inverted;
         UIControl *toggle;
         if (row.glows) {
             SGGlowSwitch *glow = [SGGlowSwitch new];
@@ -918,6 +925,14 @@ static void showWaiting(UITableViewCell *cell, BOOL waiting, NSString *switchTit
         cell.selectionStyle = row.action ? UITableViewCellSelectionStyleDefault : UITableViewCellSelectionStyleNone;
     } else if (row.action) {
         cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+    }
+    if (row.checked) {
+        BOOL checked = row.checked();
+        // SGChoicePage's checkmark.
+        UIImageView *tick = checked ? SGSymbolView(@"checkmark", 13, UIImageSymbolWeightSemibold, 16) : nil;
+        tick.tintColor = SGGreen();
+        cell.accessoryView = tick;
+        cell.accessibilityTraits = UIAccessibilityTraitButton | (checked ? UIAccessibilityTraitSelected : 0);
     }
     BOOL waiting = [self isWaiting:row];
     showWaiting(cell, waiting, [self switchFor:row].title);
@@ -1011,7 +1026,7 @@ static void showWaiting(UITableViewCell *cell, BOOL waiting, NSString *switchTit
     if (!path) return;
     SGModRow *row = [self rowAt:path];
     if (row.flag) SGSetFlagOverride(row.key, on ? @(!row.forceOff) : nil);
-    else SGSetEnabled(row.key, on);
+    else SGSetEnabled(row.key, on != row.inverted);
     if (row.changed) row.changed(on);
     // A glowing switch is let finish its slide before the reload puts a new one in its place; rows coming
     // or going are let finish first too.

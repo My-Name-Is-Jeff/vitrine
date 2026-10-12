@@ -541,7 +541,7 @@ static void updateListening(void) {
 
 void SGMusicHapticsSetSystemCovers(BOOL covers) {
     if (atomic_exchange(&sg_systemCovers, covers) == covers || !sg_wake) return;
-    if (SGMusicHapticsOn()) SGLog(@"music haptics: %@", covers ? @"iOS's own has this song, standing down" : @"iOS's own has none for this song, playing along");
+    if (SGMusicHapticsOn()) SGLog(@"music haptics: %@", covers ? @"iOS's own covers this song, standing down" : @"iOS's own does not play this song, playing along");
     updateListening();
 }
 
@@ -593,7 +593,10 @@ void SGMusicHapticsWatchTaps(void (^watcher)(float intensity)) {
         atomic_store(&sg_active, false);
         updateListening();
     }];
-    [center addObserverForName:AVAudioSessionRouteChangeNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
-        if (atomic_load(&sg_listening)) readLatency();
+    // Posted on the audio session's thread: a main-queue observer would make it wait for main (AGENTS.md).
+    [center addObserverForName:AVAudioSessionRouteChangeNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (atomic_load(&sg_listening)) readLatency();
+        });
     }];
 }

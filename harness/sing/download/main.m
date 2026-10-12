@@ -14,6 +14,11 @@
 // the model then Ready without a download.
 //
 //     ./build.sh && CFFIXED_USER_HOME=<empty dir> ../build/download dev
+//
+// `light` chooses the light model (separator-light.mlmodelc) with the full one on the iPhone, downloads it, switches
+// back and forth and removes each (checkLight).
+//
+//     ./build.sh && CFFIXED_USER_HOME=<empty dir> ../build/download light
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 #import "Shared/Sing/Sing.h"
@@ -96,6 +101,62 @@ static int checkUpdate(NSURL *sing) {
     return failures ? 1 : 0;
 }
 
+// Light chosen, with the full model and the old one on the iPhone (stood in by files of their sizes): the light model
+// downloads from its own folder and is the model; the launch's cleanup leaves it alone; switching back and forth needs
+// no download; removing the other model leaves the chosen one, and removing the chosen one leaves Sing/ empty.
+static int checkLight(NSURL *sing) {
+    NSURL *full = [sing URLByAppendingPathComponent:@"separator-ane.mlmodelc"], *light = [sing URLByAppendingPathComponent:@"separator-light.mlmodelc"];
+    NSURL *old = [sing URLByAppendingPathComponent:@"separator.mlmodelc"];
+    standIn(full, @{@"metadata.json": @2333, @"coremldata.bin": @388, @"analytics/coremldata.bin": @243, @"model.mil": @1346642,
+                    @"weights/weight.bin": @209077208});
+    standIn(old, @{@"model.mil": @669061});
+    CHECK(SGSingChosenModel() == SGSingModelFull && [SGSingModelURL().path isEqualToString:full.path], @"the full model is the default");
+    // The key changed another way (a settings import), with no generation bump: Light, not downloaded, is checked anyway.
+    [NSUserDefaults.standardUserDefaults setInteger:SGSingModelLight forKey:SGKeySingModel];
+    CHECK(!SGSingModelURL(), @"a key changed by another way is checked again: Light reads missing, not its folder unchecked (%@)", SGSingModelURL().path);
+    [NSUserDefaults.standardUserDefaults removeObjectForKey:SGKeySingModel];
+    CHECK([SGSingModelURL().path isEqualToString:full.path], @"and the full model again once the key goes back");
+
+    // Light's download stopped by a switch and Light removed at once: the stop's resume data, written later, does not
+    // bring a file of it back.
+    SGSetSingChosenModel(SGSingModelLight);
+    SGSingDownloadModelOverCellular();
+    runUntil(^BOOL { return SGSingModelProgress() >= 0.3 || SGSingModelCurrentState() != SGSingModelDownloading; }, 600);
+    CHECK(SGSingModelCurrentState() == SGSingModelDownloading, @"Light's download runs into its weights (%.0f%%)", SGSingModelProgress() * 100);
+    SGSetSingChosenModel(SGSingModelFull);
+    SGSingDeleteOtherModel();
+    runUntil(^BOOL { return NO; }, 5);
+    NSArray *after = [NSFileManager.defaultManager contentsOfDirectoryAtPath:sing.path error:nil];
+    CHECK(SGSingOtherModelBytes() == 0 && ![[after componentsJoinedByString:@" "] containsString:@"light"],
+          @"switched and removed mid-download, nothing of Light is left (%@)", [after componentsJoinedByString:@", "]);
+    SGSetSingChosenModel(SGSingModelLight);
+    CHECK(SGSingModelPausedBytes() == 0, @"and Light has no paused bytes");
+    CHECK(SGSingModelCurrentState() == SGSingModelMissing && !SGSingModelURL(), @"chosen, Light reads missing: the full model does not stand in for it");
+    CHECK(SGSingOtherModelBytes() > 209077208, @"the other model's bytes count the full model and the old one (%lld)", SGSingOtherModelBytes());
+    printf("Light's size reads %s, the full model's %s\n", SGSingModelSizeText().UTF8String, SGSingModelSizeTextOf(SGSingModelFull).UTF8String);
+
+    SGSingDownloadModelOverCellular();
+    runUntil(^BOOL { return SGSingModelCurrentState() != SGSingModelDownloading; }, 900);
+    CHECK(SGSingModelCurrentState() == SGSingModelReady && [SGSingModelURL().path isEqualToString:light.path],
+          @"Light downloads from separator-light.mlmodelc, checked, and is the model (%@)", SGSingModelError() ?: SGSingModelURL().lastPathComponent);
+    CHECK(exists(full), @"the full model is kept");
+    SGSingRemoveOldModel();
+    CHECK(exists(light) && SGSingModelCurrentState() == SGSingModelReady, @"the launch's cleanup leaves the light model alone");
+
+    SGSetSingChosenModel(SGSingModelFull);
+    CHECK([SGSingModelURL().path isEqualToString:full.path] && SGSingModelPausedBytes() == 0, @"switched back, the full model is the model at once");
+    SGSetSingChosenModel(SGSingModelLight);
+    CHECK([SGSingModelURL().path isEqualToString:light.path], @"and Light again");
+
+    SGSingDeleteOtherModel();
+    CHECK(!exists(full) && !exists(old) && exists(light) && SGSingOtherModelBytes() == 0, @"removing the other model removes the full one and the old one, not Light");
+    SGSingDeleteModel();
+    NSArray *left = [NSFileManager.defaultManager contentsOfDirectoryAtPath:sing.path error:nil];
+    CHECK(!left.count && SGSingModelCurrentState() == SGSingModelMissing, @"removing Light leaves Sing/ empty (%@)", [left componentsJoinedByString:@", "]);
+    printf("%s\n", failures ? "FAILED" : "all passed");
+    return failures ? 1 : 0;
+}
+
 int main(int argc, char **argv) {
     @autoreleasepool {
         setvbuf(stdout, NULL, _IOLBF, 0);
@@ -103,7 +164,10 @@ int main(int argc, char **argv) {
         NSURL *sing = [[[NSFileManager.defaultManager URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask].firstObject
             URLByAppendingPathComponent:@"Vitrine"] URLByAppendingPathComponent:@"Sing"];
         printf("the model goes to %s\n", sing.path.UTF8String);
+        // The defaults outlive CFFIXED_USER_HOME's folder (cfprefsd keeps them): every check starts on the full model.
+        [NSUserDefaults.standardUserDefaults removeObjectForKey:SGKeySingModel];
         if (argc > 1 && !strcmp(argv[1], "dev")) return checkDev(sing);
+        if (argc > 1 && !strcmp(argv[1], "light")) return checkLight(sing);
 
         if (argc > 1 && !strcmp(argv[1], "update")) return checkUpdate(sing);
 

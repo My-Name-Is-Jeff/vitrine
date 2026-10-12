@@ -27,6 +27,8 @@
 // Each gesture's SGHeadAction; unset is Like for the nod and Next track for the shake.
 #define SGKeyHeadNodAction @"spotifyglass.headgestures.nodaction"
 #define SGKeyHeadShakeAction @"spotifyglass.headgestures.shakeaction"
+// Whether a gesture that fires a command plays its tone; on until switched off. Try it and teaching always do.
+#define SGKeyHeadChime @"spotifyglass.headgestures.chime"
 
 enum { SGHeadSensitivityMin = 50, SGHeadSensitivityMax = 200, SGHeadSensitivityStep = 10 };
 

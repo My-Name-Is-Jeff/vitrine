@@ -22,7 +22,7 @@ static NSDictionary *sg_spotifyInfo;
 static CFAbsoluteTime sg_spotifyInfoAt;
 static NSString *sg_shownLine;
 static BOOL sg_resending;
-static NSTimer *sg_timer;
+static dispatch_source_t sg_timer;
 
 static NSString *textOf(NSArray<SGKaraokeWord *> *words) {
     SGKaraokeLine *line = [SGKaraokeLine new];
@@ -119,12 +119,24 @@ static void tick(void) {
 static void setTicking(BOOL on) {
     if (on == (sg_timer != nil)) return;
     if (!on) {
-        [sg_timer invalidate];
+        dispatch_source_cancel(sg_timer);
         sg_timer = nil;
         return;
     }
-    sg_timer = [NSTimer timerWithTimeInterval:kTick repeats:YES block:^(NSTimer *t) { tick(); }];
-    [NSRunLoop.mainRunLoop addTimer:sg_timer forMode:NSRunLoopCommonModes];
+    // A strict GCD timer: the main run loop's timers are throttled while the screen is off, and the lines stood
+    // still on a locked phone.
+    sg_timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, DISPATCH_TIMER_STRICT, dispatch_get_main_queue());
+    uint64_t every = (uint64_t)(kTick * NSEC_PER_SEC);
+    dispatch_source_set_timer(sg_timer, dispatch_time(DISPATCH_TIME_NOW, every), every, 10 * NSEC_PER_MSEC);
+    dispatch_source_set_event_handler(sg_timer, ^{
+        static CFAbsoluteTime last;
+        static int late;
+        CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+        if (last && now - last > 2 && late++ < 5) SGLog(@"%s: ticked %.1f s late", __FILE_NAME__, now - last - kTick);
+        last = now;
+        tick();
+    });
+    dispatch_resume(sg_timer);
 }
 
 // Whether the sound is moving. A rate Spotify did not report at all counts as moving: the line would

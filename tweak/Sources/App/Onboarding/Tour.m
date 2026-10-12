@@ -4,6 +4,7 @@
 #import <objc/message.h>
 #import "App/About/About.h"
 #import "App/Pages.h"
+#import "Shared/AdBlock/AdBlock.h"
 
 static const CGFloat kMargin = 24;
 static const CGFloat kCardRadius = 22;
@@ -53,19 +54,8 @@ UIButton *SGOnboardingButton(NSString *title) {
 
 #pragma mark - the choice
 
-// One of the two looks, as a glass card: symbol, name, a line on what it brings, and a check
-// when it is the one picked.
-@interface SGLookCard : UIControl
-- (instancetype)initWithSymbol:(NSString *)symbol title:(NSString *)title subtitle:(NSString *)subtitle;
-@end
-
-@implementation SGLookCard {
-    SGGlassView *_glass;
-    UIImageView *_check;
-}
-
-- (instancetype)initWithSymbol:(NSString *)symbol title:(NSString *)title subtitle:(NSString *)subtitle {
-    if (!(self = [super initWithFrame:CGRectZero])) return nil;
+// A card's row: a symbol on a dim square, a name over a line of small gray text, and an accessory at the end.
+static UIStackView *cardRow(NSString *symbol, NSString *title, NSString *subtitle, UIView *accessory) {
     UIImageView *icon = SGSymbolView(symbol, 17, UIImageSymbolWeightSemibold, 36);
     icon.tintColor = UIColor.whiteColor;
     icon.backgroundColor = [UIColor colorWithWhite:1 alpha:0.10];
@@ -85,15 +75,61 @@ UIButton *SGOnboardingButton(NSString *title) {
     text.axis = UILayoutConstraintAxisVertical;
     text.spacing = 2;
 
-    _check = SGSymbolView(@"circle", 22, UIImageSymbolWeightRegular, 26);
-
-    UIStackView *row = [[UIStackView alloc] initWithArrangedSubviews:@[icon, text, _check]];
-    row.alignment = UIStackViewAlignmentCenter;
+    UIStackView *row = [[UIStackView alloc] initWithArrangedSubviews:accessory ? @[icon, text, accessory] : @[icon, text]];
+    row.alignment = accessory ? UIStackViewAlignmentCenter : UIStackViewAlignmentTop;
     row.spacing = 14;
-    row.userInteractionEnabled = NO;
-    row.translatesAutoresizingMaskIntoConstraints = NO;
     [text setContentHuggingPriority:UILayoutPriorityDefaultLow - 1 forAxis:UILayoutConstraintAxisHorizontal];
     [text setContentCompressionResistancePriority:UILayoutPriorityDefaultHigh - 1 forAxis:UILayoutConstraintAxisHorizontal];
+    [NSLayoutConstraint activateConstraints:@[
+        [icon.widthAnchor constraintEqualToConstant:36],
+        [icon.heightAnchor constraintEqualToConstant:36],
+    ]];
+    return row;
+}
+
+// A glass card of rows, in the look cards' shape, that only points somewhere: the tips at the end of the tour.
+static UIView *tipsCard(NSArray<UIView *> *rows) {
+    SGGlassView *card = [SGGlassView new];
+    card.radius = kCardRadius;
+    card.clipsToBounds = YES;
+    card.layer.cornerRadius = kCardRadius;
+    card.layer.cornerCurve = kCACornerCurveContinuous;
+    UIStackView *column = [[UIStackView alloc] initWithArrangedSubviews:rows];
+    column.axis = UILayoutConstraintAxisVertical;
+    column.spacing = 16;
+    column.translatesAutoresizingMaskIntoConstraints = NO;
+    [card addSubview:column];
+    [NSLayoutConstraint activateConstraints:@[
+        [column.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:16],
+        [column.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-16],
+        [column.topAnchor constraintEqualToAnchor:card.topAnchor constant:16],
+        [column.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-16],
+    ]];
+    return card;
+}
+
+// One of the two looks, as a glass card: symbol, name, a line on what it brings, and a check
+// when it is the one picked. With an accessory instead, the card is a row for it (the ads switch).
+@interface SGLookCard : UIControl
+- (instancetype)initWithSymbol:(NSString *)symbol title:(NSString *)title subtitle:(NSString *)subtitle;
+- (instancetype)initWithSymbol:(NSString *)symbol title:(NSString *)title subtitle:(NSString *)subtitle accessory:(UIView *)accessory;
+@end
+
+@implementation SGLookCard {
+    SGGlassView *_glass;
+    UIImageView *_check;
+}
+
+- (instancetype)initWithSymbol:(NSString *)symbol title:(NSString *)title subtitle:(NSString *)subtitle {
+    return [self initWithSymbol:symbol title:title subtitle:subtitle accessory:nil];
+}
+
+- (instancetype)initWithSymbol:(NSString *)symbol title:(NSString *)title subtitle:(NSString *)subtitle accessory:(UIView *)accessory {
+    if (!(self = [super initWithFrame:CGRectZero])) return nil;
+    if (!accessory) _check = SGSymbolView(@"circle", 22, UIImageSymbolWeightRegular, 26);
+    UIStackView *row = cardRow(symbol, title, subtitle, accessory ?: _check);
+    row.userInteractionEnabled = NO;
+    row.translatesAutoresizingMaskIntoConstraints = NO;
 
     _glass = [SGGlassView new];
     _glass.radius = kCardRadius;
@@ -110,8 +146,6 @@ UIButton *SGOnboardingButton(NSString *title) {
         [_glass.bottomAnchor constraintEqualToAnchor:self.bottomAnchor],
         [_glass.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
         [_glass.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
-        [icon.widthAnchor constraintEqualToConstant:36],
-        [icon.heightAnchor constraintEqualToConstant:36],
         [row.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:16],
         [row.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-16],
         [row.topAnchor constraintEqualToAnchor:self.topAnchor constant:16],
@@ -289,14 +323,40 @@ static const CGFloat kLogoRadius = 22;
 
 #pragma mark - the tour
 
-// One page, the one choice worth making now: the redesign or Spotify's own look, under Vitrine's logo.
-// Everything else waits in Mod Settings.
+// One page, the two choices worth making now under Vitrine's logo: the redesign or Spotify's own look, and
+// Spotify without its ads. Everything else waits in Mod Settings; a card of pointers names what people miss there.
 @interface SGOnboardingController : UIViewController
 @end
 
+// A symbol and a line of small gray text, the note under a card.
+static UIStackView *noteLine(UIImageView *icon, UILabel *text) {
+    text.font = [UIFont systemFontOfSize:13];
+    text.textColor = SGGrey();
+    text.numberOfLines = 0;
+    [text setContentHuggingPriority:UILayoutPriorityDefaultLow - 1 forAxis:UILayoutConstraintAxisHorizontal];
+    UIStackView *line = [[UIStackView alloc] initWithArrangedSubviews:@[icon, text]];
+    line.alignment = UIStackViewAlignmentTop;
+    line.spacing = 10;
+    return line;
+}
+
+// The three switches at the top of the Premium, ads & privacy page, which the No ads card sets together.
+static NSArray<NSString *> *adKeys(void) {
+    return @[SGKeyHideAds, SGKeyHideUpsells, SGKeyFakePremium];
+}
+
+static BOOL adFree(void) {
+    for (NSString *key in adKeys()) if (!SGHidden(key)) return NO;
+    return YES;
+}
+
 @implementation SGOnboardingController {
     SGTourLogo *_logo;
-    SGLookCard *_redesigned, *_legacy;
+    SGLookCard *_redesigned, *_legacy, *_adsCard;
+    UISwitch *_ads;
+    UIStackView *_column;
+    UIView *_splitTip;   // the redesign's; the lyrics tip's line changes with the look too
+    UILabel *_lyricsTip;
     UIView *_note;
     UIImageView *_noteIcon;
     UILabel *_noteText;
@@ -319,13 +379,7 @@ static const CGFloat kLogoRadius = 22;
 - (UIView *)noteView {
     _noteIcon = SGSymbolView(@"info.circle.fill", 15, UIImageSymbolWeightSemibold, 22);
     _noteText = [UILabel new];
-    _noteText.font = [UIFont systemFontOfSize:13];
-    _noteText.textColor = SGGrey();
-    _noteText.numberOfLines = 0;
-    [_noteText setContentHuggingPriority:UILayoutPriorityDefaultLow - 1 forAxis:UILayoutConstraintAxisHorizontal];
-    UIStackView *line = [[UIStackView alloc] initWithArrangedSubviews:@[_noteIcon, _noteText]];
-    line.alignment = UIStackViewAlignmentTop;
-    line.spacing = 10;
+    UIStackView *line = noteLine(_noteIcon, _noteText);
 
     UIButtonConfiguration *config = [UIButtonConfiguration plainButtonConfiguration];
     config.contentInsets = NSDirectionalEdgeInsetsMake(4, 32, 4, 0);
@@ -360,6 +414,31 @@ static const CGFloat kLogoRadius = 22;
     }
     _report.hidden = !untested || !SGRepoURL;
     _note.hidden = _redesigned.selected && !untested;
+    // The ads card stands apart from the look's cards and its note, whichever of those comes last.
+    [_column setCustomSpacing:_note.hidden ? 32 : 12 afterView:_legacy];
+    // The tips of the picked look: Split Tabs is the redesign's bar's, and the lyrics preview the redesign's page's.
+    _splitTip.hidden = !_redesigned.selected;
+    _lyricsTip.text = [(_redesigned.selected ? @"A live preview of the look, the sources in order, and lyrics even where Spotify has none."
+                                             : @"The sources in order, and lyrics even where Spotify has none.")
+                       stringByAppendingString:@"\nMod Settings > Lyrics"];
+}
+
+// What people miss in Mod Settings, as pointers only: the tour has no way into a page but holding Home.
+- (UIView *)tipsView {
+    UIStackView *split = cardRow(@"rectangle.split.2x1", @"Split Tabs",
+                                 @"Any tab, Queue for one, on a bar of its own at the trailing end.\nMod Settings > Tab bar > Split Tabs", nil);
+    _splitTip = split;
+    UIStackView *lyrics = cardRow(@"quote.bubble", @"Lyrics", @"", nil);
+    // The row's text stack is its last arranged view, the gray line that stack's; updateNote writes the look's.
+    _lyricsTip = (UILabel *)((UIStackView *)lyrics.arrangedSubviews.lastObject).arrangedSubviews.lastObject;
+    BOOL liveActivity = NO;
+    if (@available(iOS 17.0, *)) liveActivity = YES;
+    UIStackView *airPods = cardRow(@"airpods.pro", liveActivity ? @"AirPods gestures, Live Activity" : @"AirPods gestures",
+                                   liveActivity ? @"Nod twice or shake your head to control the music, with a chime; and the track on the "
+                                                  @"lock screen. Either look.\nMod Settings > AirPods gestures, Live Activity"
+                                                : @"Nod twice or shake your head to control the music, with a chime. Either look."
+                                                  @"\nMod Settings > AirPods gestures", nil);
+    return tipsCard(@[split, lyrics, airPods]);
 }
 
 - (void)viewDidLoad {
@@ -390,14 +469,46 @@ static const CGFloat kLogoRadius = 22;
     _redesigned.selected = redesigned;
     _legacy.selected = !redesigned;
     _note = [self noteView];
-    [self updateNote];
 
-    UIStackView *column = [[UIStackView alloc] initWithArrangedSubviews:@[strip, heading, _redesigned, _legacy, _note]];
+    // Spotify without its ads: one switch for Hide ads, Hide upsells and Spoof Premium. Off leaves each as it
+    // is; the tour again shows on only while all three are. They are read at launch, so on ends in a restart.
+    _ads = [UISwitch new];
+    _ads.onTintColor = SGGreen();
+    _ads.on = adFree();
+    _adsCard = [[SGLookCard alloc] initWithSymbol:@"speaker.slash" title:@"No ads"
+                                         subtitle:@"No ads, no Premium upsells, and Premium spoofed." accessory:_ads];
+    [_adsCard addTarget:self action:@selector(toggleAds) forControlEvents:UIControlEventTouchUpInside];
+    _adsCard.isAccessibilityElement = YES;
+    _adsCard.accessibilityLabel = @"No ads";
+    _adsCard.accessibilityHint = @"No ads, no Premium upsells, and Premium spoofed.";
+    _adsCard.accessibilityValue = _ads.on ? @"On" : @"Off";
+    if (@available(iOS 17.0, *)) _adsCard.accessibilityTraits = UIAccessibilityTraitToggleButton;
+    else _adsCard.accessibilityTraits = UIAccessibilityTraitButton;
+    UILabel *adsText = [UILabel new];
+    adsText.text = @"Three switches of Premium, ads & privacy, applied at the restart; off leaves each as it is. Spoof Premium is "
+                   @"untested and can end in a forced logout; a Premium account gains nothing from it. Offline, audio quality and "
+                   @"sessions stay the server's.";
+    UIStackView *adsNote = noteLine(SGSymbolView(@"info.circle.fill", 15, UIImageSymbolWeightSemibold, 22), adsText);
+    adsNote.arrangedSubviews.firstObject.tintColor = SGGrey();
+    adsNote.layoutMargins = UIEdgeInsetsMake(4, 4, 0, 4);
+    adsNote.layoutMarginsRelativeArrangement = YES;
+
+    UILabel *tipsHeading = [UILabel new];
+    tipsHeading.text = @"Easy to miss";
+    tipsHeading.font = [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold];
+    tipsHeading.textColor = UIColor.whiteColor;
+    UIView *tips = [self tipsView];
+
+    _column = [[UIStackView alloc] initWithArrangedSubviews:@[strip, heading, _redesigned, _legacy, _note, _adsCard, adsNote, tipsHeading, tips]];
+    UIStackView *column = _column;
     column.axis = UILayoutConstraintAxisVertical;
     column.spacing = 12;
     [column setCustomSpacing:28 afterView:strip];
     [column setCustomSpacing:24 afterView:heading];
+    [column setCustomSpacing:32 afterView:_note];
+    [column setCustomSpacing:32 afterView:adsNote];
     column.translatesAutoresizingMaskIntoConstraints = NO;
+    [self updateNote];
 
     UIScrollView *scroll = [UIScrollView new];
     scroll.alwaysBounceVertical = YES;
@@ -444,7 +555,7 @@ static const CGFloat kLogoRadius = 22;
     [self refresh];
 
     // The tour opens on the logo alone; the page waits under it until the reeds land.
-    _page = @[heading, _redesigned, _legacy, _note, _primary, footer];
+    _page = @[heading, _redesigned, _legacy, _note, _adsCard, adsNote, tipsHeading, tips, _primary, footer];
     [_logo prepare];
     BOOL reduce = UIAccessibilityIsReduceMotionEnabled();
     for (UIView *view in _page) {
@@ -482,9 +593,16 @@ static const CGFloat kLogoRadius = 22;
     [self refresh];
 }
 
-// The look is picked at launch, so a choice that differs from the running one ends the tour in a restart.
+- (void)toggleAds {
+    [_ads setOn:!_ads.on animated:YES];
+    _adsCard.accessibilityValue = _ads.on ? @"On" : @"Off";
+    [self refresh];
+}
+
+// The look and the ad switches are read at launch, so a choice that differs from the running one ends the
+// tour in a restart.
 - (BOOL)needsRestart {
-    return _redesigned.selected != SGRedesignedUI();
+    return _redesigned.selected != SGRedesignedUI() || (_ads.on && !adFree());
 }
 
 - (void)refresh {
@@ -499,6 +617,7 @@ static const CGFloat kLogoRadius = 22;
 - (void)finish {
     SGSetEnabled(SGKeyOnboardingSeen, YES);
     SGSetRedesignedUI(_redesigned.selected);
+    if (_ads.on) for (NSString *key in adKeys()) SGSetEnabled(key, YES);
     if (self.needsRestart) {
         SGRestartSpotify();
         return;

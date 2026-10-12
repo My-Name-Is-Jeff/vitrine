@@ -20,7 +20,32 @@ static const unsigned long long kFirstRoom = 1000ull * 1000 * 1000;
 // footprint (resident 1.06 to 1.13 GB); 0.5 GB is that five times over, for its first compile, which was not measured
 // apart, and for Spotify's own memory to grow without iOS closing it for a copy Sing can do without.
 static const unsigned long long kNeuralRoom = 500ull * 1000 * 1000;
+// The light model's (separator-light.mlmodelc, 31 MB) rooms. Measured in harness/sing on an M4 with both models, the
+// copies' footprint barely differs (a warm CPU copy 0.13 GB light, 0.12 GB full) and resident memory follows the
+// model's size: two CPU copies warm 0.29 GB light against 0.72 GB full, a ratio of 0.40, which scales the first and
+// second copies' rooms: 0.4 GB and 0.65 GB. Its Neural Engine copy added 0.03-0.05 GB of footprint against the full
+// one's 0.08 GB; 0.25 GB is five times that, as the full one's is. An earlier export took 0.3 GB of footprint on an
+// iPhone 15 Pro with the CPU copy warm, so 0.4 GB still covers it, and leaves the Neural Engine copy its room after.
+static const unsigned long long kLightFirstRoom = 400ull * 1000 * 1000, kLightCopyRoom = 650ull * 1000 * 1000,
+                                kLightNeuralRoom = 250ull * 1000 * 1000;
 static const int kStillEvery = 30;
+
+// The rooms of the model at `url`: the light model's by its folder's name, which its dev copy shares.
+static BOOL isLight(NSURL *url) {
+    return [url.lastPathComponent isEqualToString:@"separator-light.mlmodelc"];
+}
+
+static unsigned long long firstRoom(NSURL *url) {
+    return isLight(url) ? kLightFirstRoom : kFirstRoom;
+}
+
+static unsigned long long copyRoom(NSURL *url) {
+    return isLight(url) ? kLightCopyRoom : kCopyRoom;
+}
+
+static unsigned long long neuralRoom(NSURL *url) {
+    return isLight(url) ? kLightNeuralRoom : kNeuralRoom;
+}
 
 // One load of one copy.
 @interface SGSingLoad : NSObject
@@ -152,9 +177,9 @@ static void startFast(void) {
         changed();
         return;
     }
-    if (!roomFor(kNeuralRoom)) {
+    if (!roomFor(neuralRoom(sg_url))) {
         sg_fastState = SGSingFastSkipped;
-        SGLog(@"sing: no Neural Engine copy: %@, it wants %.1f GB, so Sing stays on the CPU", memoryText(), kNeuralRoom / 1e9);
+        SGLog(@"sing: no Neural Engine copy: %@, it wants %.2f GB, so Sing stays on the CPU", memoryText(), neuralRoom(sg_url) / 1e9);
         changed();
         return;
     }
@@ -168,7 +193,7 @@ static void startFast(void) {
 }
 
 BOOL SGSingLoaderPrepareNeural(NSURL *url, void (^done)(BOOL loaded)) {
-    if (!url || sg_outstanding || sg_state != SGSingLoaderIdle || !sg_foreground || !roomFor(kNeuralRoom)) return NO;
+    if (!url || sg_outstanding || sg_state != SGSingLoaderIdle || !sg_foreground || !roomFor(neuralRoom(url))) return NO;
     __block SGSingLoad *load = startLoad(url, YES, SGSingLoaderNeuralDeadline, ^(MLModel *model, NSError *error) {
         BOOL taken = sg_fastLoad == load;
         sg_prepareLoad = nil;
@@ -185,11 +210,11 @@ BOOL SGSingLoaderPrepareNeural(NSURL *url, void (^done)(BOOL loaded)) {
 }
 
 static void startCPU(void) {
-    if (!roomFor(sg_outstanding ? kCopyRoom : kFirstRoom)) {
+    if (!roomFor(sg_outstanding ? copyRoom(sg_url) : firstRoom(sg_url))) {
         sg_state = SGSingLoaderFailed;
         sg_error = sg_outstanding
             ? [NSString stringWithFormat:@"A load abandoned earlier still holds memory, and %@. Close Spotify and open it again to load the voice model.", memoryText()]
-            : [NSString stringWithFormat:@"iOS leaves Spotify too little memory for the voice model: %@, and it needs %.1f GB. Closing Spotify and opening it again can free some.", memoryText(), kFirstRoom / 1e9];
+            : [NSString stringWithFormat:@"iOS leaves Spotify too little memory for the voice model: %@, and it needs %.1f GB. Closing Spotify and opening it again can free some.", memoryText(), firstRoom(sg_url) / 1e9];
         SGLog(@"sing: no new load: %@", sg_error);
         changed();
         return;
@@ -284,7 +309,7 @@ void SGSingLoaderSetForeground(BOOL foreground) {
 }
 
 BOOL SGSingLoaderHasRoom(void) {
-    return roomFor(kCopyRoom);
+    return roomFor(copyRoom(sg_url));
 }
 
 NSURL *SGSingLoaderURL(void) {

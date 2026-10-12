@@ -1,7 +1,7 @@
 // The Sing page (Sing on Mod Settings' main page, and Lyrics > Karaoke), under either look: the card at its top
 // (SGSingCard.m: the song, what Sing is doing, the vocals and the rest traced live, play and pause, the vocals'
 // level and its three stops), Sing's switch, which turns the mic on and off at once, Ignore heat warnings, the voice
-// model and its removal, spatial voice's page (its preview, SGSpatialPreview.m, and its switch), and Runs on under
+// model (Best quality or Light, the chosen one's download and removal, and the other's removal), spatial voice's page (its preview, SGSpatialPreview.m, and its switch), and Runs on under
 // Advanced. While the page is on screen with Spotify in front, the card's reads of its lines keep Sing separating
 // the playing song even at As sung, where it otherwise rests (SGSingReadLevels), so what the card shows and what
 // its slider sets are heard at once; popped, covered or in the background, the page no longer counts.
@@ -84,7 +84,11 @@ static void modelTapped(UITableViewController *page) {
                                  SGSingModelError() ? [NSString stringWithFormat:@"The last try failed: %@\n\n", SGSingModelError()] : @"",
                                  update ? @"The new voice model runs on the Neural Engine, faster and cooler, and Karaoke keeps the one it has until it is in. " : @"",
                                  SGSingModelSizeText()];
-            if (untestedChip()) message = [message stringByAppendingString:@"\n\nKaraoke is tested on the iPhone 15 Pro. On iPhones older than the iPhone 12 it may not keep up."];
+            if (untestedChip()) {
+                message = [message stringByAppendingString:SGSingChosenModel() == SGSingModelLight
+                    ? @"\n\nKaraoke is tested on the iPhone 15 Pro. On iPhones older than the iPhone 12 it may not keep up, even with the light model."
+                    : @"\n\nKaraoke is tested on the iPhone 15 Pro. On iPhones older than the iPhone 12 it may not keep up; the light model has a better chance."];
+            }
             NSString *title = SGSingModelPausedBytes() ? (update ? @"Carry on with the update?" : @"Carry on with the download?")
                                                        : (update ? @"Download the update?" : @"Download the voice model?");
             ask(title, message, @"Download", NO, ^{ SGSingDownloadModel(); });
@@ -149,6 +153,22 @@ UIViewController *SGSpatialVoiceSettingsPage(void) {
                        @"you; stay turned, and it comes round in front again. It follows your head through headphones that "
                        @"track it: AirPods Pro, AirPods 3 or later, AirPods Max, and asks for Motion & Fitness the first time. "
                        @"While iOS's own Spatialize Stereo is on, which already holds the whole song in place, the voice is left to it."),
+        SGNotedSection(@"Sound", @[
+            SGSliderRow(@"Distance", nil, 1, 6.5, 0.5, ^double { return SGSingSpatialDistance(); }, ^(double value) {
+                SGSetSingSpatialSound(value, SGSingSpatialRoom(), SGSingSpatialFront(), SGSingSpatialWidth());
+            }, ^NSString *(double value) { return [NSString stringWithFormat:@"%.1f m", value]; }),
+            SGSliderRow(@"Room", nil, 0, 100, 5, ^double { return SGSingSpatialRoom(); }, ^(double value) {
+                SGSetSingSpatialSound(SGSingSpatialDistance(), value, SGSingSpatialFront(), SGSingSpatialWidth());
+            }, ^NSString *(double value) { return [NSString stringWithFormat:@"%.0f%%", value]; }),
+            SGSliderRow(@"Back in front", nil, 5, 60, 1, ^double { return SGSingSpatialFront(); }, ^(double value) {
+                SGSetSingSpatialSound(SGSingSpatialDistance(), SGSingSpatialRoom(), value, SGSingSpatialWidth());
+            }, ^NSString *(double value) { return [NSString stringWithFormat:@"After %.0f s", value]; }),
+            SGSliderRow(@"Instruments width", nil, 0, 200, 5, ^double { return SGSingSpatialWidth(); }, ^(double value) {
+                SGSetSingSpatialSound(SGSingSpatialDistance(), SGSingSpatialRoom(), SGSingSpatialFront(), value);
+            }, ^NSString *(double value) { return [NSString stringWithFormat:@"%.0f%%", value]; }),
+        ], @"How far ahead the voice sings, and how much of the room you hear around it: farther, the voice is quieter and "
+           @"more of it is the room. Back in front is how long a head that stays turned takes to bring the voice ahead again. "
+           @"Instruments width spreads the rest of the song wider than the recording, or narrows it below 100%."),
     ] footer:nil];
     page = made;
     return made;
@@ -190,6 +210,8 @@ UIViewController *SGSingSettingsPage(void) {
     button.changed = ^(BOOL on) { [NSNotificationCenter.defaultCenter postNotificationName:SGSingButtonDidChangeNotification object:nil]; };
     button.visible = ^BOOL { return SGRedesignedUIStored(); };
     SGModRow *heat = SGOptionRow(@"Ignore heat warnings", @"Keeps Karaoke going on a hot iPhone, which then gets hotter", SGKeySingIgnoreHeat);
+    SGModRow *memory = SGOptionRow(@"Ignore memory warnings", @"Keeps Karaoke going when iOS is low on memory, which may then close Spotify",
+                                   SGKeySingIgnoreMemory);
     heat.changed = ^(BOOL on) { SGSetSingIgnoresHeat(on); };
     __block __weak SGModPage *page;
     SGModRow *model = SGStatActionRow(@"Voice model", nil, ^NSString *{ return modelValue(); }, ^{ modelTapped(page); });
@@ -206,6 +228,36 @@ UIViewController *SGSingSettingsPage(void) {
     });
     remove.color = SGRed();
     remove.visible = ^BOOL { return SGSingModelCurrentState() == SGSingModelReady || SGSingModelPausedBytes() > 0; };
+    // The two models, picked on the page: the rows below follow the one with the checkmark.
+    SGModRow *(^choice)(NSString *, NSString *, SGSingModelKind) = ^SGModRow *(NSString *title, NSString *format, SGSingModelKind kind) {
+        SGModRow *row = SGActionRow(title, [NSString stringWithFormat:format, SGSingModelSizeTextOf(kind)], ^{
+            if (SGSingChosenModel() == kind) return;
+            void (^choose)(void) = ^{
+                SGSetSingChosenModel(kind);
+                [page.tableView reloadData];
+                [page refreshVisibility];
+            };
+            BOOL downloading = SGSingModelCurrentState() == SGSingModelDownloading || SGSingModelUpdateDownloading();
+            if (!downloading) choose();
+            else ask(@"Stop the download?", @"The voice model coming in stops, and what has come in is kept for when you choose it again.", @"Switch", NO, choose);
+        });
+        row.checked = ^BOOL { return SGSingChosenModel() == kind; };
+        return row;
+    };
+    SGModRow *full = choice(@"Best quality", @"The full model, %@: the cleanest result, for recent iPhones", SGSingModelFull);
+    SGModRow *light = choice(@"Light", @"A small model, %@, for older iPhones: more of the voice is left in, and the music dips under it",
+                             SGSingModelLight);
+    SGModRow *other = SGStatActionRow(@"Remove the other model", nil, ^NSString *{ return bytes(SGSingOtherModelBytes()); }, ^{
+        NSString *name = SGSingChosenModel() == SGSingModelFull ? @"Light" : @"Best quality";
+        ask(@"Remove the other model?", [NSString stringWithFormat:@"%@ is not in use. Removing it frees %@, and choosing it again downloads it again.",
+                                         name, bytes(SGSingOtherModelBytes())],
+            @"Remove", YES, ^{
+                SGSingDeleteOtherModel();
+                [page refreshVisibility];
+            });
+    });
+    other.color = SGRed();
+    other.visible = ^BOOL { return SGSingOtherModelBytes() > 0; };
     SGModRow *spatial = SGPageRow(@"Spatial voice", ^UIViewController *{ return SGSpatialVoiceSettingsPage(); });
     spatial.subtitle = @"With AirPods, the voice stays in front of you as you turn your head";
     spatial.value = ^NSString *{ return SGSingSpatial() ? @"On" : @"Off"; };
@@ -222,7 +274,10 @@ UIViewController *SGSingSettingsPage(void) {
     SGModRow *prepare = SGSwitchRow(@"Prepare after updates",
                                     @"Readies the Neural Engine in the background after Vitrine or iOS updates, so Karaoke starts at full speed", SGKeySingPrepareAhead);
     SGSingPage *made = [[SGSingPage alloc] initWithTitle:@"Karaoke" intro:nil sections:@[
-        SGSection(nil, @[sing, button, heat, model, remove]),
+        SGSection(nil, @[sing, button, heat, memory]),
+        SGNotedSection(@"Voice model", @[full, light, model, remove, other],
+                       @"Each model is downloaded and kept on its own, and Karaoke needs only the chosen one. A switch takes effect "
+                       @"without restarting Spotify: the model loads in a few seconds, and the song plays as it is until it is in."),
         SGSection(nil, @[spatial]),
         SGNotedSection(@"Advanced", @[units, prepare],
                        @"Karaoke turns a song's vocals down to sing over, or the rest down to hear the vocals alone, with a voice model that "

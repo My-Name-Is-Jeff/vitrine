@@ -82,8 +82,8 @@ BOOL SGMusicHapticsListedByInstall(void);
 void SGMigrateMusicHaptics(void);
 // Posted on the main thread when either switch flips; both engines take it up at once.
 extern NSNotificationName const SGMusicHapticsSwitchesChangedNotification;
-// From SystemMusicHaptics.x: YES while it finds out whether iOS has a haptic track for the song and while iOS
-// has one named, so the mod's own stays quiet and the two never play at once. Main thread.
+// From SystemMusicHaptics.x: YES while iOS reports the named song playing, and for a short while as it asks
+// and names one, so the mod's own stays quiet and the two never play at once. Main thread.
 void SGMusicHapticsSetSystemCovers(BOOL covers);
 // From its strength and its choice of what to follow: reads them again, for the next tap.
 void SGMusicHapticsSettingsChanged(void);

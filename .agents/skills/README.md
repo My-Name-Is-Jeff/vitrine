@@ -14,6 +14,7 @@ reads. `.claude/skills/` links each one back here, so Claude Code and the agents
     animation-vocabulary/  the name of a motion effect you can describe but not name
     phone-check/           install a build on the phone, drive it, take screenshots, read the tree and log
     clean-room-describer/  learn what upstream changed or what its users report, as behavior only
+    spotify-version-check/ check the tweak against a new Spotify version, and read a Spotify method from the binary
 
 The motion skills write their examples in CSS and JavaScript. The rules carry over to UIKit as they
 are: a spring is `-[UISpringTimingParameters initWithDampingRatio:initialVelocity:]` on a

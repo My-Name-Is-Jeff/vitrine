@@ -289,7 +289,8 @@ static void sample(CMDeviceMotion *motion) {
         if (sg_recording || sg_held || !SGFlag(SGKeyHeadGestures, NO)) return;
         SGHeadAction action = SGHeadGestureAction(gesture);
         if (action == SGHeadActionNothing) return;
-        SGHeadGesturesCue(perform(action) ? SGHeadCueWorked : SGHeadCueFailed);
+        BOOL worked = perform(action);
+        if (SGFlag(SGKeyHeadChime, YES)) SGHeadGesturesCue(worked ? SGHeadCueWorked : SGHeadCueFailed);
     });
 }
 

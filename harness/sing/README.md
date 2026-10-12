@@ -250,11 +250,28 @@ cleanup), and the next download carries the weights on from there through the ch
 else left in `Sing/`. `CFFIXED_USER_HOME` keeps the 210 MB out of the Mac's own Application Support. `update` starts
 from the old model (`separator.mlmodelc`, stood in by sparse files of its sizes) instead: kept at launch and the model
 (Ready, the download its update) while the update downloads, deleted as soon as it is in, and deleted by a launch that
-finds both. `dev` checks the FLEX build's dev folder.
+finds both. `dev` checks the FLEX build's dev folder. `light` chooses the light model with the full one and the old
+one stood in: it reads missing (the full one does not stand in for it), downloads from `separator-light.mlmodelc`, is
+left alone by the launch's cleanup, switches to the full model and back with no download, and the other model's
+removal and its own each leave the other alone. Before that it sets the key directly, as a settings import would
+(Light must read missing, not its folder unchecked), and stops Light's download mid-weights by switching to the full
+model and removes Light at once (the stop's late resume data must not bring a file of it back); built on the code
+before these fixes (a663fcf8), both fail. Every mode starts on the full model: the defaults outlive the
+`CFFIXED_USER_HOME` folder.
 
     download/build.sh && CFFIXED_USER_HOME="$(mktemp -d)" build/download 0.2
     download/build.sh && CFFIXED_USER_HOME="$(mktemp -d)" build/download update
     download/build.sh && CFFIXED_USER_HOME="$(mktemp -d)" build/download dev
+    download/build.sh && CFFIXED_USER_HOME="$(mktemp -d)" build/download light
+
+2026-10-12, with the choice of model: every mode passes. `light`: Light's size reads 30.8 MB, the full model's 210.4
+MB; the five files come in from Hugging Face and are checked against their pins.
+
+The light model is built by `export_light.py` (`uv run harness/sing/export_light.py <out dir> [audio]`): HiDolen's
+Mini-BS-RoFormer-18M at a pinned revision, its vocals' mask alone, every RMSNorm made safe for float16, exported for
+iOS 18 and compiled. 2026-10-11: the rewrite matches the published model at 135 dB in float32, and the float16 Core ML
+model on the CPU matches it at 52.7 dB. `build/sing <separator-light.mlmodelc> <voice> <out dir> cpu` passes every
+check on it: 330-365 ms a window on an M4's CPU, the vocals it finds at 24.3 dB against the voice.
 
 2026-10-06, one model, the old one kept until it is in: every mode passes. The size row reads 210.4 MB
 (NSByteCountFormatter's decimal megabytes; 201 MiB), the old model 489.7 MB. Default: the old download's leftovers go

@@ -137,7 +137,7 @@ static NSString *identifierIn(UIView *root) {
 // The row's glyph as a template, for the menu to draw in its own color: an image view's picture, else the
 // small view at the row's leading edge drawn into one (Encore draws its icons into a view of its own,
 // Redesigned/Playlist/PlaylistMenu.x).
-static UIImage *glyphIn(UIView *root) {
+static UIImage *glyphIn(UIView *root, NSString *title) {
     __block UIImageView *image = nil;
     __block UIView *drawn = nil;
     __block CGFloat drawnX = CGFLOAT_MAX;
@@ -152,6 +152,14 @@ static UIImage *glyphIn(UIView *root) {
             drawnX = x;
         }
     });
+    // A cover (Encore's media image view, as Liked Songs' own) would draw as a solid square: a symbol in the
+    // menu's color stands in for it.
+    if (image && [image.superview.accessibilityIdentifier isEqualToString:@"Encore.ImageView"]) {
+        NSString *name = @"music.note.list";
+        if ([title containsString:@"Liked Songs"]) name = [title hasPrefix:@"Remove"] ? @"heart.fill" : @"heart";
+        UIImageSymbolConfiguration *size = [UIImageSymbolConfiguration configurationWithPointSize:17 weight:UIImageSymbolWeightRegular];
+        return [UIImage systemImageNamed:name withConfiguration:size];
+    }
     if (image) return [image.image imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
     if (!drawn || drawnX > root.bounds.size.width / 3) return nil;
     UIImage *picture = [[[UIGraphicsImageRenderer alloc] initWithSize:drawn.bounds.size] imageWithActions:^(UIGraphicsImageRendererContext *context) {
@@ -860,7 +868,7 @@ static NSString *storedKey(NSString *kind) {
     row.path = path;
     row.title = labels[0].text;
     if (labels.count > 1) row.subtitle = labels[1].text;
-    row.image = glyphIn(cell);
+    row.image = glyphIn(cell, row.title);
     row.identifier = identifierIn(cell);
     row.enabled = rowEnabled(table, path, cell, labels[0]);
     return row;
@@ -872,7 +880,7 @@ static NSString *storedKey(NSString *kind) {
         SGRSheetRow *row = [SGRSheetRow new];
         row.control = control;
         row.title = control.accessibilityLabel;
-        row.image = glyphIn(control);
+        row.image = glyphIn(control, row.title);
         row.enabled = YES;
         [rows addObject:row];
     }

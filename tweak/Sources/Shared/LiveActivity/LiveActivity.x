@@ -462,14 +462,21 @@ void SGSetLiveActivityEnabled(BOOL on) {
         static dispatch_once_t observing;
         dispatch_once(&observing, ^{
             NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
-            [center addObserverForName:@"SGLiveActivityPlay" object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
-                if ([note.object isKindOfClass:NSString.class]) playQueued(note.object);
+            // The card's intents post from a background thread. With a queue, the post would wait for main, which
+            // waits on Spotify's core at a launch in the background: no queue, and on to main without waiting.
+            [center addObserverForName:@"SGLiveActivityPlay" object:nil queue:nil usingBlock:^(NSNotification *note) {
+                id uri = note.object;
+                if (![uri isKindOfClass:NSString.class]) return;
+                dispatch_async(dispatch_get_main_queue(), ^{ playQueued(uri); });
             }];
             // The new state goes out at once rather than on the next tick, the card being slow enough to redraw.
-            [center addObserverForName:@"SGLiveActivityAction" object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
-                if (![note.object isKindOfClass:NSString.class]) return;
-                runAction(note.object);
-                if (sg_timer) tick();
+            [center addObserverForName:@"SGLiveActivityAction" object:nil queue:nil usingBlock:^(NSNotification *note) {
+                id action = note.object;
+                if (![action isKindOfClass:NSString.class]) return;
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    runAction(action);
+                    if (sg_timer) tick();
+                });
             }];
             // Swiped away while it plays, Spotify is told it is ending, and the card goes with it rather than
             // staying up frozen over other apps' activities. No queue, so the block runs before the notification

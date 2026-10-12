@@ -117,6 +117,8 @@ static NSString *wordIn(UIView *button) {
         _title.text = word;
         self.accessibilityLabel = word;
         [self setNeedsLayout];
+        // The header sizes the capsule to its word ("Play", "Shuffle Play" with shuffle on).
+        [self.superview setNeedsLayout];
     }
     if (![_glyph.tintColor isEqual:content]) _glyph.tintColor = content;
 

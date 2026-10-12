@@ -50,8 +50,8 @@
 // comes back; Spotify decides whether it resumes.
 //
 // Spatial voice listens to Shared/HeadGestures' motion (the app's one CMHeadphoneMotionManager) while Sing is
-// on and Spotify plays, and hands the engine the head's yaw off a front that follows where the head points over
-// 20 s, so the voice drifts back ahead of a head that stays turned and the attitude's own drift never carries
+// on and Spotify plays, and hands the engine the head's yaw off a front that follows where the head points (Back in front,
+// 5 s unless set), so the voice drifts back ahead of a head that stays turned and the attitude's own drift never carries
 // it off. With no motion (no such headphones, Motion & Fitness not allowed) the voice stays ahead. iOS's own
 // spatial audio on the route already holds the whole song in place, so spatial voice stands down for it.
 //
@@ -74,6 +74,44 @@
 #import "SGSingEngine.h"
 #import "SGSingLoader.h"
 #import "SGSingSeparator.h"
+
+#if SG_DRIVER
+// Test builds only: a stand-in for the voice model that hands every window back as all vocals, as harness/sing's does,
+// with no model and no heat. The engine reads ahead and builds its lead as it would, and Spatial voice places the
+// whole song, so the clock, the lead and the placing can be checked on a phone too hot for the model.
+// pref --key spotifyglass.sing.devStandIn --value 1, then a relaunch.
+@interface SGSingWholeSeparator : SGSingSeparator
+@end
+
+@implementation SGSingWholeSeparator
+- (BOOL)separateLeft:(const float *)left right:(const float *)right vocalsLeft:(float *)vocalsLeft vocalsRight:(float *)vocalsRight error:(NSError **)error {
+    memcpy(vocalsLeft, left, kSGSingWindowFrames * sizeof(float));
+    memcpy(vocalsRight, right, kSGSingWindowFrames * sizeof(float));
+    return YES;
+}
+@end
+
+static SGSingSeparator *standIn(void) {
+    static SGSingSeparator *separator;
+    static BOOL on;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        on = SGFlag(@"spotifyglass.sing.devStandIn", NO);
+        if (on) separator = [[SGSingWholeSeparator alloc] initWithModel:nil];
+        if (on) SGLog(@"sing: STAND-IN: every window is all vocals, no model and no heat hold");
+    });
+    return separator;
+}
+#else
+static SGSingSeparator *standIn(void) {
+    return nil;
+}
+#endif
+
+// The separator the engine runs: the loader's, or a test build's stand-in.
+static SGSingSeparator *separatorNow(void) {
+    return standIn() ?: SGSingLoaderSeparator();
+}
 
 // The vocals' level until one is chosen: down to a guide.
 static const float kDefaultLevel = 0.15f;
@@ -107,8 +145,16 @@ static OSStatus pullChain(void *context, UInt32 frames, float *left, float *righ
     return chain->pull(chain->context, frames, &buffers.list, sounding);
 }
 
+#if SG_DRIVER
+static atomic_bool sg_anchorStageActive;
+BOOL SGSingAnchorStageActive(void) { return atomic_load(&sg_anchorStageActive); }
+#endif
+
 static OSStatus stage(UInt32 frames, AudioBufferList *data, SGPlayerPull pull, void *context) {
     SGSingEngine *engine = atomic_load_explicit(&sg_engine, memory_order_acquire);
+    #if SG_DRIVER
+    atomic_store(&sg_anchorStageActive, false);
+    #endif
     if (!engine) return pull(context, frames, data, NULL);
     atomic_store_explicit(&sg_staged, true, memory_order_relaxed);
     atomic_store_explicit(&sg_rendered, true, memory_order_relaxed);
@@ -120,6 +166,9 @@ static OSStatus stage(UInt32 frames, AudioBufferList *data, SGPlayerPull pull, v
         atomic_store_explicit(&sg_formatRefused, true, memory_order_relaxed);
         return pull(context, frames, data, NULL);
     }
+    #if SG_DRIVER
+    atomic_store(&sg_anchorStageActive, true);
+    #endif
     ChainPull chain = {pull, context};
     return SGSingEngineRender(engine, frames, data->mBuffers[0].mData, data->mBuffers[1].mData, pullChain, &chain);
 }
@@ -276,7 +325,7 @@ static void holdBudget(SGSingEngine *engine) {
 // alone from then on).
 static void loaderChanged(void) {
     SGSingEngine *engine = atomic_load(&sg_engine);
-    if (engine) SGSingEngineSetSeparator(engine, SGSingLoaderSeparator());
+    if (engine) SGSingEngineSetSeparator(engine, separatorNow());
     switch (SGSingLoaderFastState()) {
         case SGSingFastReady: [NSUserDefaults.standardUserDefaults setObject:neuralCompiled() forKey:kNeuralReadyOn]; break;
         case SGSingFastFailed: neuralFailed(@"did not load"); break;
@@ -322,6 +371,8 @@ static void prepareAheadSoon(void) {
 static BOOL sg_spatialListening;
 // On HeadGestures' motion queue only.
 static SGSpatialFront sg_front;
+// Back in front, read on the motion queue: stored on the main thread.
+static _Atomic double sg_frontSeconds = 5;
 
 static void headMoved(CMDeviceMotion *motion) {
     SGSingEngine *engine = atomic_load_explicit(&sg_engine, memory_order_acquire);
@@ -330,7 +381,7 @@ static void headMoved(CMDeviceMotion *motion) {
         if (engine) SGSingEngineSetVoiceAngle(engine, 0);
         return;
     }
-    double angle = SGSpatialVoiceAngle(&sg_front, motion.attitude.yaw, motion.timestamp);
+    double angle = SGSpatialVoiceAngle(&sg_front, motion.attitude.yaw, motion.timestamp, sg_frontSeconds);
     if (engine) SGSingEngineSetVoiceAngle(engine, (float)angle);
 }
 
@@ -362,10 +413,48 @@ BOOL SGSingSpatial(void) {
     return SGHidden(SGKeySingSpatial);
 }
 
+static double storedNumber(NSString *key, double fallback, double low, double high) {
+    id value = [NSUserDefaults.standardUserDefaults objectForKey:key];
+    double number = [value isKindOfClass:NSNumber.class] ? [value doubleValue] : fallback;
+    return isfinite(number) ? fmin(high, fmax(low, number)) : fallback;
+}
+
+double SGSingSpatialDistance(void) {
+    return storedNumber(SGKeySingSpatialDistance, 1.5, 1, 6.5);
+}
+
+double SGSingSpatialRoom(void) {
+    return storedNumber(SGKeySingSpatialRoom, 25, 0, 100);
+}
+
+double SGSingSpatialFront(void) {
+    return storedNumber(SGKeySingSpatialFront, 5, 5, 60);
+}
+
+double SGSingSpatialWidth(void) {
+    return storedNumber(SGKeySingSpatialWidth, 110, 0, 200);
+}
+
+// The engine's Distance and Room, on while Spatial voice is.
+static void applySpatialSound(SGSingEngine *engine) {
+    if (engine) SGSingEngineSetSpatial(engine, SGSingSpatial(), SGSingSpatialDistance(), SGSingSpatialRoom() / 100, SGSingSpatialWidth() / 100);
+}
+
+void SGSetSingSpatialSound(double meters, double roomPercent, double frontSeconds, double widthPercent) {
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    [defaults setDouble:meters forKey:SGKeySingSpatialDistance];
+    [defaults setDouble:roomPercent forKey:SGKeySingSpatialRoom];
+    [defaults setDouble:frontSeconds forKey:SGKeySingSpatialFront];
+    [defaults setDouble:widthPercent forKey:SGKeySingSpatialWidth];
+    sg_frontSeconds = SGSingSpatialFront();
+    applySpatialSound(atomic_load(&sg_engine));
+}
+
 static void updateRest(void);
 
 void SGSetSingSpatial(BOOL on) {
     SGSetEnabled(SGKeySingSpatial, on);
+    applySpatialSound(atomic_load(&sg_engine));
     // Asked while the Sing page is in front, rather than with the next song.
     if (on) SGHeadMotionAskPermission();
     updateSpatial();
@@ -385,7 +474,7 @@ static CFAbsoluteTime sg_linesReadAt;
 static BOOL sg_resting;
 
 static BOOL restful(void) {
-    BOOL held = sg_hot && !SGHidden(SGKeySingIgnoreHeat);
+    BOOL held = sg_hot && !SGHidden(SGKeySingIgnoreHeat) && !standIn();
     return SGSingOn() && !SGSingMissing() && !held && !sg_stopped && !sg_refused && fabsf(SGSingLevel() - 1) <= 0.001f && !SGSingSpatial()
            && CFAbsoluteTimeGetCurrent() - sg_linesReadAt > kLinesGoneAfter;
 }
@@ -400,9 +489,10 @@ static void apply(void) {
             return;
         }
         SGSingEngineSetLevel(engine, SGSingLevel());
+        applySpatialSound(engine);
         atomic_store_explicit(&sg_engine, engine, memory_order_release);
     }
-    BOOL held = sg_hot && !SGHidden(SGKeySingIgnoreHeat);
+    BOOL held = sg_hot && !SGHidden(SGKeySingIgnoreHeat) && !standIn();
     // Off, the model is kept a minute for a quick off and on. Held for the heat, it is let go at once, which frees
     // its memory and stops its work; it loads again once the iPhone cools.
     // ponytail: a phone flickering about Serious loads and drops the model each time; add a cooling-off delay if logs show it.
@@ -420,9 +510,9 @@ static void apply(void) {
     else if (!on) SGSingLoaderRelease();
     else if (held) SGSingLoaderPurge(@"the iPhone is too hot (thermal state serious or above)");
     else if (rest) { if (toRest) SGSingLoaderRelease(); }
-    else if (sg_active) wantModel();
+    else if (sg_active && !standIn()) wantModel();
     if (!engine) return;
-    SGSingEngineSetSeparator(engine, SGSingLoaderSeparator());
+    SGSingEngineSetSeparator(engine, separatorNow());
     holdBudget(engine);
     SGSingEngineSetPaused(engine, held || rest || sg_interrupted);
     SGSingEngineSetOn(engine, on);
@@ -530,8 +620,8 @@ SGSingState SGSingCurrentState(void) {
     // Resting, ready for the level to move, whether the model is still kept or not.
     if (sg_resting) return SGSingStateWaiting;
     // Interrupted: held, nothing plays, nothing is behind.
-    if (sg_interrupted && SGSingLoaderSeparator()) return SGSingStateWaiting;
-    if (!SGSingLoaderSeparator()) return SGSingStatePreparing;
+    if (sg_interrupted && separatorNow()) return SGSingStateWaiting;
+    if (!separatorNow()) return SGSingStatePreparing;
     // Spotify plays and Speed and pitch never took its output over: the stage, and so Sing, never runs.
     if (!atomic_load(&sg_staged) && atomic_load(&sg_outputStarted) && !SGPlayerSpeedAllowed()) return SGSingStateFailed;
     if (!sg_outputReachable || (atomic_load(&sg_staged) && atomic_load(&sg_formatRefused) && !atomic_load(&sg_formatTaken))) return SGSingStateFailed;
@@ -687,6 +777,8 @@ static double rawPosition(SPTPlayerState *state) {
     sg_rawPosition = was;
     return position;
 }
+
+double SGSingSourcePosition(SPTPlayerState *state) { return rawPosition(state); }
 
 double SGSingHeldLead(void) {
     return SGSingEngineLead(atomic_load_explicit(&sg_engine, memory_order_acquire));
@@ -1166,6 +1258,8 @@ static void readHeat(void) {
     sg_outputReachable = SGPlayerWatchMusicOutput(musicOutputChanged);
     if (!sg_outputReachable) SGLog(@"sing: Spotify's output cannot be watched, Sing cannot read its format");
     SGPlayerSetStage(stage);
+    SGPlayerSetLeadReaders(SGSingHeldLead, SGSingLeadOf);
+    sg_frontSeconds = SGSingSpatialFront();
     %init;
     SGRequireClasses(@[@"SPTPlayerState", @"SPTEsperantoPlayer"]);
     // Runs on is Automatic or CPU only: GPU, Neural Engine and GPU and Neural Engine (2-4) are Automatic now, as is every
@@ -1223,6 +1317,10 @@ static void readHeat(void) {
         }];
         // Low on memory, the model goes at once, before iOS closes Spotify for it.
         [center addObserverForName:UIApplicationDidReceiveMemoryWarningNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
+            if (SGHidden(SGKeySingIgnoreMemory)) {
+                SGLog(@"sing: iOS warned that memory is low; the model is kept (Ignore memory warnings)");
+                return;
+            }
             SGSingLoaderPurge(@"iOS warned that memory is low");
             // Over a stop for falling behind, which would load the model again with the next track whatever the memory.
             if (!SGSingOn() || (sg_stopped && sg_stopKind != SGSingStopBehind)) return;

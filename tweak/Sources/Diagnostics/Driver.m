@@ -801,11 +801,43 @@ static NSDictionary<NSString *, SGCommand> *commands(void) {
                 });
                 return touchAt(where, 0.08);
             },
+            // `seek 42` goes to 42 s; `seek --by -15` moves by 15 s back, the way Spotify's relative seeks do.
             @"seek" : ^NSDictionary *(NSDictionary *p) {
                 double seconds = [(p[@"seconds"] ?: p[@"arg"]) doubleValue];
+                NSString *by = p[@"by"];
                 return onMain(^id {
-                    [requirePlayer() seekTo:seconds];
-                    return @{@"seconds" : @(seconds)};
+                    id player = requirePlayer();
+                    SEL relative = NSSelectorFromString(@"seekTo:relative:");
+                    if (by && ![player respondsToSelector:relative]) fail(@"this player has no relative seek");
+                    // Spotify's `relative`, as measured on 9.1.90: 0 from the start, 1 from the end, 2 from where it plays.
+                    if (by) ((id (*)(id, SEL, double, long long))objc_msgSend)(player, relative, by.doubleValue, 2);
+                    else [player seekTo:seconds];
+                    return by ? @{@"by" : @(by.doubleValue)} : @{@"seconds" : @(seconds)};
+                });
+            },
+            // Playback speed, 1 when normal: speed 1.5.
+            @"speed" : ^NSDictionary *(NSDictionary *p) {
+                double speed = [(p[@"value"] ?: p[@"arg"]) doubleValue];
+                if (speed <= 0) fail(@"speed takes a rate, 1 when normal");
+                return onMain(^id {
+                    SGSetPlayerSpeed(speed);
+                    return @{@"speed" : @(SGPlayerSpeed())};
+                });
+            },
+            // A local lossless file in place of Spotify's sound for the same recording: lossless anchor --path P,
+            // lossless check, lossless stop. Runs off main: matching takes a few seconds.
+            @"lossless" : ^NSDictionary *(NSDictionary *p) {
+                NSString *error;
+                NSDictionary *result = SGLosslessProbe(p[@"arg"] ?: @"check", p, &error);
+                if (!result) fail(@"%@", error);
+                return result;
+            },
+            // Karaoke on or off: sing 1, sing 0.
+            @"sing" : ^NSDictionary *(NSDictionary *p) {
+                BOOL on = [(p[@"value"] ?: p[@"arg"]) boolValue];
+                return onMain(^id {
+                    SGSetSingOn(on);
+                    return @{@"sing" : @(on)};
                 });
             },
             @"play" : ^NSDictionary *(NSDictionary *p) {

@@ -417,7 +417,7 @@ static BOOL headOffset(double *pitch, double *yaw) {
 #pragma mark - what it shows
 
 - (void)showGesture {
-    _heading.text = self.nod ? @"Double nod" : @"Shake";
+    _heading.text = self.nod ? @"Nod twice" : @"Shake your head";
     _dial.accessibilityLabel = self.nod ? @"Double nods" : @"Shakes";
     [self showCount];
 }

@@ -5,6 +5,8 @@ void SGForEachView(UIView *view, void (^fn)(UIView *));
 CGRect SGFrameIn(UIView *view, UIView *target);
 // Whether `view` sits under `root`, stopping at a visual effect view on the way up.
 BOOL SGIsInside(UIView *view, UIView *root);
+// Whether no view from `view` up to (not including) `root` is hidden.
+BOOL SGShownUnder(UIView *view, UIView *root);
 // The first wide stack view under `host` with at least two arranged children: a player row, or
 // the row of items in the tab bar.
 UIStackView *SGRowIn(UIView *host);

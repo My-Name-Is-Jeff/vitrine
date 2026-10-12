@@ -13,7 +13,10 @@
     scripts/phone.py player.open | player.close | player.more
     scripts/phone.py menu.pick "Sleep timer"
     scripts/phone.py play | pause | next
-    scripts/phone.py seek 42
+    scripts/phone.py seek 42 | seek --by -15            # to a position, or by an amount as Spotify's relative seeks do
+    scripts/phone.py speed 1.5                         # playback speed, 1 when normal
+    scripts/phone.py sing 1                            # Karaoke on (0 off)
+    scripts/phone.py lossless anchor --path P | lossless check | lossless stop   # a local FLAC in place of Spotify's sound
     scripts/phone.py tab 0 | tab Search
     scripts/phone.py settings.open
     scripts/phone.py settings.page "Appearance"
@@ -67,7 +70,7 @@ def token():
         sys.exit(f"no PHONE_TOKEN and no token in {LOG}: run once over the cable, or read it from the app's log")
     return found[-1]
 # The argument a command takes without a flag.
-POSITIONAL = {"type": "text", "menu.pick": "title", "seek": "seconds", "tab": "arg", "settings.page": "title"}
+POSITIONAL = {"type": "text", "menu.pick": "title", "seek": "seconds", "speed": "arg", "sing": "arg", "lossless": "arg", "tab": "arg", "settings.page": "title"}
 
 
 def port_open():

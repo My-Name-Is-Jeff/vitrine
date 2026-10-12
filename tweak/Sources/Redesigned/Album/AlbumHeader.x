@@ -128,6 +128,7 @@ static void watch(UIView *view, const void *key, void (^laidOut)(UIView *view)) 
 @implementation SGRAlbumHero {
     CAGradientLayer *_scrim, *_dissolve;
     __weak UIImageView *_cover;
+    UIView *_extension;   // iOS 26's UIBackgroundExtensionView around the picture, nil before it
     NSString *_motionAlbum;
     AVPlayerLayer *_motion;
     AVQueuePlayer *_player;
@@ -145,8 +146,19 @@ static void *kReadyContext = &kReadyContext;
     _picture = [[UIImageView alloc] initWithFrame:self.bounds];
     _picture.contentMode = UIViewContentModeScaleAspectFill;
     _picture.clipsToBounds = YES;
-    _picture.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    [self addSubview:_picture];
+    // The cover is square and the hero runs a little taller, so a fill cut its sides: a title set edge to
+    // edge on the cover lost its ends. On iOS 26 the cover stays whole at the top and the system carries its
+    // bottom edge down the rest, as the Music app's album page does; before, it fills as it always did.
+    Class extension = NSClassFromString(@"UIBackgroundExtensionView");
+    if (extension) {
+        _extension = [[extension alloc] initWithFrame:self.bounds];
+        [_extension setValue:@NO forKey:@"automaticallyPlacesContentView"];
+        [_extension setValue:_picture forKey:@"contentView"];
+        [self addSubview:_extension];
+    } else {
+        _picture.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        [self addSubview:_picture];
+    }
 
     _scrim = [CAGradientLayer layer];
     _scrim.zPosition = 1;
@@ -196,6 +208,11 @@ static void *kReadyContext = &kReadyContext;
     CGRect bounds = self.bounds;
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
+    if (_extension) {
+        _extension.frame = bounds;
+        CGFloat side = MIN(bounds.size.width, bounds.size.height);
+        _picture.frame = CGRectMake(0, 0, bounds.size.width, side);
+    }
     _motion.frame = bounds;
     _scrim.frame = CGRectMake(0, 0, bounds.size.width, MIN(kTopScrim, bounds.size.height));
     CGFloat fade = round(bounds.size.height * kDissolve);
@@ -210,7 +227,9 @@ static void *kReadyContext = &kReadyContext;
     // The player's size: at the screen's full width a square cover ran to the 1920 stream, tens of MB.
     CGFloat pixels = SGMotionPixels();
     __weak SGRAlbumHero *weakSelf = self;
-    SGMotionAlbumCover(artist, album, SGMotionSquare, pixels, ^(NSURL *file) {
+    // Tall, as the Music app's album page: the hero runs past the title, taller than wide, and a square clip
+    // filled into it lost its sides. An album with only a square clip gets that one.
+    SGMotionAlbumCover(artist, album, SGMotionTall, pixels, ^(NSURL *file) {
         SGRAlbumHero *hero = weakSelf;
         if (hero && file && [hero->_motionAlbum isEqualToString:key]) [hero showMotion:file];
     });
@@ -416,6 +435,14 @@ static SGRHeaderInfo *applyInfo(UIView *header, UIView *page) {
     setFrame(info, header.bounds);
 
     UIView *title = SGRFindByIdentifier(header, @"CreativeWorkPlatform.Components.UI.TitleRow", &kTitleKey);
+    // Spotify's header grows and shrinks as its Play turns to Pause (issue #25), its title row does not.
+    if (title.window) {
+        CGFloat top = [title convertRect:title.bounds toView:header].origin.y;
+        if (fabs(top - info.pinnedTop) > 0.5) {
+            info.pinnedTop = top;
+            [info setNeedsLayout];
+        }
+    }
     UIView *parent = SGRFindByIdentifier(header, @"CreativeWorkPlatform.Components.UI.ParentRow", &kParentKey);
     UIView *metadata = SGRFindByIdentifier(header, @"Components.UI.MetadataRow", &kMetaKey);
     NSString *length = metadataText(metadata);

@@ -20,6 +20,9 @@ FOUNDATION_EXPORT NSString *const SGKeyAnimatedCoversEnabled;
 @property (nonatomic, copy) NSString *symbol;
 @property (nonatomic, strong) UIColor *tint;   // the square under the symbol, gray when nil (SGWithTile)
 @property (nonatomic) BOOL glows;
+// The switch shows the opposite of what is stored under its key (SGShownRow).
+@property (nonatomic) BOOL inverted;
+// An ⓘ button beside the row's switch, whose tap reads this out under the row's title.
 @property (nonatomic, copy) NSString *info;
 @property (nonatomic, copy) BOOL (^visible)(void);
 @property (nonatomic, copy) NSString *waitsOn;
@@ -32,6 +35,9 @@ FOUNDATION_EXPORT NSString *const SGKeyAnimatedCoversEnabled;
 @property (nonatomic, copy) NSString *(^format)(double value);
 @property (nonatomic, copy) NSArray<NSString *> *menu;
 @property (nonatomic, copy) UIColor *(^swatch)(void);
+// One of a few rows picked from on the page itself (an action row each): a checkmark against it while this answers
+// YES, read as the row is drawn, so its action reloads the table.
+@property (nonatomic, copy) BOOL (^checked)(void);
 @end
 
 @interface SGModSection : NSObject
@@ -48,8 +54,12 @@ FOUNDATION_EXPORT NSString *const SGKeyAnimatedCoversEnabled;
 
 extern NSString *const SGRestartNote;
 
-SGModRow *SGSwitchRow(NSString *title, NSString *subtitle, NSString *key);
-SGModRow *SGHideRow(NSString *title, NSString *subtitle, NSString *key);
+SGModRow *SGSwitchRow(NSString *title, NSString *subtitle, NSString *key);   // on until switched off
+SGModRow *SGHideRow(NSString *title, NSString *subtitle, NSString *key);     // off until switched on
+// A part of Spotify the mod can take away, named for the part and shown on: turning it off stores YES under
+// `hideKey`, the way SGHideRow does, so a reset (stock) shows the part again.
+SGModRow *SGShownRow(NSString *title, NSString *subtitle, NSString *hideKey);
+// A switch for something the mod adds rather than takes away: off until it is asked for.
 SGModRow *SGOptionRow(NSString *title, NSString *subtitle, NSString *key);
 SGModRow *SGUnstableRow(NSString *title, NSString *subtitle, NSString *key, NSString *warning);
 SGModRow *SGFlagRow(NSString *title, NSString *key);

@@ -6,8 +6,7 @@
 // come to the player itself, the way the Music app shows them, when the lyrics glyph is tapped.
 //
 //     PlayerField.x      the switch's flags and rows, the field in the background plane, the cover it reads
-//     PlayerArtwork.x    the cover's corners, shadow and paused shrink, the lyric preview under it gone and
-//                        its room the cover's
+//     PlayerArtwork.x    the cover's corners, shadow and paused shrink; the lyric preview as Spotify's setting has it
 //     PlayerHeader.x     glass behind the close and more buttons
 //     PlayerControls.x   previous, play and next as bare glyphs, monospaced times
 //     PlayerFooter.x     share gone, lyrics, Connect and queue as one row of three glyphs
@@ -91,6 +90,22 @@ void SGRPlayerLyricsChanged(void);
 // hides them either way.
 #define SGRKeyLyricsAutoHide @"spotifyglass.redesign.lyrics.autoHide"
 
+// A volume slider under the controls (PlayerVolume.m), the system's: this iPhone's, or the Connect device's.
+// On until switched off. Placed by the footer's layout, between the controls (`controls`) and the footer row
+// (`row`), both arranged in Spotify's bottom stack, `margin` in from each side.
+#define SGRKeyPlayerVolume @"spotifyglass.redesign.player.volume"
+BOOL SGRPlayerVolumeOn(void);
+// YES when the row shows; NO when it is off, has no controls to sit under or no room between them and the footer.
+BOOL SGRPlayerPlaceVolume(UIView *stack, UIView *controls, UIView *row, CGFloat margin);
+
+// Follow the cover (PlayerCoverAccent.x): the player's lit controls painted in the cover's color instead of the accent.
+// Off until switched on, read at launch. The cover's color (a gray one gives the accent back), and a paint of Spotify's
+// bottom stack, which the footer's layout asks for.
+#define SGRKeyPlayerFollowsCover @"spotifyglass.redesign.player.followsCover"
+BOOL SGRPlayerFollowsCover(void);
+void SGRPlayerSetCoverAccent(UIColor *cover);
+void SGRPlayerPaintCover(UIView *stack);
+
 // The lyrics turn sideways with the phone onto a landscape screen of their own (PlayerLandscape.x). On
 // until switched off. Shown or put away by hand for the harness.
 #define SGRKeyLyricsLandscape @"spotifyglass.redesign.lyrics.landscape"
@@ -100,6 +115,8 @@ void SGRPlayerShowLandscape(BOOL show);
 void SGRPlayerMotionLyricsChanged(void);
 // The field was laid out (PlayerField.x): the clip goes onto it, and the cover is hidden or shown again.
 void SGRPlayerMotionFieldLaidOut(void);
+// A cover in the player laid out: hides it while a clip plays.
+void SGRPlayerMotionCoverLaidOut(void);
 // A clip is playing in place of the cover, which is then hidden: the lyrics' thumbnail and the open's
 // flown cover fade where they are rather than flying to or from it.
 BOOL SGRPlayerMotionShowing(void);

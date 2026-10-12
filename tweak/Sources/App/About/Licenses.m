@@ -39,6 +39,8 @@ UIViewController *SGLicensesPage(void) {
     SGModRow *autoEq = SGLinkRow(@"AutoEq", @"Headphone corrections · MIT License", @"https://github.com/jaakkopasanen/AutoEq");
     // Sing's voice model is downloaded rather than built in, and its NOTICE travels with it here all the same.
     SGModRow *voice = SGLinkRow(@"Karaoke's voice model", @"Mel-Band RoFormer · MIT License", @"https://huggingface.co/My-Name-Is-Jeff/vitrine-sing");
+    SGModRow *lightVoice = SGLinkRow(@"Karaoke's light voice model", @"Mini-BS-RoFormer-18M · MIT License",
+                                     @"https://huggingface.co/HiDolen/Mini-BS-RoFormer-18M");
     return [[SGModPage alloc] initWithTitle:@"Licenses" intro:@"The mod's own license, and the code from others it includes." sections:@[
         SGSection(nil, @[mod]),
         SGNotedSection(nil, @[eevee], @"By whoeevee (whoeevee/EeveeSpotify), under the GNU General Public License v3.0, as Vitrine is.\n\n"
@@ -57,5 +59,11 @@ UIViewController *SGLicensesPage(void) {
                                        @"Neural Engine export, the model Karaoke downloads: Vitrine, from the same checkpoint, palettized to 6 bits.\n"
                                        @"Reference architecture: lucidrains/BS-RoFormer. Training code: ZFTurbo.\n\n"
                                        @"Copyright (c) 2023 Phil Wang\n\n" stringByAppendingString:kMIT]),
+        SGNotedSection(nil, @[lightVoice], [@"Mini-BS-RoFormer-18M by HiDolen, revision d3ff400db0c72c236775ecc82e038f3117e52bf8, whose model card "
+                                            @"declares the MIT License. Its code is adapted from lucidrains/BS-RoFormer (MIT, Copyright (c) 2023 "
+                                            @"Phil Wang, above).\n"
+                                            @"Core ML export of its vocals, the light model Karaoke downloads: Vitrine, in float16, from "
+                                            @"https://huggingface.co/My-Name-Is-Jeff/vitrine-sing.\n\n"
+                                            @"Copyright (c) HiDolen (the model card gives no year)\n\n" stringByAppendingString:kMIT]),
     ] footer:nil];
 }

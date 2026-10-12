@@ -27,6 +27,8 @@ Values that belong to one person's phone live in `.phone.env` at the repo root (
       for i in $(seq 1 15); do sleep 2; scripts/phone.py state >/dev/null 2>&1 && break; done
 
 - After a version change, What's New covers the screen. Close it with `scripts/phone.py tap --text Continue`.
+- A launch on a locked phone fails with `BSErrorCodeDescription = Locked`, and every driver call after it
+  says the app did not answer. That is not a crash. Ask the user to unlock the phone.
 
 ## Drive
 
@@ -38,6 +40,29 @@ needs `PHONE_HOST` and the token the app logs at launch, which it reads from the
   user to open the page instead of probing further.
 - A swipe that only sets `contentOffset` (`scroll`) does not trigger scroll-driven behavior like the tab
   bar's minimize. Use `swipe` with a duration for that.
+- There is no previous-track command. `scripts/phone.py seek 0`, then
+  `scripts/phone.py tap --id SPTNowPlayingPreviousTrackButton` with the player open.
+- `ls` in this shell is eza, which takes other flags (`ls -t` fails). Use `/bin/ls`.
+- `seek --by -15` moves relative to where the song plays (Spotify's `relative:` 2; 1 counts from the end and
+  skips past it into the next song).
+- The glass tab bar is not the driver's: `tab` may fail in the redesign. Tap the glass bar's icon by position
+  from a screenshot, after a scroll to the top so the bar is not minimized.
+- Spotify's own lyrics switch (the preview under the cover) is the track ⋯ menu's "Lyrics • On/Off", under More
+  in the redesign's menu.
+- `state` failing with "Connection reset" while the app runs means the phone is locked or Spotify is not in
+  front; it is not a broken build.
+- Read a setting before a test changes it and put it back after: Vitrine prefs, the tab layout, shuffle (three
+  states on a playlist page), repeat, saved songs, Spotify's lyrics switch.
+
+## Simulator
+
+`scripts/sim-build.sh` runs a Spotify IPA with the tweak in the iOS Simulator, for a second Spotify version and for
+layout checks the phone is not needed for. Run it from a separate worktree: it writes the flag table for its IPA's
+version, which would break the phone's `make quick` of another version. `SG_DRIVER=1` builds the driver on port
+8086: `PHONE_PORT=8086 scripts/phone.py …`, and `xcrun simctl io <udid> screenshot` for screenshots. Prefs are read
+at launch, so `simctl terminate` and `launch` after a `pref`. In Xcode 27 the window is
+`Xcode.app/Contents/Applications/DeviceHub.app`. It cannot show the volume slider, haptics, the Live Activity or the
+Neural Engine; those stay checks for the phone.
 
 ## Screenshots
 
@@ -48,6 +73,13 @@ The driver's `screenshot` can come back blank. Take them through the tunnel inst
     uv run -q --no-project --with pillow python -c "from PIL import Image; im=Image.open('$TMPDIR/shot.png'); w,h=im.size; im.crop((0,int(h*.8),w,h)).save('$TMPDIR/crop.png')"
 
 Read the cropped file with the Read tool. A full-height image is hard to judge; crop to the part in question.
+
+Measure from the full-resolution PNG (3 px to the point on this phone) when the question is "a little off":
+
+- Alignment: the first and last rows in a column band that have pixels brighter than a threshold give an
+  element's vertical center. The volume glyphs sat at y 2271 against the track's 2264.5, 2 pt low.
+- Blur: the mean absolute difference between pixels 3 px apart, across a band of rows. The redesigned
+  player's header row read 0.72 blurred and about 5 sharp.
 
 Privacy: a tunnel screenshot captures whatever is on screen. Check `scripts/phone.py state` first, and do
 not take one while the user is in another app.
@@ -66,6 +98,30 @@ not take one while the user is in another app.
   says nothing about why it did nothing, add one log line per track or per change and rebuild, rather than
   guessing.
 
+## Crashes
+
+When the driver stops answering and the app's process is gone (`xcrun devicectl device info processes
+--device "$PHONE_UDID" | grep Spotify.app`), copy the crash reports off the phone, outside the sandbox:
+
+    mkdir -p out/rep/crash && idevicecrashreport -k -f Spotify out/rep/crash
+
+Every copied file gets the same modification time, so `ls -t` does not find the newest. Pick it by the
+timestamp in its name (`Spotify-2026-10-10-171127.ips`), then print the faulting thread:
+
+    python3 - out/rep/crash/Spotify-<stamp>.ips <<'EOF'
+    import json, sys
+    d = json.loads(open(sys.argv[1]).read().split('\n', 1)[1])
+    print(d['captureTime'], d['exception'])
+    images = d['usedImages']
+    for f in d['threads'][d['faultingThread']]['frames'][:20]:
+        print(images[f['imageIndex']].get('name'), f.get('symbol'), hex(f['imageOffset']))
+    EOF
+
+Frames in `spotifyglass.dylib` carry symbols. Frames in `Spotify` carry only an offset: add `0x100000000` and
+find the method with the nearest start address at or below it in that version's `di-objc-<ver>.txt`
+(`spotify-version-check`). A 9.1.90 crash at `0x105DBA98C` sat in `internalNavigateToURI:…`, which starts at
+`0x105DBA91C`.
+
 ## View tree
 
 `scripts/phone.py tree` prints the visible screen's tree as indented text with frames, `hidden`, `a=` (alpha)
@@ -82,6 +138,10 @@ layout.
 - Spotify playing on another device through Connect (a laptop or speaker glyph on the bar) leaves the phone
   a remote. The lock screen's full-screen artwork and anything that needs local audio do nothing then.
 - `sing: the iPhone is hot` means Karaoke holds back on purpose.
+- Karaoke rests (0 windows, its status "As sung") when the vocals are at 1 and Spatial voice is off: nothing to
+  change. Lower `spotifyglass.sing.level` for a test.
+- A label `find` reports as shown can sit in a card collapsed to 0 pt (the redesign drops every card under the
+  player). Check the cell's height in the tree before calling it visible.
 - FLEX's toolbar can cover the top of the screen. The user closes it with its ✕.
 - A log line on a path that runs per event, per packet or per tick floods the in-app log (it pushed every
   other line out at about fifty a second) and costs battery for every user. Log the first few of a launch

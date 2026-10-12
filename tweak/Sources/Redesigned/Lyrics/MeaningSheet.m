@@ -20,6 +20,23 @@ static NSString *authorSymbol(SGLyricsMeaningAuthor author) {
     return author == SGLyricsMeaningByArtist ? @"checkmark.seal.fill" : author == SGLyricsMeaningByEditors ? @"checkmark.circle" : @"person.2";
 }
 
+// The annotation's text with each web address in it made a link. Only http and https ones are, so an
+// address-like bit of text never opens anything else.
+static NSAttributedString *linkedBody(NSString *body) {
+    NSDictionary *attributes = @{NSFontAttributeName: [UIFont preferredFontForTextStyle:UIFontTextStyleBody],
+                                 NSForegroundColorAttributeName: SGRPrimary()};
+    NSMutableAttributedString *out = [[NSMutableAttributedString alloc] initWithString:body ?: @"" attributes:attributes];
+    static NSDataDetector *detector;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ detector = [NSDataDetector dataDetectorWithTypes:NSTextCheckingTypeLink error:nil]; });
+    for (NSTextCheckingResult *match in [detector matchesInString:out.string options:0 range:NSMakeRange(0, out.length)]) {
+        NSString *scheme = match.URL.scheme.lowercaseString;
+        if ([scheme isEqualToString:@"http"] || [scheme isEqualToString:@"https"])
+            [out addAttribute:NSLinkAttributeName value:match.URL range:match.range];
+    }
+    return out;
+}
+
 @interface SGRMeaningSheet : UIViewController
 @end
 
@@ -28,7 +45,8 @@ static NSString *authorSymbol(SGLyricsMeaningAuthor author) {
     NSArray<SGLyricsMeaning *> *_meanings;
     NSUInteger _index;
     UIScrollView *_scroll;
-    UILabel *_quote, *_body, *_count;
+    UILabel *_quote, *_count;
+    UITextView *_body;
     UIButton *_author, *_next, *_open;
 }
 
@@ -99,7 +117,19 @@ static NSString *authorSymbol(SGLyricsMeaningAuthor author) {
     _author = [UIButton buttonWithConfiguration:badge primaryAction:nil];
     _author.userInteractionEnabled = NO;
     [_scroll addSubview:_author];
-    _body = [self labelWithFont:[UIFont preferredFontForTextStyle:UIFontTextStyleBody] color:SGRPrimary()];
+    // A text view rather than a label so the links in an annotation (Genius's text carries bare URLs) can be
+    // tapped. It never scrolls or edits; the sheet's scroll view does the scrolling.
+    _body = [UITextView new];
+    _body.editable = NO;
+    _body.selectable = YES;
+    _body.scrollEnabled = NO;
+    _body.backgroundColor = UIColor.clearColor;
+    _body.textContainerInset = UIEdgeInsetsZero;
+    _body.textContainer.lineFragmentPadding = 0;
+    _body.adjustsFontForContentSizeCategory = YES;
+    _body.linkTextAttributes = @{NSForegroundColorAttributeName: SGRAccent(),
+                                 NSUnderlineStyleAttributeName: @(NSUnderlineStyleSingle)};
+    [_scroll addSubview:_body];
     _count = [self labelWithFont:[UIFont systemFontOfSize:13 weight:UIFontWeightRegular] color:SGRTertiary()];
     _count.numberOfLines = 1;
     _next = [self buttonWithTitle:@"Next" action:@selector(showNext)];
@@ -115,7 +145,7 @@ static NSString *authorSymbol(SGLyricsMeaningAuthor author) {
     badge.image = [UIImage systemImageNamed:authorSymbol(meaning.author)
                           withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:11 weight:UIImageSymbolWeightSemibold]];
     _author.configuration = badge;
-    _body.text = meaning.body;
+    _body.attributedText = linkedBody(meaning.body);
     _count.text = _meanings.count > 1 ? [NSString stringWithFormat:@"Genius · %lu of %lu", (unsigned long)_index + 1, (unsigned long)_meanings.count]
                                       : @"Genius";
     _next.hidden = _meanings.count < 2;

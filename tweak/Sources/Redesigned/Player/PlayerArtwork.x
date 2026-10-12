@@ -1,6 +1,6 @@
 // Player redesign: the cover sits on the field with continuous corners and a soft shadow, and shrinks
-// back while playback is paused, the way the Music app's does; the lyric preview under it is gone, and the
-// cover takes the room it left.
+// back while playback is paused, the way the Music app's does. Spotify's lyric preview under it, and the cover's size
+// beside it, are Spotify's, as its own lyrics setting has them.
 //
 // Tree (trees/clean/player/01.txt:36-43): CoverArtCellImpl > ... > CoverArtTiltView 354x354 > an
 // ElementView the same size > ImageViewProxy > Encore.ImageView (clips) > UIImageView, with
@@ -244,59 +244,26 @@ static void watchHold(UIView *tilt) {
     objc_setAssociatedObject(tilt, &kHoldKey, hold, OBJC_ASSOCIATION_ASSIGN);
 }
 
-#pragma mark - the cover's room
-
-// Spotify's cell keeps room under the cover for the lyric preview even with the preview gone, so a track
-// with lyrics had a smaller cover with a blank band under it (issue #77). The preview takes no room
-// (below), and the tilt view takes the largest square of the plain view it sits in (01.txt:35), centered.
-// Bounds and a center, not a frame, since the tilt view carries Spotify's tilt while the cover is inspected.
-// A square under kCoverMinWidth is left as it is, so no small cover grows.
-static void fillRoom(UIView *tilt) {
-    CGRect room = tilt.superview.bounds;
-    CGFloat side = MIN(room.size.width, room.size.height);
-    if (side < kCoverMinWidth) return;
-    // Found by its size while that is still the tilt view's.
-    coverIn(tilt);
-    CGPoint origin = CGPointMake(round(CGRectGetMinX(room) + (room.size.width - side) / 2),
-                                 round(CGRectGetMinY(room) + (room.size.height - side) / 2));
-    CGRect bounds = (CGRect){tilt.bounds.origin, CGSizeMake(side, side)};
-    CGPoint middle = CGPointMake(origin.x + side / 2, origin.y + side / 2);
-    if (CGRectEqualToRect(tilt.bounds, bounds) && CGPointEqualToPoint(tilt.center, middle)) return;
-    tilt.bounds = bounds;
-    tilt.center = middle;
-    [tilt setNeedsLayout];
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{ SGLog(@"redesign player: the cover fills its room, %.0fpt in %@", side, NSStringFromCGRect(room)); });
-}
-
-%hook _TtC28NowPlaying_ContentLayersImpl16CoverArtCellImpl
-- (void)layoutSubviews {
-    %orig;
-    static Class tiltClass;
-    if (!tiltClass) tiltClass = NSClassFromString(@"_TtC35CreativeWorkCommons_CoverArtTiltKit16CoverArtTiltView");
-    SGForEachView((UIView *)self, ^(UIView *view) {
-        if ([view isKindOfClass:tiltClass]) fillRoom(view);
-    });
-}
-%end
-
 %hook _TtC35CreativeWorkCommons_CoverArtTiltKit16CoverArtTiltView
 - (void)layoutSubviews {
     UIView *tilt = (UIView *)self;
     BOOL player = inCoverCell(tilt);
-    // Again here, for a pass of Spotify's that sizes the tilt view without the cell laying out.
-    if (player) fillRoom(tilt);
     %orig;
     if (tilt.bounds.size.width < kCoverMinWidth || !player) return;
     UIView *cover = coverIn(tilt);
     if (!cover) return;
     [sg_tilts addObject:tilt];
     watchHold(tilt);
+    SGRPlayerMotionCoverLaidOut();
     // The cover fills the tilt view (01.txt:37); bounds and center, unlike a frame, hold under the scale.
     CGRect bounds = tilt.bounds;
     CGPoint middle = CGPointMake(CGRectGetMidX(bounds), CGRectGetMidY(bounds));
     if (!CGSizeEqualToSize(cover.bounds.size, bounds.size)) cover.bounds = (CGRect){cover.bounds.origin, bounds.size};
     if (!CGPointEqualToPoint(cover.center, middle)) cover.center = middle;
+    // Its image is placed again for the new size (the ImageViewProxy hook below makes it fill the cover).
+    for (UIView *image in cover.subviews) {
+        if (!CGRectEqualToRect(image.frame, cover.bounds)) image.bounds = image.bounds, image.center = image.center;
+    }
 
     cover.layer.cornerRadius = SGRRadiusArtwork;
     cover.layer.cornerCurve = kCACornerCurveContinuous;
@@ -312,27 +279,53 @@ static void fillRoom(UIView *tilt) {
 }
 %end
 
-// Spotify shows and hides the preview as lyrics come and go; it stays hidden, the way
-// Native/Player/PlayerDeclutter.x has shipped it (its parent is a plain view, 01.txt:35, not a stack),
-// and it takes no room either, whatever size it is asked for or given.
-%hook _TtC22Lyrics_NPVContainerKit19LyricsContainerView
-- (void)setHidden:(BOOL)hidden {
-    %orig(YES);
+// The cover's image (ImageViewProxy > Encore.ImageView) keeps the size Spotify gave it for a cell with the preview,
+// 317 in a 345 box on a track with lyrics, at the box's top left: the image sat off center with a blank band right
+// and under it (issue #21). In the player's cover it fills the box the cover now is, whatever size it is given.
+// Auto Layout places it through its bounds and center, a frame set by hand through its frame.
+static UIView *coverOfImage(UIView *image) {
+    UIView *box = image.superview;
+    return box && coverIn(box.superview) == box ? box : nil;
 }
-- (CGSize)intrinsicContentSize {
-    return CGSizeZero;
-}
-- (CGSize)sizeThatFits:(CGSize)size {
-    return CGSizeZero;
-}
+
+%hook _TtC22NowPlaying_ElementsKitP33_1D6A1393FEB35D7207F503DA17E7748E14ImageViewProxy
 - (void)setFrame:(CGRect)frame {
-    %orig((CGRect){frame.origin, CGSizeZero});
+    UIView *box = coverOfImage((UIView *)self);
+    %orig(box ? box.bounds : frame);
 }
-- (void)didMoveToWindow {
+- (void)setBounds:(CGRect)bounds {
+    UIView *box = coverOfImage((UIView *)self);
+    %orig(box ? (CGRect){bounds.origin, box.bounds.size} : bounds);
+}
+- (void)setCenter:(CGPoint)center {
+    UIView *box = coverOfImage((UIView *)self);
+    %orig(box ? CGPointMake(CGRectGetMidX(box.bounds), CGRectGetMidY(box.bounds)) : center);
+}
+// What it holds keeps its own 317 unless it is laid out to this view's size again: the Encore image view here,
+// and the image and placeholder in that (below).
+- (void)layoutSubviews {
     %orig;
-    ((UIView *)self).hidden = YES;
+    UIView *proxy = (UIView *)self;
+    if (!coverOfImage(proxy)) return;
+    for (UIView *image in proxy.subviews) {
+        if (!CGRectEqualToRect(image.frame, proxy.bounds)) image.frame = proxy.bounds;
+    }
 }
 %end
+
+%hook _TtCE15Encore_MediaKitO16EncoreFoundation6Encore9ImageView
+- (void)layoutSubviews {
+    %orig;
+    UIView *view = (UIView *)self;
+    static Class proxyClass;
+    if (!proxyClass) proxyClass = NSClassFromString(@"_TtC22NowPlaying_ElementsKitP33_1D6A1393FEB35D7207F503DA17E7748E14ImageViewProxy");
+    if (![view.superview isKindOfClass:proxyClass] || !coverOfImage(view.superview)) return;
+    for (UIView *part in view.subviews) {
+        if (!CGRectEqualToRect(part.frame, view.bounds)) part.frame = view.bounds;
+    }
+}
+%end
+
 
 @interface SGRPlayerArtworkWatcher : NSObject <SGPlayerStateObserver>
 @end
@@ -370,6 +363,5 @@ static SGRPlayerArtworkWatcher *sg_artworkWatcher;
     SGRequireClasses(@[
         @"_TtC35CreativeWorkCommons_CoverArtTiltKit16CoverArtTiltView",
         @"_TtC28NowPlaying_ContentLayersImpl16CoverArtCellImpl",
-        @"_TtC22Lyrics_NPVContainerKit19LyricsContainerView",
     ]);
 }
