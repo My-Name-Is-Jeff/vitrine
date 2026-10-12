@@ -450,6 +450,29 @@ SGRMirrorButton *SGRPinnedMoreRecentButton(void) {
 }
 @end
 
+// Over the page's list and its header both, and put back on top whenever Spotify adds to the page.
+static void keepOnTop(UIView *page, UIView *button) {
+    if (button.superview != page) [page addSubview:button];
+    else if (page.subviews.lastObject != button) [page bringSubviewToFront:button];
+}
+
+// Level with the window's safe area at the top, kCornerSide in from the trailing edge of the page. The height is measured in the window and converted back, never from the page's own safe area: a
+// page under a navigation bar counts the bar into its inset, so the playlist's read 116 where the window's
+// reads 62 and the button sat a bar's height below the back button. The inset from the side is taken from
+// the page's own bounds and not converted from the window: the swipe back slides the page across the
+// window, and a frame converted from the window's x would hold the button still while the page left under
+// it, over the screen below, until the page was gone and took it along.
+static void placeInCorner(UIView *page, UIView *button) {
+    UIWindow *window = page.window;
+    UIView *space = window ?: page;
+    CGFloat side = SGRGlassCircleSize;
+    CGFloat x = page.bounds.size.width - kCornerSide - side;
+    CGFloat y = space.safeAreaInsets.top;
+    if (window) y = [page convertPoint:CGPointMake(0, y) fromView:nil].y;
+    CGRect frame = CGRectMake(x, y, side, side);
+    if (!CGRectIsEmpty(frame) && !CGRectEqualToRect(button.frame, frame)) button.frame = frame;
+}
+
 SGRMirrorButton *SGRPinnedMore(UIView *page, const void *key, UIView *source) {
     if (!page) return nil;
     SGRMirrorButton *button = objc_getAssociatedObject(page, key);
@@ -465,24 +488,9 @@ SGRMirrorButton *SGRPinnedMore(UIView *page, const void *key, UIView *source) {
         [button addTarget:recorder action:@selector(sgr_moreTapped:) forControlEvents:UIControlEventTouchDown];
         objc_setAssociatedObject(page, key, button, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
-    // Over the page's list and its header both, and put back on top whenever Spotify adds to the page.
-    if (button.superview != page) [page addSubview:button];
-    else if (page.subviews.lastObject != button) [page bringSubviewToFront:button];
+    keepOnTop(page, button);
     if (source) [button feedFrom:source];
     if (button.hidden != (source == nil)) button.hidden = source == nil;
-
-    // Measured in the window and converted back, never from the page's own safe area: a page under a
-    // navigation bar counts the bar into its inset, so the playlist's read 116 where the window's reads 62
-    // and the button sat a bar's height below the back button (device, trees/continuous/1.txt 2026-09-20).
-    UIWindow *window = page.window;
-    CGFloat side = SGRGlassCircleSize;
-    CGRect frame;
-    if (window) {
-        CGRect inWindow = CGRectMake(window.bounds.size.width - kCornerSide - side, window.safeAreaInsets.top, side, side);
-        frame = [page convertRect:inWindow fromView:nil];
-    } else {
-        frame = CGRectMake(page.bounds.size.width - kCornerSide - side, page.safeAreaInsets.top, side, side);
-    }
-    if (!CGRectIsEmpty(frame) && !CGRectEqualToRect(button.frame, frame)) button.frame = frame;
+    placeInCorner(page, button);
     return button;
 }
