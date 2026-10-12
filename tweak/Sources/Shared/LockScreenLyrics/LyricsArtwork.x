@@ -68,11 +68,11 @@ static dispatch_queue_t sg_queue;   // writes the clips, one at a time
 // Draws the previews, apart from the clips: one waiting behind a clip that takes seconds left the lock screen blank.
 static dispatch_queue_t sg_previewQueue;
 
-static NSString *key3x4(void) {
+__attribute__((unused)) static NSString *key3x4(void) {
     return @"MPNowPlayingInfoProperty3x4AnimatedArtwork";
 }
 
-static id supportedAnimatedKeys(void) {
+__attribute__((unused)) static id supportedAnimatedKeys(void) {
     SEL sel = NSSelectorFromString(@"supportedAnimatedArtworkKeys");
     if ([MPNowPlayingInfoCenter respondsToSelector:sel]) {
         return ((id (*)(id, SEL))objc_msgSend)([MPNowPlayingInfoCenter class], sel);
@@ -307,7 +307,7 @@ static void tick(void) {
         if (motion && ![sg_shownID hasSuffix:[@"-" stringByAppendingString:look]]) SGLog(@"lock lyrics: the lines of %@ over %@", trackID, motion.lastPathComponent);
         setShown(artworkID);
         SGLockMotionShowPlain(NO);
-        SGNowPlayingSetExtras(@"lyrics", @{MPNowPlayingInfoProperty3x4AnimatedArtwork:
+        SGNowPlayingSetExtras(@"lyrics", @{key3x4():
                                                artworkFor(artworkID, lineAt(lines, index, resting, motion, sg_cover, style))},
                               state.track.trackTitle);
         if (index + 1 < (NSInteger)lines.count) {
@@ -379,6 +379,6 @@ static void setTicking(BOOL on) {
             });
         }];
         SGLog(@"lock lyrics: %@, the lock screen takes %@", !SGLockArtworkShowsLyrics(choice) ? @"off" : choice == SGLockArtworkLyrics ? @"on" : @"on over the moving artwork",
-              MPNowPlayingInfoCenter.supportedAnimatedArtworkKeys);
+              supportedAnimatedKeys());
     }
 }
