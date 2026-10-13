@@ -49,8 +49,9 @@ static const CGFloat kFootFrom = 0.9;
 // The share of the poster's height, at its bottom, drawn on down as the foot (one pixel row at least).
 static const CGFloat kFootRows = 0.01;
 // A clip this much taller than wide is drawn to the window's full height and centered, cut at its sides: a Canvas
-// (9:16) or Apple Music's tall cover (3:4). A square one keeps its own height, from the top.
-static const CGFloat kCanvasAspect = 1.05;
+// (9:16, 1.78). Apple Music's tall cover (3:4, 1.33) and a square one keep their own height, from the top, at
+// the window's width and whole: stretched to the full height, the tall cover came out far too large.
+static const CGFloat kCanvasAspect = 1.5;
 // The blur starts at the seam, or this share of the screen down where that is higher, so it is under the
 // controls whatever the clip's shape; it is whole kBlurRamp points below its start.
 static const CGFloat kBlurByControls = 0.6, kBlurRamp = 96;
