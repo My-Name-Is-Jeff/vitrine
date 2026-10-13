@@ -50,7 +50,8 @@ static const CGFloat kFootFrom = 0.9;
 static const CGFloat kFootRows = 0.01;
 // A clip this much taller than wide is drawn to the window's full height and centered, cut at its sides: a Canvas
 // (9:16, 1.78). Apple Music's tall cover (3:4, 1.33) and a square one keep their own height, from the top, at
-// the window's width and whole: stretched to the full height, the tall cover came out far too large.
+// the window's width and whole: stretched to the full height, the tall cover came out far too large. With
+// Fit Artwork Size on, a Canvas keeps its own height too.
 static const CGFloat kCanvasAspect = 1.5;
 // The blur starts at the seam, or this share of the screen down where that is higher, so it is under the
 // controls whatever the clip's shape; it is whole kBlurRamp points below its start.
@@ -132,6 +133,7 @@ static CGFloat brightEnd(NSData *luminances) {
     BOOL _lyricsUp;
     UIVisualEffectView *_seamBlur, *_lyricsBlur;
     CGFloat _aspect;
+    BOOL _fit;      // Fit Artwork Size: every clip whole at the window's width, from the top, never stretched taller
     BOOL _timing;   // the give-up's count is running
 }
 
@@ -154,6 +156,7 @@ static UIBlurEffect *blurEffect(void) {
     // frame and where the looper starts, is the contents of the layer the video draws in: there is a
     // picture from the first frame, and the video covers it exactly.
     BOOL fit = SGFlag(@"spotifyglass.animatedCovers.scaleFit", NO);
+    _fit = fit;
     _still = [CALayer layer];
     _still.contentsGravity = fit ? kCAGravityResizeAspect : kCAGravityResizeAspectFill;
     _still.masksToBounds = YES;
@@ -213,7 +216,9 @@ static UIBlurEffect *blurEffect(void) {
     CGFloat width = bounds.size.width, total = MAX(1, bounds.size.height);
     CGFloat screen = _screenHeight > 0 ? _screenHeight : total;
     CGFloat height = round(width * _aspect);
-    if (_aspect > kCanvasAspect) height = MAX(height, screen);
+    // Fit Artwork Size keeps a Canvas whole too: its own height from the top, its foot drawn on down below it,
+    // rather than a layer the window's height with the clip centered in it and its top edge showing.
+    if (_aspect > kCanvasAspect && !_fit) height = MAX(height, screen);
     CGFloat seam = round(height * kFootFrom), blurFrom = MIN(seam, round(screen * kBlurByControls));
     _picture.frame = bounds;
     _seamBlur.frame = bounds;
