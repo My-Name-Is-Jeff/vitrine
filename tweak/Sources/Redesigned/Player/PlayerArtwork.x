@@ -140,38 +140,47 @@ static void scaleEveryCover(BOOL animated) {
     %orig;
     UIView *tilt = (UIView *)self;
     if (tilt.bounds.size.width < kCoverMinWidth || !inCoverCell(tilt)) return;
+    
     UIView *cover = coverIn(tilt);
     if (!cover) return;
+    
     [sg_tilts addObject:tilt];
-    // The cover fills the tilt view (01.txt:37); bounds and center, unlike a frame, hold under the scale.
-    CGRect bounds = tilt.bounds;
-    CGPoint middle = CGPointMake(CGRectGetMidX(bounds), CGRectGetMidY(bounds));
-    if (!CGSizeEqualToSize(cover.bounds.size, bounds.size)) cover.bounds = (CGRect){cover.bounds.origin, bounds.size};
-    if (!CGPointEqualToPoint(cover.center, middle)) cover.center = middle;
 
+    // Mantener la carátula cuadrada y centrada dentro de la vista
+    CGRect bounds = tilt.bounds;
+    CGFloat side = MIN(bounds.size.width, bounds.size.height);
+    CGRect squareBounds = CGRectMake(0, 0, side, side);
+    CGPoint middle = CGPointMake(CGRectGetMidX(bounds), CGRectGetMidY(bounds));
+
+    if (!CGSizeEqualToSize(cover.bounds.size, squareBounds.size)) {
+        cover.bounds = squareBounds;
+    }
+    if (!CGPointEqualToPoint(cover.center, middle)) {
+        cover.center = middle;
+    }
+
+    // Estilo visual exacto de Spoti.pw (Redondeo continuo)
     cover.layer.cornerRadius = SGRRadiusArtwork;
     cover.layer.cornerCurve = kCACornerCurveContinuous;
     cover.clipsToBounds = YES;
-    SGRShadowPlate *plate = SGRShadowPlateIn(tilt, &kPlateKey);
-    plate.bounds = cover.bounds;
-    plate.center = cover.center;
-    // The same value an animation in flight is heading to, so a layout pass never cuts one short.
-    scaleCover(tilt, currentScale());
 
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{ SGLog(@"redesign player: cover %@ rounded %.0f with a shadow plate, scale %.2f", NSStringFromClass(cover.class), SGRRadiusArtwork, currentScale()); });
+    // Placa de sombra detrás del cover
+    SGRShadowPlate *plate = SGRShadowPlateIn(tilt, &kPlateKey);
+    if (plate) {
+        plate.bounds = cover.bounds;
+        plate.center = cover.center;
+    }
+
+    scaleCover(tilt, currentScale());
 }
 %end
 
-// Spotify shows and hides the preview as lyrics come and go; it stays hidden, the way
-// Native/Player/PlayerDeclutter.x has shipped it (its parent is a plain view, 01.txt:35, not a stack).
 %hook _TtC22Lyrics_NPVContainerKit19LyricsContainerView
 - (void)setHidden:(BOOL)hidden {
-    %orig(YES);
+    %orig(hidden);
 }
 - (void)didMoveToWindow {
     %orig;
-    ((UIView *)self).hidden = YES;
 }
 %end
 
