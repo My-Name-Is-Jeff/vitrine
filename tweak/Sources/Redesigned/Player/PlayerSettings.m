@@ -337,6 +337,12 @@ UIViewController *SGRPlayerSettingsPage(NSArray *more) {
     SGModRow *sources = SGMotionSourcesRow();
     sources.visible = lowData.visible;
 
+    SGModRow *fullBrightness = SGOptionRow(@"Full Brightness Covers", @"Removes the dark overlay filter from animated covers in player", SGKeyAnimatedCoversFullBrightness);
+    fullBrightness.visible = lowData.visible;
+
+    SGModRow *scaleFit = SGOptionRow(@"Fit Artwork Size", @"Shows the complete cover without cropping sides, like on the Lock Screen", @"spotifyglass.animatedCovers.scaleFit");
+    scaleFit.visible = lowData.visible;    
+
     __block __weak UITableViewController *weakPage;
     SGModRow *reset = SGActionRow(@"Reset", nil, ^{
         SGRResetFluidSettings();

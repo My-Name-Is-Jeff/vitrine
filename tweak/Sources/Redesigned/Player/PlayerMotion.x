@@ -150,11 +150,12 @@ static UIBlurEffect *blurEffect(void) {
     // An AVPlayerLayer draws nothing until its first frame is decoded, so the poster, the clip's first
     // frame and where the looper starts, is the contents of the layer the video draws in: there is a
     // picture from the first frame, and the video covers it exactly.
+    BOOL fit = SGFlag(@"spotifyglass.animatedCovers.scaleFit", NO);
     _still = [CALayer layer];
-    _still.contentsGravity = kCAGravityResizeAspectFill;
+    _still.contentsGravity = fit ? kCAGravityResizeAspect : kCAGravityResizeAspectFill;
     _still.masksToBounds = YES;
     _clip = [AVPlayerLayer layer];
-    _clip.videoGravity = AVLayerVideoGravityResizeAspectFill;
+    _clip.videoGravity = fit ? AVLayerVideoGravityResizeAspect : AVLayerVideoGravityResizeAspectFill;
     [_still addSublayer:_clip];
     _clipMask = [CAGradientLayer layer];
     _clipMask.colors = @[(id)UIColor.blackColor.CGColor, (id)UIColor.blackColor.CGColor, (id)UIColor.clearColor.CGColor];
@@ -277,6 +278,10 @@ static UIBlurEffect *blurEffect(void) {
 }
 
 - (void)updateDim {
+    if (SGFlag(SGKeyAnimatedCoversFullBrightness, NO)) {
+        _dim.opacity = 0.0f;
+        return;
+    }
     CGFloat dim = SGRPlayerClipDim(brightEnd(_luminances), UIAccessibilityDarkerSystemColorsEnabled(), _lyricsUp);
     _dim.opacity = (float)dim;
 }
