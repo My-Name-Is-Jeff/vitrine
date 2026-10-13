@@ -24,9 +24,7 @@ NSArray *SGLockScreenMotionRows(void) {
                                                        @"With moving artwork, for songs that have none",
                                       SGKeyLockScreenLyricsStyle, @[@"Still", @"Animated"], 0);
         style.visible = ^BOOL { return SGLockArtworkShowsLyrics(SGLockScreenArtwork()); };
-        
-        SGModRow *fullBrightness = SGOptionRow(@"Full Brightness Covers", @"Removes the dark overlay filter from animated covers", SGKeyAnimatedCoversFullBrightness);
-        
+                
         SGModRow *lowData = SGOptionRow(@"Download in Low Data Mode", @"Moving artwork, up to about 7 MB a song", SGKeyMotionLowData);
         lowData.visible = ^BOOL {
             SGLockArtwork artwork = SGLockScreenArtwork();

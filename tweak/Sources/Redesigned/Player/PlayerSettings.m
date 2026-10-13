@@ -339,11 +339,11 @@ UIViewController *SGRPlayerSettingsPage(NSArray *more) {
     SGModRow *sources = SGMotionSourcesRow();
     sources.visible = lowData.visible;
 
-    SGModRow *fullBrightness = SGOptionRow(@"Full Brightness Covers", @"Removes the dark overlay filter from animated covers in player", SGKeyAnimatedCoversFullBrightness);
+    SGModRow *fullBrightness = SGOptionRow(@"Full Brightness Covers", @"Removes the dark overlay filter from animated covers in player", @"spotifyglass.animatedCovers.fullBrightness");
     fullBrightness.visible = lowData.visible;
 
     SGModRow *scaleFit = SGOptionRow(@"Fit Artwork Size", @"Shows the complete cover without cropping sides, like on the Lock Screen", @"spotifyglass.animatedCovers.scaleFit");
-    scaleFit.visible = lowData.visible;    
+    scaleFit.visible = lowData.visible;
 
     __block __weak UITableViewController *weakPage;
     SGModRow *reset = SGActionRow(@"Reset", nil, ^{
@@ -358,7 +358,7 @@ UIViewController *SGRPlayerSettingsPage(NSArray *more) {
     for (SGModRow *row in fluid) row.visible = ^BOOL { return SGRPlayerBackground() == SGRPlayerBackgroundFluid; };
 
     NSMutableArray<SGModSection *> *sections = [NSMutableArray arrayWithObjects:
-        SGSection(nil, @[sources, lowData]),
+        SGSection(nil, @[sources, lowData, fullBrightness, scaleFit]), // <-- AQUÍ SE AGREGAN
         SGNotedSection(nil, fluid, @"Brightness above 100% can make white text harder to read. A paused song holds the "
                                    @"background still. Animated and Visualizer use these where they show Fluid."),
         SGNotedSection(@"Controls", @[SGSwitchRow(@"Volume", nil, SGRKeyPlayerVolume),
