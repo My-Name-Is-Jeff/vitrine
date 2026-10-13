@@ -18,13 +18,13 @@ SGLockArtwork SGLockScreenArtwork(void) {
 
 NSArray *SGLockScreenMotionRows(void) {
     if (@available(iOS 26.0, *)) {
-        SGLockScreenArtwork();   // Migra la clave antigua antes de leer la nueva
+        SGLockScreenArtwork();
 
         SGModRow *style = SGChoiceRow(@"Lyrics style", @"Still draws each line once; Animated breathes the cover behind it. "
                                                        @"With moving artwork, for songs that have none",
                                       SGKeyLockScreenLyricsStyle, @[@"Still", @"Animated"], 0);
         style.visible = ^BOOL { return SGLockArtworkShowsLyrics(SGLockScreenArtwork()); };
-                
+        
         SGModRow *lowData = SGOptionRow(@"Download in Low Data Mode", @"Moving artwork, up to about 7 MB a song", SGKeyMotionLowData);
         lowData.visible = ^BOOL {
             SGLockArtwork artwork = SGLockScreenArtwork();
@@ -46,7 +46,6 @@ NSArray *SGLockScreenMotionRows(void) {
                         SGKeyLockScreenArtwork, @[@"Off", @"Moving artwork", @"Lyrics", @"Every song", @"Moving artwork with lyrics"],
                         SGLockArtworkOff),
             style,
-            fullBrightness,
             star,
             sources,
             lowData,
