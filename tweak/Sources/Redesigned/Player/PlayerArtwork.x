@@ -62,7 +62,7 @@ static void scaleCover(UIView *tilt, CGFloat scale) {
     SGRShadowPlate *plate = SGRShadowPlateIn(tilt, &kPlateKey);
     CGAffineTransform transform = CGAffineTransformMakeScale(scale, scale);
     cover.transform = transform;
-    plate.transform = transform;
+    if (plate) plate.transform = transform;
 }
 
 #pragma mark - where the cover is
@@ -118,7 +118,7 @@ void SGRPlayerSetCoverHidden(BOOL hidden) {
     if (!cover) return;
     UIView *plate = SGRShadowPlateIn(tilt, &kPlateKey);
     cover.alpha = 0;
-    plate.alpha = 0;
+    if (plate) plate.alpha = 0;
     sg_hiddenCover = cover;
     sg_hiddenPlate = plate;
 }
@@ -146,25 +146,21 @@ static void scaleEveryCover(BOOL animated) {
     
     [sg_tilts addObject:tilt];
 
-    // Mantener la carátula cuadrada y centrada dentro de la vista
+    // Align cover bounds and center with tilt view
     CGRect bounds = tilt.bounds;
-    CGFloat side = MIN(bounds.size.width, bounds.size.height);
-    CGRect squareBounds = CGRectMake(0, 0, side, side);
     CGPoint middle = CGPointMake(CGRectGetMidX(bounds), CGRectGetMidY(bounds));
 
-    if (!CGSizeEqualToSize(cover.bounds.size, squareBounds.size)) {
-        cover.bounds = squareBounds;
+    if (!CGSizeEqualToSize(cover.bounds.size, bounds.size)) {
+        cover.bounds = (CGRect){cover.bounds.origin, bounds.size};
     }
     if (!CGPointEqualToPoint(cover.center, middle)) {
         cover.center = middle;
     }
 
-    // Estilo visual exacto de Spoti.pw (Redondeo continuo)
     cover.layer.cornerRadius = SGRRadiusArtwork;
     cover.layer.cornerCurve = kCACornerCurveContinuous;
     cover.clipsToBounds = YES;
 
-    // Placa de sombra detrás del cover
     SGRShadowPlate *plate = SGRShadowPlateIn(tilt, &kPlateKey);
     if (plate) {
         plate.bounds = cover.bounds;
@@ -172,15 +168,20 @@ static void scaleEveryCover(BOOL animated) {
     }
 
     scaleCover(tilt, currentScale());
+
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ SGLog(@"redesign player: cover %@ rounded %.0f with a shadow plate, scale %.2f", NSStringFromClass(cover.class), SGRRadiusArtwork, currentScale()); });
 }
 %end
 
+// Spotify shows and hides the preview as lyrics come and go; it stays hidden permanently
 %hook _TtC22Lyrics_NPVContainerKit19LyricsContainerView
 - (void)setHidden:(BOOL)hidden {
-    %orig(hidden);
+    %orig(YES);
 }
 - (void)didMoveToWindow {
     %orig;
+    ((UIView *)self).hidden = YES;
 }
 %end
 
