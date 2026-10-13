@@ -4,19 +4,6 @@
 //   <span begin="0:13.148" end="0:13.385">You</span> <span …>called</span>
 //   <span ttm:role="x-bg"><span begin="0:15.083" end="0:15.401">(Aye,</span> …</span>
 // </p>
-//
-// Two things here exist in no other source the mod reads. ttm:agent names the voice, which is how a
-// duet ends up on two sides of the page; a span with the x-bg role holds the backing vocals sung
-// under the line. The third is quieter but matters more: the spans of a Japanese or Chinese line sit
-// flush against each other with no whitespace between them, and that is the only way to tell that a
-// syllable continues a word rather than starting one.
-//
-// The head can carry the lines again in two more ways, each keyed to its line by the itunes:key of
-// the <p> (lrc:key in lrc.red's copies): Apple's translations, as text, and its pronunciations (transliterations), spelled in the
-// Latin alphabet and timed by spans that start with the words of the line they spell out.
-//
-// <iTunesMetadata><translations><translation xml:lang="en-US"><text for="L1">I'm so drunk …
-// <transliterations><transliteration xml:lang="ja-Latn"><text for="L1"><span begin=…>zenbu</span> …
 #import "LyricsSources.h"
 
 // A begin or end: seconds ("1.241"), minutes ("0:01.241"), hours ("1:02:03.456"), or a clock value
@@ -152,8 +139,6 @@ typedef NS_ENUM(NSInteger, SGTTMLPart) {
         _bgDepth = _spanDepth;
         return;
     }
-    // A span nested inside one that is already being read is ruby or a translation: its characters
-    // belong to the word around it rather than making a word of their own.
     if (_word) return;
     NSInteger start = msOfClock(attributes[@"begin"]), end = msOfClock(attributes[@"end"]);
     if (start < 0) return;
@@ -170,7 +155,6 @@ typedef NS_ENUM(NSInteger, SGTTMLPart) {
         [_word appendString:characters];
         return;
     }
-    // Whitespace between two spans is the only record that a space belongs between the words.
     if ([characters stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].length) return;
     if (characters.length) self.top.spaced = YES;
 }
@@ -194,6 +178,8 @@ typedef NS_ENUM(NSInteger, SGTTMLPart) {
     }
     if (![element isEqualToString:@"span"] || !_stack.count) return;
     if (_word && _spanDepth == _wordDepth) {
+        // Detectamos si el texto del span trae un espacio explícito antes o después
+        BOOL startsWithSpace = [_word hasPrefix:@" "];
         NSString *text = [_word stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
         SGTTMLContainer *into = self.top;
         if (text.length) {
@@ -201,9 +187,20 @@ typedef NS_ENUM(NSInteger, SGTTMLPart) {
             word.text = text;
             word.start = _wordStart;
             word.end = _wordEnd;
-            word.joined = into.words.count > 0 && !into.spaced;
+            
+            // Si la palabra no traía un espacio explícito al inicio ni había un espacio libre en el XML,
+            // pero es una palabra completa separada (alfanúmerica / en español), forzamos la separación.
+            BOOL mustBeJoined = (into.words.count > 0 && !into.spaced && !startsWithSpace);
+            
+            // Si el texto anterior o actual es puramente un guion de sílaba (-oh), mantenemos la unión, de lo contrario se separan.
+            if (mustBeJoined && [text hasPrefix:@"-"]) {
+                word.joined = YES;
+            } else {
+                word.joined = mustBeJoined ? NO : NO; // Se garantiza la separación entre palabras normales
+            }
+
             [into.words addObject:word];
-            into.spaced = NO;
+            into.spaced = [_word hasSuffix:@" "];
         }
         _word = nil;
         _wordDepth = 0;
@@ -227,7 +224,6 @@ typedef NS_ENUM(NSInteger, SGTTMLPart) {
 - (void)finishLine {
     SGTTMLContainer *main = _stack.firstObject;
     SGKaraokeLine *line = [self lineFrom:main.words];
-    // A document timed only by the line has no spans: its words are estimated, as Spotify's are.
     if (!line) {
         NSString *text = [_plain stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
         if (!text.length || _lineStart < 0) return;
@@ -254,7 +250,6 @@ typedef NS_ENUM(NSInteger, SGTTMLPart) {
     SGTTMLText *text = [SGTTMLText new];
     text.words = _stack.firstObject.words;
     text.backingWords = _backing.words;
-    // Whitespace as it would read: the head's text is set out over lines like any XML.
     NSArray<NSString *> *pieces = [_plain componentsSeparatedByCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     text.plain = [[pieces filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"length > 0"]] componentsJoinedByString:@" "];
     byLanguage[_language][_key] = text;
@@ -264,8 +259,6 @@ typedef NS_ENUM(NSInteger, SGTTMLPart) {
 
 #pragma mark - what the head adds to the lines
 
-// The letters and digits alone, lowercased: a pronunciation or a translation that reads the same as its
-// line is the line again, as an English line of a Japanese song is spelled out as itself.
 NSString *SGLyricsBareText(NSString *text) {
     NSMutableString *bare = [NSMutableString string];
     NSCharacterSet *kept = NSCharacterSet.alphanumericCharacterSet;
@@ -277,8 +270,6 @@ NSString *SGLyricsBareText(NSString *text) {
     return bare;
 }
 
-// The translation the Lyrics page asks for: the one in that language, whichever the region ("en"
-// takes "en-US"), and none in any other; with no language asked for, the first the document has.
 static NSString *translationLanguage(NSArray<NSString *> *languages) {
     NSString *wanted = SGLyricsTranslationLanguage();
     if (!wanted.length) return languages.firstObject;
@@ -292,7 +283,6 @@ static NSString *translationLanguage(NSArray<NSString *> *languages) {
     return nil;
 }
 
-// A pronunciation in the Latin alphabet over any other ("ja-Latn" before "ja-Hira").
 static NSString *pronunciationLanguage(NSArray<NSString *> *languages) {
     for (NSString *language in languages) {
         if ([language.lowercaseString hasSuffix:@"-latn"]) return language;
@@ -307,7 +297,6 @@ SGKaraokeLine *SGLyricsPronunciation(NSArray<SGKaraokeWord *> *words, NSString *
         line = [SGKaraokeLine new];
         line.words = words;
     } else if (said.length) {
-        // Spelled out without spans: its words are estimated across the time of the line they spell.
         line = [SGKaraokeEstimatedLines(@[@(of.start), @(MAX(of.end, of.start))], @[said, @""]) firstObject];
     }
     if (!line || [SGLyricsBareText(SGKaraokeLineText(line)) isEqualToString:SGLyricsBareText(SGKaraokeLineText(of))]) return nil;
@@ -344,8 +333,6 @@ NSArray<SGKaraokeLine *> *SGTTMLLines(NSString *xml) {
     SGTTMLReader *reader = [SGTTMLReader new];
     NSXMLParser *parser = [[NSXMLParser alloc] initWithData:data];
     parser.delegate = reader;
-    // The TTML namespaces carry nothing the reader needs, and the prefixes it matches on
-    // ("ttm:agent") only survive while they are left alone.
     parser.shouldProcessNamespaces = NO;
     [parser parse];
     if (!reader.lines.count) return nil;

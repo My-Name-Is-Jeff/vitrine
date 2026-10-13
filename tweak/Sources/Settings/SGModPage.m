@@ -5,6 +5,7 @@
 #import "Core/SGCore.h"
 
 NSString *const SGRestartNote = @"Changes apply after you restart Spotify.";
+NSString *const SGKeyAnimatedCoversEnabled = @"spotifyglass.animatedCovers.enabled";
 
 @implementation SGModRow
 @end

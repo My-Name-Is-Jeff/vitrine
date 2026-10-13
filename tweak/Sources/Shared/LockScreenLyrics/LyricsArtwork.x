@@ -10,6 +10,7 @@
 // clip comes, and for a track that has none, the lines are drawn as Lyrics draws them; the clip coming
 // changes every ID, so the line showing is offered again over it.
 #import <MediaPlayer/MediaPlayer.h>
+#import <objc/message.h>
 #import "Core/SGCore.h"
 #import "LockScreenLyrics.h"
 #import "SGLyricsClip.h"
@@ -66,6 +67,18 @@ static NSObject *sg_lock;
 static dispatch_queue_t sg_queue;   // writes the clips, one at a time
 // Draws the previews, apart from the clips: one waiting behind a clip that takes seconds left the lock screen blank.
 static dispatch_queue_t sg_previewQueue;
+
+__attribute__((unused)) static NSString *key3x4(void) {
+    return @"MPNowPlayingInfoProperty3x4AnimatedArtwork";
+}
+
+__attribute__((unused)) static id supportedAnimatedKeys(void) {
+    SEL sel = NSSelectorFromString(@"supportedAnimatedArtworkKeys");
+    if ([MPNowPlayingInfoCenter respondsToSelector:sel]) {
+        return ((id (*)(id, SEL))objc_msgSend)([MPNowPlayingInfoCenter class], sel);
+    }
+    return nil;
+}
 
 static NSURL *folder(void) {
     NSURL *caches = [NSFileManager.defaultManager URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask].firstObject;
@@ -165,32 +178,40 @@ static void drawAhead(NSString *artworkID, SGLockLine *line) {
 API_AVAILABLE(ios(26.0))
 static MPMediaItemAnimatedArtwork *artworkFor(NSString *artworkID, SGLockLine *line) {
     CGSize size = SGLyricsClipSize(SGMotionPixels());
-    return [[MPMediaItemAnimatedArtwork alloc] initWithArtworkID:artworkID
-        previewImageRequestHandler:^(CGSize wanted, void (^completion)(UIImage *)) {
-            sg_previewAskedAt = CFAbsoluteTimeGetCurrent();
-            // One drawn ahead is handed over at once, as Apple asks of a preview; only a miss waits for drawing.
-            UIImage *ready = [sg_previews objectForKey:artworkID];
-            if (ready) {
-                completion(ready);
+    Class artworkClass = NSClassFromString(@"MPMediaItemAnimatedArtwork");
+    if (!artworkClass) return nil;
+    SEL initSel = NSSelectorFromString(@"initWithArtworkID:previewImageRequestHandler:videoAssetFileURLRequestHandler:");
+    if (![artworkClass instancesRespondToSelector:initSel]) return nil;
+
+    id alloced = ((id (*)(id, SEL))objc_msgSend)(artworkClass, @selector(alloc));
+
+    id previewBlock = ^(CGSize wanted, void (^completion)(UIImage *)) {
+        sg_previewAskedAt = CFAbsoluteTimeGetCurrent();
+        UIImage *ready = [sg_previews objectForKey:artworkID];
+        if (ready) {
+            completion(ready);
+            return;
+        }
+        dispatch_async(sg_previewQueue, ^{
+            completion(previewFor(artworkID, line, size));
+            static NSUInteger told;
+            if (told++ < 10) SGLog(@"lock lyrics: preview of %@ was not drawn ahead", artworkID);
+        });
+    };
+
+    id videoBlock = ^(CGSize wanted, void (^completion)(NSURL *)) {
+        sg_askedAt = CFAbsoluteTimeGetCurrent();
+        dispatch_async(sg_queue, ^{
+            // A line already sung by the time its turn comes is not drawn.
+            if (!stillShown(artworkID)) {
+                completion(nil);
                 return;
             }
-            dispatch_async(sg_previewQueue, ^{
-                completion(previewFor(artworkID, line, size));
-                static NSUInteger told;
-                if (told++ < 10) SGLog(@"lock lyrics: preview of %@ was not drawn ahead", artworkID);
-            });
-        }
-        videoAssetFileURLRequestHandler:^(CGSize wanted, void (^completion)(NSURL *)) {
-            sg_askedAt = CFAbsoluteTimeGetCurrent();
-            dispatch_async(sg_queue, ^{
-                // A line already sung by the time its turn comes is not drawn.
-                if (!stillShown(artworkID)) {
-                    completion(nil);
-                    return;
-                }
-                completion(writeClip(artworkID, line, size) ? clipFile(artworkID) : nil);
-            });
-        }];
+            completion(writeClip(artworkID, line, size) ? clipFile(artworkID) : nil);
+        });
+    };
+
+    return ((id (*)(id, SEL, id, id, id))objc_msgSend)(alloced, initSel, artworkID, previewBlock, videoBlock);
 }
 
 static void clear(void) {
@@ -286,7 +307,7 @@ static void tick(void) {
         if (motion && ![sg_shownID hasSuffix:[@"-" stringByAppendingString:look]]) SGLog(@"lock lyrics: the lines of %@ over %@", trackID, motion.lastPathComponent);
         setShown(artworkID);
         SGLockMotionShowPlain(NO);
-        SGNowPlayingSetExtras(@"lyrics", @{MPNowPlayingInfoProperty3x4AnimatedArtwork:
+        SGNowPlayingSetExtras(@"lyrics", @{key3x4():
                                                artworkFor(artworkID, lineAt(lines, index, resting, motion, sg_cover, style))},
                               state.track.trackTitle);
         if (index + 1 < (NSInteger)lines.count) {
@@ -358,6 +379,6 @@ static void setTicking(BOOL on) {
             });
         }];
         SGLog(@"lock lyrics: %@, the lock screen takes %@", !SGLockArtworkShowsLyrics(choice) ? @"off" : choice == SGLockArtworkLyrics ? @"on" : @"on over the moving artwork",
-              MPNowPlayingInfoCenter.supportedAnimatedArtworkKeys);
+              supportedAnimatedKeys());
     }
 }

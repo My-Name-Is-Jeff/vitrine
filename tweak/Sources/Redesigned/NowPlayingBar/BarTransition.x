@@ -17,6 +17,7 @@
 // MainUI_TabBarUIImpl.CompactOverlayTransition is a Swift animator with the same stand-ins
 // (npbSnapshotView, tabBarSnapshotView); which of the two 9.1.78 runs is not known, so both are hooked
 // and the log says which fired.
+#import <objc/message.h>
 #import "Core/SGCore.h"
 
 @interface SPTBarOverlayPresentationTransition : NSObject
@@ -48,8 +49,15 @@ static UIVisualEffectView *copyPane(UIView *pane) {
     glass.overrideUserInterfaceStyle = pane.traitCollection.userInterfaceStyle;
     if (platter) {
         SGShapeGlass(glass, pane.bounds.size.height / 2, YES);
-    } else if ([pane respondsToSelector:@selector(cornerConfiguration)] && [glass respondsToSelector:@selector(setCornerConfiguration:)]) {
-        [glass setCornerConfiguration:[(id)pane cornerConfiguration]];
+    } else {
+        SEL getCornerSel = NSSelectorFromString(@"cornerConfiguration");
+        SEL setCornerSel = NSSelectorFromString(@"setCornerConfiguration:");
+        if ([pane respondsToSelector:getCornerSel] && [glass respondsToSelector:setCornerSel]) {
+            id config = ((id (*)(id, SEL))objc_msgSend)(pane, getCornerSel);
+            if (config) {
+                ((void (*)(id, SEL, id))objc_msgSend)(glass, setCornerSel, config);
+            }
+        }
     }
     glass.layer.cornerRadius = pane.layer.cornerRadius;
     glass.layer.cornerCurve = pane.layer.cornerCurve;

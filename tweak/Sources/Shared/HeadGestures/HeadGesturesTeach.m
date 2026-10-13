@@ -13,6 +13,7 @@
 #import <QuartzCore/QuartzCore.h>
 #import <os/lock.h>
 #import "Core/SGCore.h"
+#import <objc/message.h>
 #import "Settings/SGPageStyle.h"
 #import "HeadGestures.h"
 
@@ -281,9 +282,19 @@ static BOOL headOffset(double *pitch, double *yaw) {
 }
 
 - (UIButton *)buttonTitled:(NSString *)title prominent:(BOOL)prominent action:(SEL)action {
-    UIButtonConfiguration *config;
-    if (@available(iOS 26.0, *)) config = prominent ? [UIButtonConfiguration prominentGlassButtonConfiguration] : [UIButtonConfiguration glassButtonConfiguration];
-    else config = prominent ? [UIButtonConfiguration filledButtonConfiguration] : [UIButtonConfiguration grayButtonConfiguration];
+    UIButtonConfiguration *config = nil;
+    if (@available(iOS 26.0, *)) {
+        Class btnConfigClass = [UIButtonConfiguration class];
+        SEL sel = NSSelectorFromString(prominent ? @"prominentGlassButtonConfiguration" : @"glassButtonConfiguration");
+        if ([btnConfigClass respondsToSelector:sel]) {
+            config = ((id (*)(id, SEL))objc_msgSend)(btnConfigClass, sel);
+        }
+    }
+    
+    if (!config) {
+        config = prominent ? [UIButtonConfiguration filledButtonConfiguration] : [UIButtonConfiguration grayButtonConfiguration];
+    }
+    
     config.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
     if (prominent) {
         config.baseBackgroundColor = SGGreen();

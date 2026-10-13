@@ -14,6 +14,7 @@
 // lock screen widget's star (LockScreenStar.x) can swap the two without a restart. Moving artwork with
 // lyrics looks the track up too and hands its clip to LyricsArtwork.x, which draws the lines over it.
 #import <MediaPlayer/MediaPlayer.h>
+#import <objc/message.h>
 #import "Core/SGCore.h"
 #import "AnimatedArtwork.h"
 #import "SGFluidClip.h"
@@ -38,20 +39,35 @@ static BOOL motionOn(SGLockArtwork choice) {
     return choice == SGLockArtworkMotion || choice == SGLockArtworkEverySong || choice == SGLockArtworkMotionLyrics;
 }
 
+static NSArray<NSString *> *supportedAnimatedKeys(void) {
+    SEL sel = NSSelectorFromString(@"supportedAnimatedArtworkKeys");
+    if ([MPNowPlayingInfoCenter respondsToSelector:sel]) {
+        return ((id (*)(id, SEL))objc_msgSend)([MPNowPlayingInfoCenter class], sel);
+    }
+    return nil;
+}
+
+static NSString *key3x4(void) {
+    return @"MPNowPlayingInfoProperty3x4AnimatedArtwork";
+}
+
+static NSString *key1x1(void) {
+    return @"MPNowPlayingInfoProperty1x1AnimatedArtwork";
+}
+
 // The key a clip shown at `shown` goes under, and the shape it is cut to (width over height): 1:1 for a
 // square clip, else 3:4, each where the system lists it, else the other. nil while it lists neither, before
 // MediaPlayer has started: the next track asks again.
-API_AVAILABLE(ios(26.0))
 static NSString *keyFor(CGSize shown, CGFloat *ratio) {
-    NSArray<NSString *> *keys = MPNowPlayingInfoCenter.supportedAnimatedArtworkKeys;
+    NSArray<NSString *> *keys = supportedAnimatedKeys();
     BOOL square = shown.height > 0 && fabs(shown.width / shown.height - 1) <= kSameShape;
-    BOOL tall = [keys containsObject:MPNowPlayingInfoProperty3x4AnimatedArtwork];
-    if ([keys containsObject:MPNowPlayingInfoProperty1x1AnimatedArtwork] && (square || !tall)) {
+    BOOL tall = [keys containsObject:key3x4()];
+    if ([keys containsObject:key1x1()] && (square || !tall)) {
         *ratio = 1;
-        return MPNowPlayingInfoProperty1x1AnimatedArtwork;
+        return key1x1();
     }
     *ratio = 0.75;
-    return tall ? MPNowPlayingInfoProperty3x4AnimatedArtwork : nil;
+    return tall ? key3x4() : nil;
 }
 
 // `image` filled into `size` about its middle, at scale 1 and opaque, as the preview the system asked for.
@@ -68,7 +84,16 @@ static UIImage *filled(UIImage *image, CGSize size) {
     }];
 }
 
-API_AVAILABLE(ios(26.0))
+static id createAnimatedArtwork(NSString *artworkID, id previewBlock, id videoBlock) {
+    Class artworkClass = NSClassFromString(@"MPMediaItemAnimatedArtwork");
+    if (!artworkClass) return nil;
+    SEL initSel = NSSelectorFromString(@"initWithArtworkID:previewImageRequestHandler:videoAssetFileURLRequestHandler:");
+    if (![artworkClass instancesRespondToSelector:initSel]) return nil;
+    
+    id alloced = ((id (*)(id, SEL))objc_msgSend)(artworkClass, @selector(alloc));
+    return ((id (*)(id, SEL, id, id, id))objc_msgSend)(alloced, initSel, artworkID, previewBlock, videoBlock);
+}
+
 static void show(NSURL *file) {
     NSUInteger walk = sg_walk;
     NSString *title = sg_title;
@@ -77,29 +102,33 @@ static void show(NSURL *file) {
         CGFloat ratio;
         NSString *key = keyFor(poster.size, &ratio);
         if (!key) {
-            SGLog(@"lock motion: the system lists no key yet (%@)", MPNowPlayingInfoCenter.supportedAnimatedArtworkKeys);
+            SGLog(@"lock motion: the system lists no key yet (%@)", supportedAnimatedKeys());
             return;
         }
         BOOL fits = fabs(poster.size.width / poster.size.height - ratio) <= kSameShape;
         NSURL *shaped = fits ? file : SGMotionMadeFile([NSString stringWithFormat:@"cut\n%@\n%g", file.lastPathComponent, ratio]);
-        MPMediaItemAnimatedArtwork *artwork = [[MPMediaItemAnimatedArtwork alloc] initWithArtworkID:shaped.lastPathComponent
-            previewImageRequestHandler:^(CGSize wanted, void (^completion)(UIImage *)) { completion(filled(poster, wanted)); }
-            videoAssetFileURLRequestHandler:^(CGSize wanted, void (^completion)(NSURL *)) {
-                if (fits) {
-                    completion(file);
-                    return;
-                }
-                dispatch_async(sg_queue, ^{
-                    CFAbsoluteTime start = CFAbsoluteTimeGetCurrent();
-                    BOOL ok = [NSFileManager.defaultManager fileExistsAtPath:shaped.path] || SGMotionClipShape(file, ratio, shaped);
-                    SGLog(@"lock motion: %@ cut to %@ %@ in %.0f ms", file.lastPathComponent, ratio == 1 ? @"1:1" : @"3:4",
-                          ok ? @"ready" : @"not written", (CFAbsoluteTimeGetCurrent() - start) * 1000);
-                    completion(ok ? shaped : nil);
-                });
-            }];
-        SGNowPlayingSetExtras(@"motion", @{key: artwork}, title);
-        SGLog(@"lock motion: %@, %.0fx%.0f, as %@%@", file.lastPathComponent, poster.size.width, poster.size.height,
-              ratio == 1 ? @"1:1" : @"3:4", fits ? @"" : @", cut to fit");
+        
+        id previewBlock = ^(CGSize wanted, void (^completion)(UIImage *)) { completion(filled(poster, wanted)); };
+        id videoBlock = ^(CGSize wanted, void (^completion)(NSURL *)) {
+            if (fits) {
+                completion(file);
+                return;
+            }
+            dispatch_async(sg_queue, ^{
+                CFAbsoluteTime start = CFAbsoluteTimeGetCurrent();
+                BOOL ok = [NSFileManager.defaultManager fileExistsAtPath:shaped.path] || SGMotionClipShape(file, ratio, shaped);
+                SGLog(@"lock motion: %@ cut to %@ %@ in %.0f ms", file.lastPathComponent, ratio == 1 ? @"1:1" : @"3:4",
+                      ok ? @"ready" : @"not written", (CFAbsoluteTimeGetCurrent() - start) * 1000);
+                completion(ok ? shaped : nil);
+            });
+        };
+        
+        id artwork = createAnimatedArtwork(shaped.lastPathComponent, previewBlock, videoBlock);
+        if (artwork) {
+            SGNowPlayingSetExtras(@"motion", @{key: artwork}, title);
+            SGLog(@"lock motion: %@, %.0fx%.0f, as %@%@", file.lastPathComponent, poster.size.width, poster.size.height,
+                  ratio == 1 ? @"1:1" : @"3:4", fits ? @"" : @", cut to fit");
+        }
     });
 }
 
@@ -143,31 +172,34 @@ static NSString *pictureOf(SPTPlayerTrack *track, NSDictionary *metadata) {
 }
 
 // The cover's clip is 3:4 (SGLyricsClipSize), so it goes only where the system lists that key.
-API_AVAILABLE(ios(26.0))
 static void showCover(NSString *picture) {
-    if (![MPNowPlayingInfoCenter.supportedAnimatedArtworkKeys containsObject:MPNowPlayingInfoProperty3x4AnimatedArtwork]) return;
+    if (![supportedAnimatedKeys() containsObject:key3x4()]) return;
     NSURL *file = SGMotionMadeFile([@"fluid\n" stringByAppendingString:picture]);
     NSString *title = sg_title;
     CGSize size = SGLyricsClipSize(SGMotionPixels());
-    MPMediaItemAnimatedArtwork *artwork = [[MPMediaItemAnimatedArtwork alloc] initWithArtworkID:file.lastPathComponent
-        previewImageRequestHandler:^(CGSize wanted, void (^completion)(UIImage *)) {
-            withCover(title, ^(CGImageRef cover) {
-                CGImageRef frame = SGFluidClipFrame(cover, size);
-                completion(frame ? filled([UIImage imageWithCGImage:frame], wanted) : nil);
-                CGImageRelease(frame);
-            });
-        }
-        videoAssetFileURLRequestHandler:^(CGSize wanted, void (^completion)(NSURL *)) {
-            withCover(title, ^(CGImageRef cover) {
-                CFAbsoluteTime start = CFAbsoluteTimeGetCurrent();
-                BOOL ok = [NSFileManager.defaultManager fileExistsAtPath:file.path] || SGFluidClipWrite(file, cover, size);
-                SGLog(@"lock motion: the cover's clip %@ %@ in %.0f ms", file.lastPathComponent, ok ? @"ready" : @"not written",
-                      (CFAbsoluteTimeGetCurrent() - start) * 1000);
-                completion(ok ? file : nil);
-            });
-        }];
-    SGNowPlayingSetExtras(@"motion", @{MPNowPlayingInfoProperty3x4AnimatedArtwork: artwork}, title);
-    SGLog(@"lock motion: no moving artwork, the cover's clip offered as %@", file.lastPathComponent);
+    
+    id previewBlock = ^(CGSize wanted, void (^completion)(UIImage *)) {
+        withCover(title, ^(CGImageRef cover) {
+            CGImageRef frame = SGFluidClipFrame(cover, size);
+            completion(frame ? filled([UIImage imageWithCGImage:frame], wanted) : nil);
+            CGImageRelease(frame);
+        });
+    };
+    id videoBlock = ^(CGSize wanted, void (^completion)(NSURL *)) {
+        withCover(title, ^(CGImageRef cover) {
+            CFAbsoluteTime start = CFAbsoluteTimeGetCurrent();
+            BOOL ok = [NSFileManager.defaultManager fileExistsAtPath:file.path] || SGFluidClipWrite(file, cover, size);
+            SGLog(@"lock motion: the cover's clip %@ %@ in %.0f ms", file.lastPathComponent, ok ? @"ready" : @"not written",
+                  (CFAbsoluteTimeGetCurrent() - start) * 1000);
+            completion(ok ? file : nil);
+        });
+    };
+    
+    id artwork = createAnimatedArtwork(file.lastPathComponent, previewBlock, videoBlock);
+    if (artwork) {
+        SGNowPlayingSetExtras(@"motion", @{key3x4(): artwork}, title);
+        SGLog(@"lock motion: no moving artwork, the cover's clip offered as %@", file.lastPathComponent);
+    }
 }
 
 %ctor {
@@ -209,6 +241,6 @@ static void showCover(NSString *picture) {
             });
         }];
         SGLog(@"lock motion: %@, the lock screen takes %@", motionOn(sg_choice) ? (sg_choice == SGLockArtworkEverySong ? @"on for every song" : @"on") : @"off",
-              MPNowPlayingInfoCenter.supportedAnimatedArtworkKeys);
+              supportedAnimatedKeys());
     }
 }

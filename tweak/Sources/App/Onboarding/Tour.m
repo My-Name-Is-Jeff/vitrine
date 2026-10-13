@@ -1,6 +1,7 @@
 #import "Core/SGCore.h"
 #import "Settings/SGPageStyle.h"
 #import "Onboarding.h"
+#import <objc/message.h>
 #import "App/About/About.h"
 #import "App/Pages.h"
 #import "Shared/AdBlock/AdBlock.h"
@@ -27,9 +28,20 @@ static char kPaneKey;
 @end
 
 UIButton *SGOnboardingButton(NSString *title) {
-    UIButtonConfiguration *config;
-    if (@available(iOS 26.0, *)) config = [UIButtonConfiguration prominentGlassButtonConfiguration];
-    else config = [UIButtonConfiguration filledButtonConfiguration];
+    UIButtonConfiguration *config = nil;
+    
+    if (@available(iOS 26.0, *)) {
+        Class btnConfigClass = [UIButtonConfiguration class];
+        SEL glassSel = NSSelectorFromString(@"prominentGlassButtonConfiguration");
+        if ([btnConfigClass respondsToSelector:glassSel]) {
+            config = ((id (*)(id, SEL))objc_msgSend)(btnConfigClass, glassSel);
+        }
+    }
+    
+    if (!config) {
+        config = [UIButtonConfiguration filledButtonConfiguration];
+    }
+    
     config.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
     config.baseBackgroundColor = SGGreen();
     config.baseForegroundColor = SGOnAccent();

@@ -3,19 +3,41 @@
 // Setting the soft style brings back iOS 26's thin fading blur. Set on every layout pass as well as
 // on arrival, in case UIKit resolves the style again after the page appears.
 #import <objc/runtime.h>
+#import <objc/message.h>
 #import "Core/SGCore.h"
 
 static void soften(UIScrollView *scrollView) {
     if (@available(iOS 26.0, *)) {
         // The style last set here, so a layout pass the setter itself causes does not set it again.
         static char setKey;
-        UIScrollEdgeEffect *top = scrollView.topEdgeEffect;
-        if (top.style == objc_getAssociatedObject(scrollView, &setKey)) return;
-        UIScrollEdgeEffectStyle *soft = UIScrollEdgeEffectStyle.softStyle;
-        top.style = soft;
-        objc_setAssociatedObject(scrollView, &setKey, top.style, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        static dispatch_once_t once;
-        dispatch_once(&once, ^{ SGLog(@"soft top edge: first scroll view %@", NSStringFromClass(scrollView.class)); });
+        
+        SEL topSel = NSSelectorFromString(@"topEdgeEffect");
+        if (![scrollView respondsToSelector:topSel]) return;
+        
+        id top = ((id (*)(id, SEL))objc_msgSend)(scrollView, topSel);
+        if (!top) return;
+        
+        SEL styleSel = NSSelectorFromString(@"style");
+        id currentStyle = nil;
+        if ([top respondsToSelector:styleSel]) {
+            currentStyle = ((id (*)(id, SEL))objc_msgSend)(top, styleSel);
+        }
+        
+        if (currentStyle == objc_getAssociatedObject(scrollView, &setKey)) return;
+        
+        Class styleClass = NSClassFromString(@"UIScrollEdgeEffectStyle");
+        SEL softSel = NSSelectorFromString(@"softStyle");
+        if ([styleClass respondsToSelector:softSel]) {
+            id soft = ((id (*)(id, SEL))objc_msgSend)(styleClass, softSel);
+            SEL setStyleSel = NSSelectorFromString(@"setStyle:");
+            if (soft && [top respondsToSelector:setStyleSel]) {
+                ((void (*)(id, SEL, id))objc_msgSend)(top, setStyleSel, soft);
+                objc_setAssociatedObject(scrollView, &setKey, soft, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                
+                static dispatch_once_t once;
+                dispatch_once(&once, ^{ SGLog(@"soft top edge: first scroll view %@", NSStringFromClass(scrollView.class)); });
+            }
+        }
     }
 }
 

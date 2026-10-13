@@ -3,6 +3,7 @@
 // in a sheet that rests at half height without dimming the page, so the preview shows every change as
 // it is made. The rest of the page is App/Pages.m's sections, under them.
 #import "Core/SGCore.h"
+#import <objc/message.h>
 #import "Settings/SGModPage.h"
 #import "Settings/SGPageStyle.h"
 #import "Redesigned/Kit/SGRTokens.h"
@@ -130,12 +131,19 @@ static UIColor *readableOn(UIColor *color) {
 }
 
 static UIButtonConfiguration *chipConfiguration(NSString *title, NSString *symbol, BOOL chosen) {
-    UIButtonConfiguration *config;
+    UIButtonConfiguration *config = nil;
     if (@available(iOS 26.0, *)) {
-        config = chosen ? [UIButtonConfiguration prominentGlassButtonConfiguration] : [UIButtonConfiguration glassButtonConfiguration];
-    } else {
+        Class btnConfigClass = [UIButtonConfiguration class];
+        SEL sel = NSSelectorFromString(chosen ? @"prominentGlassButtonConfiguration" : @"glassButtonConfiguration");
+        if ([btnConfigClass respondsToSelector:sel]) {
+            config = ((id (*)(id, SEL))objc_msgSend)(btnConfigClass, sel);
+        }
+    }
+    
+    if (!config) {
         config = chosen ? [UIButtonConfiguration filledButtonConfiguration] : [UIButtonConfiguration grayButtonConfiguration];
     }
+    
     config.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
     if (chosen) config.baseBackgroundColor = SGRAccent();
     config.baseForegroundColor = chosen ? readableOn(SGRAccent()) : UIColor.whiteColor;

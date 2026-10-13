@@ -97,6 +97,13 @@ static NSDictionary *withLine(NSDictionary *info, NSString *line, double elapsed
     return shown;
 }
 
+// Whether the sound is moving. A rate Spotify did not report at all counts as moving: the line would
+// stand still either way, and a missing key is no reason to leave the feature switched off for good.
+static BOOL playingBy(NSDictionary *info) {
+    NSNumber *rate = info[MPNowPlayingInfoPropertyPlaybackRate];
+    return !rate || rate.doubleValue > 0;
+}
+
 static void tick(void) {
     NSDictionary *info;
     CFAbsoluteTime reportedAt;
@@ -139,14 +146,8 @@ static void setTicking(BOOL on) {
     dispatch_resume(sg_timer);
 }
 
-// Whether the sound is moving. A rate Spotify did not report at all counts as moving: the line would
-// stand still either way, and a missing key is no reason to leave the feature switched off for good.
-static BOOL playingBy(NSDictionary *info) {
-    NSNumber *rate = info[MPNowPlayingInfoPropertyPlaybackRate];
-    return !rate || rate.doubleValue > 0;
-}
-
 %hook MPNowPlayingInfoCenter
+
 - (void)setNowPlayingInfo:(NSDictionary *)info {
     if (sg_resending) {
         %orig;
@@ -181,6 +182,7 @@ static BOOL playingBy(NSDictionary *info) {
     }
     return info ?: %orig;
 }
+
 %end
 
 %ctor {

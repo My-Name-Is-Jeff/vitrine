@@ -5,6 +5,7 @@
 #import "Redesigned/Kit/SGRGlass.h"
 #import "Redesigned/Kit/SGRTokens.h"
 #import "SGRSingButton.h"
+#import <objc/message.h>
 
 static const CGFloat kGlyph = 17, kRingWidth = 2.5, kRingInset = 1.5;
 // The slider's capsule over the button, and the gap between them: wider than SGRGlassSpacing (16), so the
@@ -135,9 +136,26 @@ static char kButtonGlassKey, kPanelGlassKey;
     if (![glyph isEqualToString:_glyph]) {
         _glyph = glyph;
         UIButtonConfiguration *config = _button.configuration;
-        if (@available(iOS 26.0, *)) {
-            config.symbolContentTransition = SGRReduceMotion() || !self.window ? nil
-                : [UISymbolContentTransition transitionWithContentTransition:[NSSymbolReplaceContentTransition replaceDownUpTransition]];
+        if (@available(iOS 17.0, *)) {
+            if (SGRReduceMotion() || !self.window) {
+                [config setValue:nil forKey:@"symbolContentTransition"];
+            } else {
+                Class symClass = NSClassFromString(@"UISymbolContentTransition");
+                Class repClass = NSClassFromString(@"NSSymbolReplaceContentTransition");
+                if (symClass && repClass) {
+                    SEL repSel = NSSelectorFromString(@"replaceDownUpTransition");
+                    SEL transSel = NSSelectorFromString(@"transitionWithContentTransition:");
+                    if ([repClass respondsToSelector:repSel] && [symClass respondsToSelector:transSel]) {
+                        id replace = ((id (*)(id, SEL))objc_msgSend)(repClass, repSel);
+                        if (replace) {
+                            id transition = ((id (*)(id, SEL, id))objc_msgSend)(symClass, transSel, replace);
+                            if (transition) {
+                                [config setValue:transition forKey:@"symbolContentTransition"];
+                            }
+                        }
+                    }
+                }
+            }
         }
         config.image = [UIImage systemImageNamed:glyph];
         _button.configuration = config;

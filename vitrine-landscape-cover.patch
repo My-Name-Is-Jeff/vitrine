@@ -1,0 +1,87 @@
+diff --git a/tweak/Sources/Redesigned/Player/PlayerLandscape.x b/tweak/Sources/Redesigned/Player/PlayerLandscape.x
+index e298267..b8946fc 100644
+--- a/tweak/Sources/Redesigned/Player/PlayerLandscape.x
++++ b/tweak/Sources/Redesigned/Player/PlayerLandscape.x
+@@ -1,7 +1,10 @@
+ // Player redesign: the lyrics turn sideways with the phone onto a landscape screen of their own. The cover
+ // is on the left with the title, the artist and the controls under it, and the lines are on the right.
+ // The controls fade after a few seconds without a touch and come back at a tap, as in the player: the
+-// tap that brings them back lands on a clear shield over the screen, so it never seeks. The button beside
++// tap that brings them back lands on a clear shield over the screen, so it never seeks. While they are
++// gone the cover comes down to the middle of its column, the room the title and the controls left under
++// it no longer being needed, and goes back up with them; paused, it draws smaller, as the player's does
++// (SGRPlayerCoverScale). The button beside
+ // the title turns the screen back to portrait, as VoiceOver's escape does, for a phone held flat or on its
+ // side; the screen stays shut then until the phone has stood upright again.
+ //
+@@ -40,6 +43,7 @@ static BOOL sg_shut;
+     NSTimer *_rest;
+     UITapGestureRecognizer *_hide;   // only while the controls are up
+     UIView *_shield;                 // only while they are not: the touch that brings them back
++    BOOL _controlsShown;             // the cover sits at the top of its column while they are up, at its middle after
+ }
+ 
+ // Portrait once the screen is on its way out, or the scene could not turn back while it fades.
+@@ -82,6 +86,7 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label,
+ 
+ - (void)viewDidLoad {
+     [super viewDidLoad];
++    _controlsShown = YES;
+     self.view.backgroundColor = UIColor.blackColor;
+ 
+     // The player's own field behind the screen, so the colors carry over from the portrait player.
+@@ -160,10 +165,16 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label,
+     CGFloat titleHeight = ceil(_title.font.lineHeight), artistHeight = ceil(_artist.font.lineHeight);
+     CGFloat textHeight = MAX(titleHeight + artistHeight, kControlSide), controlsHeight = kControlSide;
+     CGFloat side = MIN(column - kSide, safe.size.height - 2 * kSide - textHeight - controlsHeight - 2 * kCoverGap);
++    // The column laid out with the controls up: cover, title and artist, controls, centered together. The text
++    // and the controls stay where this puts them while they fade, so they come back to the same place.
+     CGFloat top = CGRectGetMidY(safe) - (side + kCoverGap + textHeight + kCoverGap + controlsHeight) / 2;
+-    _cover.frame = CGRectMake(left, top, side, side);
++    // With them gone the cover alone is centered. Bounds and a center, not a frame, since it can be under the
++    // paused shrink's transform.
++    CGFloat coverTop = _controlsShown ? top : CGRectGetMidY(safe) - side / 2;
++    _cover.bounds = CGRectMake(0, 0, side, side);
++    _cover.center = CGPointMake(left + side / 2, coverTop + side / 2);
+     // The close button at the text's trailing end, its glyph (about 20pt in the 44pt square) at the cover's edge.
+-    CGFloat textTop = CGRectGetMaxY(_cover.frame) + kCoverGap;
++    CGFloat textTop = top + side + kCoverGap;
+     _close.frame = CGRectMake(left + side - kControlSide + 12, textTop + (textHeight - kControlSide) / 2, kControlSide, kControlSide);
+     _title.frame = CGRectMake(left, textTop + (textHeight - titleHeight - artistHeight) / 2, side - kControlSide, titleHeight);
+     _artist.frame = CGRectMake(left, CGRectGetMaxY(_title.frame), side - kControlSide, artistHeight);
+@@ -207,6 +218,13 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label,
+         [UIImageSymbolConfiguration configurationWithPointSize:30 weight:UIImageSymbolWeightBold]] forState:UIControlStateNormal];
+     _play.accessibilityLabel = state.isPaused ? @"Play" : @"Pause";
+     _field.motionHeld = state.isPaused;
++    // The cover draws smaller while paused, the player's own shrink and its spring.
++    CGFloat scale = SGRPlayerCoverScale();
++    CGAffineTransform shrink = CGAffineTransformMakeScale(scale, scale);
++    if (!CGAffineTransformEqualToTransform(_cover.transform, shrink)) {
++        UIImageView *cover = _cover;
++        SGRAnimate(SGRReduceMotion() ? SGRMotionRespond : SGRMotionLayout, ^{ cover.transform = shrink; }, nil);
++    }
+     // A pause brings the controls back and keeps them; playing again, from here or anywhere, starts the
+     // clock. The tap on the play button cannot: the state saying so arrives a beat after it.
+     if (state.isPaused) [self setControlsShown:YES];
+@@ -266,6 +284,21 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label,
+         _shield.frame = self.view.bounds;
+         [self.view addSubview:_shield];
+     }
++    // The cover moves in the layout's spring while the controls fade in their own timing, the two apart as
++    // in the portrait player (PlayerLyrics.x setAlone). Not before the screen is up: its first layout places it.
++    BOOL moved = _controlsShown != shown;
++    _controlsShown = shown;
++    if (moved) {
++        if (self.view.window) {
++            UIView *host = self.view;
++            SGRAnimateLayout(host, ^{
++                [host setNeedsLayout];
++                [host layoutIfNeeded];
++            }, nil);
++        } else {
++            [self.view setNeedsLayout];
++        }
++    }
+     // Back at a tap with the Kit's response, from where a fade out is; they go with the slow fade, as the
+     // portrait player's do (PlayerLyrics.x).
+     SGRAnimate(shown ? SGRMotionRespond : SGRMotionFade, ^{

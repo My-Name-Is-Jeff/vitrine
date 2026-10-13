@@ -1,3 +1,4 @@
+#import <objc/message.h>
 #import "Core/SGCore.h"
 #import "AddTabSheet.h"
 #import "Links.h"
@@ -213,11 +214,21 @@ static void showProblem(UIViewController *page, NSString *title, NSString *messa
     _search.searchBar.autocorrectionType = UITextAutocorrectionTypeNo;
     self.navigationItem.searchController = _search;
     self.navigationItem.hidesSearchBarWhenScrolling = NO;
+    
     // On 26 the field waits as a button in a toolbar at the bottom, where the thumb is.
     if (@available(iOS 26.0, *)) {
-        self.navigationItem.preferredSearchBarPlacement = UINavigationItemSearchBarPlacementIntegratedButton;
-        self.navigationItem.searchBarPlacementAllowsToolbarIntegration = YES;
-        self.toolbarItems = @[[UIBarButtonItem flexibleSpaceItem], self.navigationItem.searchBarPlacementBarButtonItem];
+        UINavigationItem *item = self.navigationItem;
+        @try {
+            [item setValue:@3 forKey:@"preferredSearchBarPlacement"];
+            [item setValue:@YES forKey:@"searchBarPlacementAllowsToolbarIntegration"];
+            
+            id barButtonItem = [item valueForKey:@"searchBarPlacementBarButtonItem"];
+            if (barButtonItem) {
+                self.toolbarItems = @[[UIBarButtonItem flexibleSpaceItem], barButtonItem];
+            }
+        } @catch (NSException *e) {
+            // Fallback
+        }
     }
     self.definesPresentationContext = YES;
 

@@ -14,7 +14,7 @@ NSString *const SGImportedLRCKey = @"importedLRC";
 NSNotificationName const SGImportedLRCDidChangeNotification = @"spotifyglass.localFiles.lrcDidChange";
 
 static NSString *const kErrorDomain = @"spotifyglass.lrc";
-static NSString *const kCredit = @"Imported LRC";
+static NSString *const kCredit = @"Imported Lyrics";
 // A sheet of lyrics is a few kilobytes; anything near this is not one.
 static const NSUInteger kMostBytes = 1024 * 1024;
 
@@ -34,7 +34,10 @@ static NSString *directory(void) {
 NSArray<NSString *> *SGImportedLRCFiles(void) {
     NSMutableArray<NSString *> *names = [NSMutableArray array];
     for (NSString *name in [NSFileManager.defaultManager contentsOfDirectoryAtPath:directory() error:nil]) {
-        if ([name.pathExtension.lowercaseString isEqualToString:@"lrc"]) [names addObject:name];
+        NSString *ext = name.pathExtension.lowercaseString;
+        if ([ext isEqualToString:@"lrc"] || [ext isEqualToString:@"ttml"] || [ext isEqualToString:@"xml"]) {
+            [names addObject:name];
+        }
     }
     return [names sortedArrayUsingSelector:@selector(localizedStandardCompare:)];
 }
@@ -81,7 +84,7 @@ NSString *SGImportedLRCLinkedTo(NSString *uri) {
     return [name isKindOfClass:NSString.class] ? name : nil;
 }
 
-#pragma mark - reading LRC
+#pragma mark - reading LRC & TTML
 
 @interface SGLRCSheet : NSObject
 @property (nonatomic, copy) NSString *title, *artist;   // [ti:] and [ar:], nil without them
@@ -98,14 +101,29 @@ static NSString *trimmed(NSString *text) {
     return [text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
 }
 
+// Interpreta archivos en formato XML/TTML usando el parser nativo `SGTTMLLines`.
+static SGLRCSheet *sheetFromTTML(NSString *xml) {
+    NSArray<SGKaraokeLine *> *lines = SGTTMLLines(xml);
+    if (!lines.count) return nil;
+    SGLRCSheet *sheet = [SGLRCSheet new];
+    sheet.lines = lines;
+    sheet.synced = YES;
+    NSArray<NSNumber *> *pageStarts;
+    NSArray<NSString *> *pageTexts;
+    SGLyricsPageLines(lines, &pageStarts, &pageTexts);
+    sheet.starts = pageStarts;
+    sheet.texts = pageTexts;
+    return sheet;
+}
+
 // [01:02], [01:02.3], [01:02.34], [01:02.345], [101:02:34]: minutes of one to three digits, and a ":"
 // before the fraction as some editors write it. A line sung more than once carries a stamp per time.
-static SGLRCSheet *sheetFrom(NSString *lrc) {
+static SGLRCSheet *sheetFromLRC(NSString *lrc) {
     static NSRegularExpression *stamp, *tag;
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         stamp = [NSRegularExpression regularExpressionWithPattern:@"\\[(\\d{1,3}):(\\d{1,2})(?:[.:](\\d{1,3}))?\\]" options:0 error:nil];
-        tag = [NSRegularExpression regularExpressionWithPattern:@"^\\[(ti|ar|offset)\\s*:([^\\]]*)\\]" options:NSRegularExpressionCaseInsensitive error:nil];
+        tag = [NSRegularExpression regularExpressionWithPattern:@"^\\[(ti\vert{}ar\vert{}offset)\\s*:([^\\]]*)\\]" options:NSRegularExpressionCaseInsensitive error:nil];
     });
     SGLRCSheet *sheet = [SGLRCSheet new];
     NSInteger offset = 0;
@@ -180,7 +198,16 @@ static SGLRCSheet *sheetNamed(NSString *name) {
         if (kept) return kept;
     }
     NSString *text = [NSString stringWithContentsOfFile:[directory() stringByAppendingPathComponent:name] encoding:NSUTF8StringEncoding error:nil];
-    SGLRCSheet *sheet = text ? sheetFrom(text) : nil;
+    if (!text) return nil;
+    
+    NSString *ext = name.pathExtension.lowercaseString;
+    SGLRCSheet *sheet = nil;
+    if ([ext isEqualToString:@"ttml"] || [ext isEqualToString:@"xml"]) {
+        sheet = sheetFromTTML(text);
+    } else {
+        sheet = sheetFromLRC(text);
+    }
+    
     if (!sheet) return nil;
     @synchronized (sg_sheets) { sg_sheets[name] = sheet; }
     return sheet;
@@ -328,20 +355,30 @@ NSString *SGImportLRC(NSURL *url, NSString *uri, NSError **error) {
     NSError *readError = nil;
     NSData *data = [NSData dataWithContentsOfURL:url options:0 error:&readError];
     if (scoped) [url stopAccessingSecurityScopedResource];
+    
     NSString *reason = nil, *text = nil;
+    NSString *ext = url.pathExtension.lowercaseString;
+    BOOL isTTML = [ext isEqualToString:@"ttml"] || [ext isEqualToString:@"xml"];
+    
     if (!data) reason = readError.localizedDescription ?: @"The file could not be read.";
     else if (!data.length) reason = @"The file is empty.";
     else if (data.length > kMostBytes) reason = @"The file is over 1 MB, too large for lyrics.";
     else {
         text = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding]
             ?: [[NSString alloc] initWithData:data encoding:NSUTF16StringEncoding];
-        if (!text) reason = @"The file is not UTF-8 or UTF-16 text.";
-        else if (![text containsString:@"]"]) reason = @"The file has no LRC tags or timestamps.";
+        if (!text) {
+            reason = @"The file is not UTF-8 or UTF-16 text.";
+        } else if (!isTTML && ![text containsString:@"]"]) {
+            reason = @"The file has no LRC tags or timestamps.";
+        } else if (isTTML && !SGTTMLLines(text).count) {
+            reason = @"The TTML file has no valid timing or lyrics content.";
+        }
     }
     if (reason) {
         if (error) *error = refusal(reason);
         return nil;
     }
+    
     BOOL first = SGImportedLRCFiles().count == 0;
     NSString *name = freeName(url.lastPathComponent);
     NSError *writeError = nil;

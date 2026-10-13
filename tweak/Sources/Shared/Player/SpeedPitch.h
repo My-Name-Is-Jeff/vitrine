@@ -12,6 +12,10 @@
 // Threading: main thread only, except what SGTimePitch.h says runs on the render thread.
 #import <UIKit/UIKit.h>
 #import <AudioToolbox/AudioToolbox.h>
+#import <UIKit/UIKit.h>
+
+FOUNDATION_EXPORT void SGPlayerMenuMarkPlayers(void);
+FOUNDATION_EXPORT BOOL SGPlayerMenuIsPlayers(UIViewController *menu);
 
 // Whether a context menu sheet is the player's ⋯ card: the first to come up within a few seconds of a tap on
 // the player's more button (SpeedPitchMenu.x watches it under either look); decided once per menu.

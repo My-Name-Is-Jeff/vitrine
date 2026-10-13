@@ -1,61 +1,36 @@
 // The player's more menu gets Speed and pitch, under either look: one row in Spotify's own context menu
 // sheet that opens, right there in the sheet, onto two sliders, the playback speed and the pitch
 // (SpeedPitch.x applies them).
-//
-// The sheet is Spotify's ContextMenu_InternalImpl.ContextMenuViewController, a table of its rows
-// (ContextMenuTableView, sized to its content). Its rows come from Swift item factories with no way in,
-// so the block is the table's header view, or its footer when Spotify already uses the header, and is
-// laid out by hand at the table's width. Opening and closing it resizes the header inside a table update,
-// so the rows under it move with it, and the table's intrinsic size is invalidated for the sheet to
-// follow.
-//
-// Only the menu the player's more button opens gets it: the button (id=Context menu,
-// trees/lyrics.txt:183, an Encore Tertiary button in NowPlaying_ModesImpl.HeaderElementsUnit) is watched
-// from here under either look, and the first menu that comes up within a few seconds of its tap is the
-// player's. The presenter is not a test: every sheet the player puts up comes from its
-// NowPlayingOverlayContainer, the ⋯ card's own pages too (its Sleep timer is a context menu sheet of its own,
-// which took the block as well, "tapped 0" in the log). The first time, the menu's structure is logged,
-// since no recorded tree shows it yet.
-//
-// The block is drawn from its own measures and type (below), not from the redesign's Kit, so it sits on
-// Spotify's sheet under either look.
-//
-// The block keeps whether it was open for the rest of the session; speed and pitch last until Spotify
-// quits.
-//
-// Under the redesign, with the player's background Fluid or Animated, a row under the block switches
-// Animated artwork (SpeedPitch.h), which the redesign's PlayerMotion.x defines.
-//
-// The redesign shows the player's sheet as the system menu, with speed, pitch, reverb and Animated artwork
-// as items of its own (Redesigned/Player/PlayerMenu.m), so the block stays out of a sheet shown that way
-// and comes in only if the sheet itself is shown after all (SGPlayerMenuReplaced).
 #import <CoreText/SFNTLayoutTypes.h>
 #import <objc/runtime.h>
 #import "Core/SGCore.h"
 #import "Settings/SGPageStyle.h"
 #import "Shared/AudioEffects/AudioEffects.h"
 #import "Shared/Haptics/Haptics.h"
+#import "Settings/SGModPage.h"
 #import "SpeedPitch.h"
+
+// Referencia a la clave externa declarada en SGModPage.m / SGFlagList.m
+extern NSString *const SGKeyAnimatedCoversEnabled;
 
 // A menu this soon after the more button's tap is the player's.
 static const NSTimeInterval kMenuAfterTap = 3;
 static const CGFloat kRowHeight = 56, kSliderBlockHeight = 72, kSwitchRowHeight = 44, kPanelBottom = 12;
-// The block's own measures and type, so it stands on Spotify's sheet under either look rather than on
-// the redesign's Kit: the sheet's side margin, the gap everything else is a multiple of, and a spring
-// that settles without overshooting.
 static const CGFloat kSideMargin = 16, kGrid = 8;
 static const NSTimeInterval kOpenDuration = 0.45;
+
+static NSTimeInterval sg_moreTappedAt;
+static BOOL sg_open;
+static char kBlockKey, kDecidedKey, kWatchedKey, kShownAtKey, kRowsInKey;
 
 static UIColor *primary(void) {
     return UIColor.whiteColor;
 }
 
-// White at the weight the sheet's own secondary text is, a step firmer with Increase Contrast.
 static UIColor *secondary(void) {
     return [UIColor colorWithWhite:1 alpha:UIAccessibilityDarkerSystemColorsEnabled() ? 0.80 : 0.65];
 }
 
-// The system font at a text style's size, which stops growing past `largest` so the row still fits.
 static UIFont *font(UIFontTextStyle style, UIFontWeight weight, UIContentSizeCategory largest) {
     UIContentSizeCategory current = UIApplication.sharedApplication.preferredContentSizeCategory;
     if (largest && UIContentSizeCategoryCompareToCategory(current, largest) == NSOrderedDescending) current = largest;
@@ -64,7 +39,6 @@ static UIFont *font(UIFontTextStyle style, UIFontWeight weight, UIContentSizeCat
     return [UIFont systemFontOfSize:size weight:weight];
 }
 
-// Digits of one width, so a value does not shuffle as it counts.
 static UIFont *monospacedDigits(UIFont *base) {
     if (!base) return nil;
     NSArray *features = @[@{UIFontFeatureTypeIdentifierKey: @(kNumberSpacingType), UIFontFeatureSelectorIdentifierKey: @(kMonospacedNumbersSelector)}];
@@ -82,16 +56,133 @@ static void animateOpen(void (^animations)(void), void (^completion)(BOOL finish
                         options:UIViewAnimationOptionAllowUserInteraction | UIViewAnimationOptionBeginFromCurrentState
                      animations:animations completion:completion];
 }
+
 static const float kMinSpeed = 0.5f, kMaxSpeed = 2, kSpeedStep = 0.05f;
 static const float kMaxPitch = 12;
-// Speed is applied at most this often while the slider moves.
 static const NSTimeInterval kSpeedInterval = 0.05;
 
-static NSTimeInterval sg_moreTappedAt;
-static BOOL sg_open;
-static char kBlockKey, kDecidedKey, kWatchedKey, kShownAtKey, kRowsInKey;
+#pragma mark - Helper de comprobación e inspección de menú
 
-#pragma mark - the block
+static BOOL isPlayerMenu(UIViewController *menu) {
+    NSNumber *decided = objc_getAssociatedObject(menu, &kDecidedKey);
+    if (decided) return decided.boolValue;
+    BOOL ours = sg_moreTappedAt && CACurrentMediaTime() - sg_moreTappedAt < kMenuAfterTap;
+    if (ours) sg_moreTappedAt = 0;
+    objc_setAssociatedObject(menu, &kDecidedKey, @(ours), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    UIViewController *presenter = menu.navigationController.presentingViewController ?: menu.presentingViewController;
+    SGLog(@"speed and pitch: a context menu, %@ (tapped %d, presented by %@)", ours ? @"the player's" : @"not the player's", ours,
+          presenter ? NSStringFromClass(presenter.class) : @"nothing");
+    return ours;
+}
+
+#pragma mark - Funciones Exportadas (Declaradas en SpeedPitch.h)
+
+void SGPlayerMenuMarkPlayers(void) {
+    sg_moreTappedAt = CACurrentMediaTime();
+}
+
+BOOL SGPlayerMenuIsPlayers(UIViewController *menu) {
+    return isPlayerMenu(menu);
+}
+
+static UITableView *findTable(UIView *root, int depth) {
+    if ([root isKindOfClass:UITableView.class]) return (UITableView *)root;
+    if (depth > 5) return nil;
+    for (UIView *child in root.subviews) {
+        UITableView *table = findTable(child, depth + 1);
+        if (table) return table;
+    }
+    return nil;
+}
+
+static NSInteger rowCount(UITableView *table) {
+    NSInteger rows = 0;
+    for (NSInteger section = 0; section < table.numberOfSections; section++) rows += [table numberOfRowsInSection:section];
+    return rows;
+}
+
+static BOOL spinning(UIView *view, int depth) {
+    if ([view isKindOfClass:UIActivityIndicatorView.class]) return ((UIActivityIndicatorView *)view).isAnimating && !view.isHidden && view.alpha > 0.01;
+    if (depth > 6) return NO;
+    for (UIView *child in view.subviews) {
+        if (spinning(child, depth + 1)) return YES;
+    }
+    return NO;
+}
+
+static void noteRows(UIViewController *menu, UITableView *table) {
+    NSNumber *shownAt = objc_getAssociatedObject(menu, &kShownAtKey);
+    if (!shownAt || objc_getAssociatedObject(menu, &kRowsInKey) || !table || rowCount(table) == 0) return;
+    objc_setAssociatedObject(menu, &kRowsInKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    NSTimeInterval after = CACurrentMediaTime() - shownAt.doubleValue;
+    if (after > 0.5) SGLog(@"speed and pitch: Spotify's rows came in %.1f s after the menu appeared", after);
+}
+
+static void watchRows(UIViewController *menu) {
+    if (objc_getAssociatedObject(menu, &kShownAtKey)) return;
+    objc_setAssociatedObject(menu, &kShownAtKey, @(CACurrentMediaTime()), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    UITableView *table = findTable(menu.view, 0);
+    if (table && rowCount(table)) {
+        objc_setAssociatedObject(menu, &kRowsInKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return;
+    }
+    __weak UIViewController *weakMenu = menu;
+    for (NSNumber *wait in @[@2, @6, @15, @40]) {
+        CFTimeInterval due = CACurrentMediaTime() + wait.doubleValue;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(wait.doubleValue * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            UIViewController *shown = weakMenu;
+            if (!shown.viewIfLoaded.window || objc_getAssociatedObject(shown, &kRowsInKey)) return;
+            UITableView *rows = findTable(shown.view, 0);
+            noteRows(shown, rows);
+            if (objc_getAssociatedObject(shown, &kRowsInKey)) return;
+            SGLog(@"speed and pitch: no rows of Spotify's %@ s after the menu appeared (this check ran %.2f s late), spinner %@, table %.0fx%.0f holding %.0f",
+                  wait, CACurrentMediaTime() - due, spinning(shown.view, 0) ? @"spinning" : @"not spinning",
+                  rows.bounds.size.width, rows.bounds.size.height, rows.contentSize.height);
+        });
+    }
+}
+
+#pragma mark - Helper para inyectar el botón contextual de portada animada
+
+static UIMenu *buildPlayerMenuWithAnimatedOption(NSArray<UIMenuElement *> *existingActions) {
+    NSMutableArray<UIMenuElement *> *menuElements = [NSMutableArray array];
+    
+    // 1. Verificamos el estado actual guardado
+    BOOL isAnimatedOn = SGFlag(SGKeyAnimatedCoversEnabled, YES);
+    
+    // 2. Creamos la acción del botón "Show/Hide Animated Artwork" con el ícono play.rectangle
+    UIAction *animatedArtworkAction = [UIAction actionWithTitle:isAnimatedOn ? @"Hide Animated Artwork" : @"Show Animated Artwork"
+                                                          image:[UIImage systemImageNamed:@"play.rectangle"]
+                                                     identifier:@"spotifyglass.animatedArtwork"
+                                                        handler:^(UIAction *action) {
+        BOOL newState = !isAnimatedOn;
+        SGSetFlagOverride(SGKeyAnimatedCoversEnabled, newState ? @YES : @NO);
+        
+        // Notificamos para alternar inmediatamente la portada animada en el reproductor
+        [NSNotificationCenter.defaultCenter postNotificationName:@"spotifyglass.animatedArtworkDidChange" object:nil];
+    }];
+    
+    // 3. Insertamos la acción justo arriba de "Show Visualizer" o "Show Fluid Artwork"
+    BOOL inserted = NO;
+    for (UIMenuElement *element in existingActions) {
+        if ([element isKindOfClass:[UIAction class]]) {
+            UIAction *act = (UIAction *)element;
+            if ([act.title containsString:@"Visualizer"] || [act.title containsString:@"Fluid Artwork"]) {
+                [menuElements addObject:animatedArtworkAction];
+                inserted = YES;
+            }
+        }
+        [menuElements addObject:element];
+    }
+    
+    if (!inserted) {
+        [menuElements addObject:animatedArtworkAction];
+    }
+    
+    return [UIMenu menuWithTitle:@"" children:menuElements];
+}
+
+#pragma mark - Vista principal de Speed & Pitch
 
 @interface SGSpeedPitchView : UIView
 @property (nonatomic, weak) UITableView *table;
@@ -123,7 +214,6 @@ static UIImage *symbol(NSString *name, CGFloat size, UIImageSymbolWeight weight)
     return [UIImage systemImageNamed:name withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:size weight:weight]];
 }
 
-// A glyph with its color drawn in, so it never passes through a tint on its way to the screen.
 static UIImage *paintedSymbol(NSString *name, CGFloat size, UIImageSymbolWeight weight, UIColor *color) {
     return [symbol(name, size, weight) imageWithTintColor:color renderingMode:UIImageRenderingModeAlwaysOriginal];
 }
@@ -149,7 +239,6 @@ static UILabel *makeLabel(UIFont *font, UIColor *color) {
     return button;
 }
 
-// A glyph centered in a box of one size, so both sliders' tracks start and end at the same x.
 static UIImage *endImage(NSString *name, CGFloat size) {
     UIImage *glyph = paintedSymbol(name, size, UIImageSymbolWeightMedium, secondary());
     CGSize box = CGSizeMake(24, 24);
@@ -158,8 +247,6 @@ static UIImage *endImage(NSString *name, CGFloat size) {
     }];
 }
 
-// Both sliders have their normal in the middle of the range rather than at one end, so neither track
-// fills: a tick marks where normal is, under the thumb until it moves away.
 - (UISlider *)slider:(float)min max:(float)max normal:(float)normal minImage:(NSString *)minImage maxImage:(NSString *)maxImage {
     UISlider *slider = [UISlider new];
     slider.minimumValue = min;
@@ -180,7 +267,6 @@ static UIImage *endImage(NSString *name, CGFloat size) {
     return slider;
 }
 
-// The tick at the normal value's x on the track, found the way the thumb is placed.
 static void placeTick(UISlider *slider) {
     UIView *tick = slider.subviews.firstObject;
     if (tick.subviews.count || tick.class != UIView.class) return;
@@ -195,10 +281,6 @@ static void placeTick(UISlider *slider) {
     if (!(self = [super initWithFrame:frame])) return nil;
     self.clipsToBounds = YES;
     self.backgroundColor = UIColor.clearColor;
-    // Nothing here draws in the tint: every color is set on the view that draws it, and the glyphs have
-    // theirs painted in rather than tinted. The row came up in the system blue for a moment as the sheet
-    // appeared on the phone (issue #68), which is the tint a view inherits when nothing up the sheet sets
-    // one. The block's own tint is white as well, for whatever UIKit draws in it (the sliders' parts).
     self.tintColor = primary();
 
     _row = [UIControl new];
@@ -306,7 +388,6 @@ static void placeTick(UISlider *slider) {
     _follows.frame = CGRectMake(width - side - toggle.width, y + (kSwitchRowHeight - toggle.height) / 2, toggle.width, toggle.height);
     _followsName.frame = CGRectMake(side, y, CGRectGetMinX(_follows.frame) - side - kGrid, kSwitchRowHeight);
 
-    // Under the panel while it is open, under the row while it is closed.
     _animatedRow.frame = CGRectMake(0, sg_open ? CGRectGetMaxY(_panel.frame) : kRowHeight, width, kRowHeight);
     _animatedIcon.frame = _icon.frame;
     toggle = [_animated sizeThatFits:CGSizeZero];
@@ -344,7 +425,6 @@ static NSString *pitchText(float pitch) {
     return [NSString stringWithFormat:@"%@%.0f", pitch > 0 ? @"+" : @"−", fabsf(pitch)];
 }
 
-// What the player and the pitch say now, onto the controls (not while a finger is on one).
 - (void)refresh {
     BOOL speedAllowed = SGPlayerSpeedAllowed(), pitchAvailable = SGPlayerPitchAvailable();
     if (!_speed.tracking) _shownSpeed = snappedSpeed(SGPlayerSpeed());
@@ -356,18 +436,16 @@ static NSString *pitchText(float pitch) {
     _speed.enabled = speedAllowed;
     _pitch.enabled = pitchAvailable;
     _speed.alpha = speedAllowed ? 1 : 0.4;
-    // Following needs the speed's unit, which the in place fallback does not have.
     _follows.on = SGPlayerPitchFollowsSpeed();
     _follows.enabled = speedAllowed;
     _follows.alpha = _followsName.alpha = speedAllowed ? 1 : 0.4;
-    _animated.on = SGPlayerMenuAnimatedArtwork();
+    
+    _animated.on = SGFlag(SGKeyAnimatedCoversEnabled, YES);
     [self showValues];
 }
 
 - (void)showValues {
     BOOL speedAllowed = SGPlayerSpeedAllowed(), pitchAvailable = SGPlayerPitchAvailable();
-    // While pitch follows a speed that is not normal, the speed sets the pitch and the semitones are not
-    // played (SGTimePitch.h), so the slider stands aside and nothing claims them.
     BOOL following = speedAllowed && _follows.on && _shownSpeed != 1;
     float pitch = following ? 0 : _shownPitch;
     [UIView performWithoutAnimation:^{
@@ -435,7 +513,6 @@ static NSString *pitchText(float pitch) {
     UIView *sheet = table.superview;
     for (int i = 0; sheet && i < 4; i++, sheet = sheet.superview) [sheet setNeedsLayout];
     UIAccessibilityPostNotification(UIAccessibilityLayoutChangedNotification, sg_open ? _speed : nil);
-    SGLog(@"speed and pitch: speed and pitch %@, table %.0f tall showing %.0f", sg_open ? @"opened" : @"closed", table.contentSize.height, table.bounds.size.height);
 }
 
 - (void)sendSpeed {
@@ -495,8 +572,9 @@ static NSString *pitchText(float pitch) {
 }
 
 - (void)animatedChanged {
-    SGPlayerMenuSetAnimatedArtwork(_animated.on);
+    SGSetFlagOverride(SGKeyAnimatedCoversEnabled, _animated.on ? @YES : @NO);
     SGPlayFeedback(SGFeedbackDetent);
+    [NSNotificationCenter.defaultCenter postNotificationName:@"spotifyglass.animatedArtworkDidChange" object:nil];
 }
 
 - (void)followsChanged {
@@ -586,12 +664,7 @@ static void watchMoreButton(UIView *button) {
     static SGMoreTapWatcher *watcher;
     if (!watcher) watcher = [SGMoreTapWatcher new];
     objc_setAssociatedObject(button, &kWatchedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    // A control (Spotify's ⋯ is an Encore button, a UIControl) is watched through its own events alone, from
-    // the touch down on: a recognizer on it, even one that cancels and delays nothing, took part in its touches
-    // (a ripple on the ⋯ on the phone).
     if ([button isKindOfClass:UIControl.class]) {
-        // Touch down alone: a touch up after the ⋯ card has used the tap up would count a second time, for the
-        // next sheet (the card's Sleep timer took the block that way on the phone).
         [(UIControl *)button addTarget:watcher action:@selector(tapped) forControlEvents:UIControlEventTouchDown];
         return;
     }
@@ -602,136 +675,23 @@ static void watchMoreButton(UIView *button) {
     [button addGestureRecognizer:tap];
 }
 
-#pragma mark - the menu
-
-static void logStructure(UIView *view, int depth, NSMutableString *out) {
-    if (depth > 6 || out.length > 3000) return;
-    [out appendFormat:@"\n%*s%@ %@", depth * 2, "", NSStringFromClass(view.class), NSStringFromCGRect(view.frame)];
-    for (UIView *child in view.subviews) {
-        if ([child isKindOfClass:UITableViewCell.class]) {
-            [out appendFormat:@"\n%*scell %@", (depth + 1) * 2, "", NSStringFromCGRect(child.frame)];
-            continue;
-        }
-        logStructure(child, depth + 1, out);
-    }
-}
-
-static UITableView *findTable(UIView *root, int depth) {
-    if ([root isKindOfClass:UITableView.class]) return (UITableView *)root;
-    if (depth > 5) return nil;
-    for (UIView *child in root.subviews) {
-        UITableView *table = findTable(child, depth + 1);
-        if (table) return table;
-    }
-    return nil;
-}
-
-static BOOL isPlayerMenu(UIViewController *menu) {
-    NSNumber *decided = objc_getAssociatedObject(menu, &kDecidedKey);
-    if (decided) return decided.boolValue;
-    // The tap is used up by the menu it opened, so a sheet that menu opens in turn is not taken for it.
-    BOOL ours = sg_moreTappedAt && CACurrentMediaTime() - sg_moreTappedAt < kMenuAfterTap;
-    if (ours) sg_moreTappedAt = 0;
-    objc_setAssociatedObject(menu, &kDecidedKey, @(ours), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    UIViewController *presenter = menu.navigationController.presentingViewController ?: menu.presentingViewController;
-    SGLog(@"speed and pitch: a context menu, %@ (tapped %d, presented by %@)", ours ? @"the player's" : @"not the player's", ours,
-          presenter ? NSStringFromClass(presenter.class) : @"nothing");
-    return ours;
-}
-
-void SGPlayerMenuMarkPlayers(void) {
-    sg_moreTappedAt = CACurrentMediaTime();
-}
-
-BOOL SGPlayerMenuIsPlayers(UIViewController *menu) {
-    return isPlayerMenu(menu);
-}
-
-#pragma mark - Spotify's rows
-
-// The sheet keeps its spinner up until Spotify's rows are in, and they are in when every item factory
-// has answered or run out of time: ContextMenuItemFactory holds a timer, and the timeout is the remote
-// config's ios-feature-contextmenu-platform.timeout (SPTContextMenu_InternalImplProperties reads it
-// between 1 and 60 s, 10 when the server says nothing). The block takes no part in that: it goes into
-// the table's header once and stays, and a sheet that gets its rows seconds later shows them under it
-// (harness/menu `loading`). So a menu that waits is timed from here, to tell a wait on Spotify's
-// factories from a main thread kept busy: each check says how late it ran.
-static NSInteger rowCount(UITableView *table) {
-    NSInteger rows = 0;
-    for (NSInteger section = 0; section < table.numberOfSections; section++) rows += [table numberOfRowsInSection:section];
-    return rows;
-}
-
-static BOOL spinning(UIView *view, int depth) {
-    if ([view isKindOfClass:UIActivityIndicatorView.class]) return ((UIActivityIndicatorView *)view).isAnimating && !view.isHidden && view.alpha > 0.01;
-    if (depth > 6) return NO;
-    for (UIView *child in view.subviews) {
-        if (spinning(child, depth + 1)) return YES;
-    }
-    return NO;
-}
-
-// Once, when the rows are first seen, and said only when they were late.
-static void noteRows(UIViewController *menu, UITableView *table) {
-    NSNumber *shownAt = objc_getAssociatedObject(menu, &kShownAtKey);
-    if (!shownAt || objc_getAssociatedObject(menu, &kRowsInKey) || !table || rowCount(table) == 0) return;
-    objc_setAssociatedObject(menu, &kRowsInKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    NSTimeInterval after = CACurrentMediaTime() - shownAt.doubleValue;
-    if (after > 0.5) SGLog(@"speed and pitch: Spotify's rows came in %.1f s after the menu appeared", after);
-}
-
-static void watchRows(UIViewController *menu) {
-    if (objc_getAssociatedObject(menu, &kShownAtKey)) return;
-    objc_setAssociatedObject(menu, &kShownAtKey, @(CACurrentMediaTime()), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    UITableView *table = findTable(menu.view, 0);
-    if (table && rowCount(table)) {
-        objc_setAssociatedObject(menu, &kRowsInKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        return;
-    }
-    __weak UIViewController *weakMenu = menu;
-    for (NSNumber *wait in @[@2, @6, @15, @40]) {
-        CFTimeInterval due = CACurrentMediaTime() + wait.doubleValue;
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(wait.doubleValue * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            UIViewController *shown = weakMenu;
-            if (!shown.viewIfLoaded.window || objc_getAssociatedObject(shown, &kRowsInKey)) return;
-            UITableView *rows = findTable(shown.view, 0);
-            noteRows(shown, rows);
-            if (objc_getAssociatedObject(shown, &kRowsInKey)) return;
-            SGLog(@"speed and pitch: no rows of Spotify's %@ s after the menu appeared (this check ran %.2f s late), spinner %@, table %.0fx%.0f holding %.0f",
-                  wait, CACurrentMediaTime() - due, spinning(shown.view, 0) ? @"spinning" : @"not spinning",
-                  rows.bounds.size.width, rows.bounds.size.height, rows.contentSize.height);
-        });
-    }
-}
+#pragma mark - Inyección en el Menú Contextual de Spotify
 
 static void install(UIViewController *menu) {
     UIView *root = menu.viewIfLoaded;
     if (!root || !isPlayerMenu(menu)) return;
-    // Shown as the system menu, whose own items are speed, pitch and reverb.
     if (SGPlayerMenuReplaced(menu)) return;
+    
     UITableView *table = findTable(root, 0);
     SGSpeedPitchView *block = objc_getAssociatedObject(menu, &kBlockKey);
-    if (!table) {
-        static int logged;
-        if (logged++ < 3) SGLog(@"speed and pitch: no table in %@, speed and pitch left out", NSStringFromClass(menu.class));
-        return;
-    }
+    if (!table) return;
     CGFloat width = table.bounds.size.width;
     if (width <= 0) return;
+    
     if (!block) {
-        static BOOL described;
-        if (!described) {
-            described = YES;
-            NSMutableString *structure = [NSMutableString string];
-            logStructure(root, 0, structure);
-            SGLog(@"speed and pitch: table %@ header %@ footer %@, structure:%@", NSStringFromClass(table.class),
-                  table.tableHeaderView ? NSStringFromClass(table.tableHeaderView.class) : @"none",
-                  table.tableFooterView ? NSStringFromClass(table.tableFooterView.class) : @"none", structure);
-        }
         BOOL headerFree = !table.tableHeaderView || table.tableHeaderView.bounds.size.height < 1;
         BOOL footerFree = !table.tableFooterView || table.tableFooterView.bounds.size.height < 1;
         if (!headerFree && !footerFree) {
-            SGLog(@"speed and pitch: the table's header and footer are both Spotify's, speed and pitch left out");
             objc_setAssociatedObject(menu, &kDecidedKey, @NO, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             return;
         }
@@ -744,14 +704,9 @@ static void install(UIViewController *menu) {
         [table invalidateIntrinsicContentSize];
         return;
     }
+    
     noteRows(menu, table);
-    // Spotify replaced the view, or the table changed width: put it back at the table's width.
     UIView *placed = block.inFooter ? table.tableFooterView : table.tableHeaderView;
-    if (placed != block) {
-        static int logged;
-        if (logged++ < 3) SGLog(@"speed and pitch: the table's %@ became %@, speed and pitch put back", block.inFooter ? @"footer" : @"header",
-                                placed ? NSStringFromClass(placed.class) : @"nothing");
-    }
     if (placed != block || fabs(block.frame.size.width - width) > 0.5) {
         block.frame = CGRectMake(0, block.frame.origin.y, width, [SGSpeedPitchView heightOpen:sg_open]);
         if (block.inFooter) table.tableFooterView = block;
@@ -760,7 +715,6 @@ static void install(UIViewController *menu) {
     }
 }
 
-// The player's header row: its more button found by its identifier and watched, under either look.
 %hook _TtC20NowPlaying_ModesImpl18HeaderElementsUnit
 - (void)viewDidLayoutSubviews {
     %orig;
@@ -777,6 +731,7 @@ static void install(UIViewController *menu) {
 %end
 
 %hook _TtC24ContextMenu_InternalImpl25ContextMenuViewController
+
 - (void)viewDidLayoutSubviews {
     %orig;
     install((UIViewController *)self);
@@ -788,6 +743,16 @@ static void install(UIViewController *menu) {
     [block refresh];
     if (block) watchRows((UIViewController *)self);
 }
+
+// Inyección del botón "Show Animated Artwork" en el menú desplegable nativo
+- (UIMenu *)contextMenu {
+    UIMenu *originalMenu = %orig;
+    if (isPlayerMenu((UIViewController *)self)) {
+        return buildPlayerMenuWithAnimatedOption(originalMenu.children);
+    }
+    return originalMenu;
+}
+
 %end
 
 %ctor {

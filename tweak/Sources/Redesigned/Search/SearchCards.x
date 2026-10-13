@@ -14,6 +14,7 @@
 // the path and the fill color of its animationLayer, a CAShapeLayer among its layer's sublayers, from the card's color
 // set on every pass (Encore_LayoutKit.Box's fields, and -[Box layoutSubviews] calling setPath: and setFillColor:,
 // 2026-09-17). So the color is read off that layer, and the layer is hidden rather than cleared, since Spotify fills it again.
+#import <objc/message.h>
 #import "Core/SGCore.h"
 #import "Redesigned/Kit/SGRKit.h"
 #import "Search.h"
@@ -141,9 +142,22 @@ static void paint(SGRSearchCardParts *parts, UIColor *color) {
     ((CAGradientLayer *)parts.plate.layer).colors = @[(id)color.CGColor, (id)darker(color).CGColor];
     if (@available(iOS 26.0, *)) {
         if (parts.glass) {
-            UIGlassEffect *effect = [UIGlassEffect effectWithStyle:UIGlassEffectStyleClear];
-            effect.tintColor = [color colorWithAlphaComponent:kTintAlpha];
-            parts.glass.effect = effect;
+            Class glassEffectClass = NSClassFromString(@"UIGlassEffect");
+            SEL effectSel = NSSelectorFromString(@"effectWithStyle:");
+            id effect = nil;
+            if (glassEffectClass && [glassEffectClass respondsToSelector:effectSel]) {
+                effect = ((id (*)(id, SEL, NSInteger))objc_msgSend)(glassEffectClass, effectSel, 1);
+            }
+            if (!effect) {
+                effect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemChromeMaterialDark];
+            }
+            if (effect) {
+                SEL setTintSel = NSSelectorFromString(@"setTintColor:");
+                if ([effect respondsToSelector:setTintSel]) {
+                    ((void (*)(id, SEL, id))objc_msgSend)(effect, setTintSel, [color colorWithAlphaComponent:kTintAlpha]);
+                }
+                parts.glass.effect = (UIVisualEffect *)effect;
+            }
         }
     }
 }

@@ -1,5 +1,6 @@
 #import "SGGlass.h"
 #import "SGRuntime.h"
+#import <objc/message.h>
 
 // +effectWithStyle: is the only initializer UIGlassEffect has; a bare -init leaves the material
 // unresolved and the pane renders as a plain blur, while the capsule shape, which is the view's
@@ -53,15 +54,28 @@ void SGShapeGlass(UIView *glass, CGFloat radius, BOOL capsule) {
     Class config = NSClassFromString(@"UICornerConfiguration");
     Class cornerRadius = NSClassFromString(@"UICornerRadius");
     id shape = nil;
-    if (config && [glass respondsToSelector:@selector(setCornerConfiguration:)]) {
-        if (capsule && [config respondsToSelector:@selector(capsuleConfiguration)]) {
-            shape = [config capsuleConfiguration];
-        } else if ([config respondsToSelector:@selector(configurationWithUniformRadius:)] && [cornerRadius respondsToSelector:@selector(fixedRadius:)]) {
-            shape = [config configurationWithUniformRadius:[cornerRadius fixedRadius:radius]];
+    
+    SEL setCornerSel = NSSelectorFromString(@"setCornerConfiguration:");
+    if (config && [glass respondsToSelector:setCornerSel]) {
+        if (capsule) {
+            SEL capsuleSel = NSSelectorFromString(@"capsuleConfiguration");
+            if ([config respondsToSelector:capsuleSel]) {
+                shape = ((id (*)(id, SEL))objc_msgSend)(config, capsuleSel);
+            }
+        } else {
+            SEL fixedSel = NSSelectorFromString(@"fixedRadius:");
+            SEL uniformSel = NSSelectorFromString(@"configurationWithUniformRadius:");
+            if ([cornerRadius respondsToSelector:fixedSel] && [config respondsToSelector:uniformSel]) {
+                id cr = ((id (*)(id, SEL, CGFloat))objc_msgSend)(cornerRadius, fixedSel, radius);
+                if (cr) {
+                    shape = ((id (*)(id, SEL, id))objc_msgSend)(config, uniformSel, cr);
+                }
+            }
         }
     }
+    
     if (shape) {
-        [glass setCornerConfiguration:shape];
+        ((void (*)(id, SEL, id))objc_msgSend)(glass, setCornerSel, shape);
         glass.clipsToBounds = NO;
     } else {
         glass.layer.cornerRadius = capsule ? glass.bounds.size.height / 2 : radius;

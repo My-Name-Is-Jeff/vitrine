@@ -27,9 +27,6 @@ typedef NS_ENUM(NSInteger, SGLyricsTaskKind) {
     SGLyricsTaskMissing,    // anything but a 200
 };
 
-// What a task is and where it stands. The first five are set before the state is attached to its task
-// and never change; the rest are read and written under @synchronized on the state, from URLSession's
-// delegate queue and the main queue both.
 @interface SGLyricsTaskState : NSObject
 @property (nonatomic) SGLyricsTaskKind kind;
 @property (nonatomic, copy) NSString *track;
@@ -90,8 +87,6 @@ static NSURL *urlOf(NSURLSessionTask *task) {
 
 #pragma mark - the donor
 
-// Only a real 200 makes the lyrics card show, so a track Spotify has none for is asked for as the
-// donor, whose reply then carries the sources' lines. Everything but the id stays as Spotify sent it.
 static NSURLRequest *donorRequestFor(NSURLRequest *request) {
     NSString *address = request.URL.absoluteString;
     if (![address containsString:kLyricsPath]) return nil;
@@ -132,8 +127,7 @@ static NSData *pageBody(SGLyricsResult *chain, NSData *colours) {
     if (chain.synced) [lyrics addObject:SGPBVarint(1, 1)];
     NSArray<NSNumber *> *starts = chain.starts;
     NSInteger (^startOf)(NSUInteger) = ^NSInteger(NSUInteger i) { return i < starts.count ? MAX([starts[i] integerValue], 0) : 0; };
-    // Spotify's page takes its lines in time order, and a source can list one out of it (a chorus written
-    // once with its repeats after it): they go in by their starts, lines starting together as they came.
+    
     NSMutableArray<NSNumber *> *order = [NSMutableArray arrayWithCapacity:chain.texts.count];
     for (NSUInteger i = 0; i < chain.texts.count; i++) [order addObject:@(i)];
     if (chain.synced) {
@@ -148,7 +142,7 @@ static NSData *pageBody(SGLyricsResult *chain, NSData *colours) {
                                        SGPBString(2, [text isKindOfClass:NSString.class] ? text : @"")]);
         [lyrics addObject:SGPBBytes(2, line)];
     }
-    // The footer names whoever's text this is, which the terms of some sources ask for (SpicyLyrics.m).
+    
     NSString *provider = chain.pageProvider ?: chain.provider;
     [lyrics addObject:SGPBString(5, provider.length ? provider : kUnnamedProvider)];
     return SGPBSerialize(@[SGPBBytes(1, SGPBSerialize(lyrics)), SGPBBytes(2, colours ?: defaultColours())]);
@@ -162,8 +156,6 @@ static NSString *timingName(NSArray<SGKaraokeLine *> *lines) {
     }
 }
 
-// Which lines Spotify's page and the lyrics view get, the view's kept and credited. The body returned
-// is the page's when the sources' lines replace Spotify's, nil when they do not.
 static NSData *decide(NSString *track, SGLyricsResult *chain, NSData *spotifyBody, BOOL donor, NSData *colours) {
     NSArray<SGKaraokeLine *> *spotifyLines = spotifyBody ? SGKaraokeLinesFromBody(spotifyBody) : nil;
     if (!spotifyLines.count) spotifyLines = nil;
@@ -181,7 +173,6 @@ static NSData *decide(NSString *track, SGLyricsResult *chain, NSData *spotifyBod
     }
     if (viewLines) SGKaraokeKeepLines(track, viewLines);
     SGLyricsSetCredit(track, credit);
-    // Spotify's JSON may have the song timed where its page does not.
     if (!donor && spotifyBody.length && SGKaraokeLinesTiming(viewLines) == SGKaraokeTimingNone) SGKaraokeAskSpotifyForTiming(track);
 
     NSString *provider = chain.provider.length ? chain.provider : kUnnamedProvider;
@@ -208,8 +199,6 @@ static BOOL isLyricsSection(NSData *section) {
     return NO;
 }
 
-// A lyrics section Spotify sent for another track carries whatever else a section holds; one made from
-// nothing has only the track.
 static NSData *lyricsSection(NSString *track) {
     NSData *lyrics = SGPBSerialize(@[SGPBString(1, [kTrackPrefix stringByAppendingString:track])]);
     NSMutableArray<SGPBField *> *fields = SGPBParse(sectionTemplate(nil));
@@ -221,8 +210,6 @@ static NSData *lyricsSection(NSString *track) {
     return SGPBSerialize(@[SGPBBytes(5, lyrics)]);
 }
 
-// The player asks for lyrics only when the list has a lyrics section, which the server sends only
-// for tracks Spotify has lyrics for.
 static NSData *amendedCardList(NSData *body, NSString *track) {
     NSMutableArray<SGPBField *> *top = SGPBParse(body);
     SGPBField *structure = SGPBFirst(top, 1);
@@ -236,7 +223,8 @@ static NSData *amendedCardList(NSData *body, NSString *track) {
         sectionTemplate(section.payload);
         return body;
     }
-    if (!SGLyricsMayHave(track)) return body;
+    
+    // Forzamos la inclusión de la tarjeta de letras para TODAS las canciones
     NSMutableData *amended = [SGPBSerialize(@[SGPBBytes(1, lyricsSection(track))]) mutableCopy];
     [amended appendData:structure.payload];
     structure.payload = amended;
@@ -257,8 +245,6 @@ static Method ownMethod(Class cls, SEL selector) {
     return own;
 }
 
-// Spotify may read the status off the task as well as the delegate argument. The task classes are
-// private and differ between OS versions, so the one answering is taken from the first task that needs it.
 static void answerAs(NSURLSessionTask *task, NSHTTPURLResponse *response) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
@@ -284,8 +270,6 @@ static SGLyricsTaskState *stateOf(NSURLSessionTask *task) {
     return [state isKindOfClass:SGLyricsTaskState.class] ? state : nil;
 }
 
-// Received by a normal message send, so every hook on the selector sees it; this file's own lets it
-// through by the object, since the server's bytes may be the same.
 static void give(id delegate, NSURLSession *session, NSURLSessionDataTask *task, SGLyricsTaskState *state, NSData *body) {
     if (!body.length) return;
     @synchronized (state) { state.handing = body; }
@@ -293,7 +277,6 @@ static void give(id delegate, NSURLSession *session, NSURLSessionDataTask *task,
     @synchronized (state) { state.handing = nil; }
 }
 
-// Under @synchronized on the state. None once the task has ended.
 static SGDisposition takeHandler(SGLyricsTaskState *state) {
     SGDisposition handler = state.ended ? nil : state.realHandler;
     state.realHandler = nil;
@@ -336,36 +319,35 @@ static SGLyricsTaskState *classify(NSURLSessionTask *task, NSURLResponse *respon
     return state;
 }
 
-// A donor 200 goes through only with lines to put in it: once Spotify has seen a 200 it cannot be
-// turned into "no lyrics", and the donor's own lines must never show.
 static void answerDonor(NSURLSessionDataTask *task, SGLyricsTaskState *state, SGLyricsResult *chain,
                         NSURLResponse *response, SGDisposition handler, SGForwardResponse forward) {
-    if (chain.texts.count) {
-        @synchronized (state) {
-            state.chain = chain;
-            state.body = [NSMutableData data];
-        }
-        forward(response, handler);
-        return;
+    // Si la búsqueda no trajo letras, inyectamos el mensaje "Without lyrics." en lugar de fallar
+    if (!chain || !chain.texts.count) {
+        chain = [SGLyricsResult new];
+        chain.texts = @[@"Without lyrics."];
+        chain.starts = @[@0];
+        chain.synced = NO;
+        chain.provider = @"Vitrine";
     }
-    decide(state.track, chain, nil, YES, nil);
-    SGLog(@"lyrics: no source has lyrics for %@, it ends in a 404", state.track);
-    NSHTTPURLResponse *notFound = [[NSHTTPURLResponse alloc] initWithURL:urlOf(task) statusCode:404 HTTPVersion:@"HTTP/2.0" headerFields:nil];
-    answerAs(task, notFound);
-    forward(notFound, handler);
+    
+    @synchronized (state) {
+        state.chain = chain;
+        state.body = [NSMutableData data];
+    }
+    forward(response, handler);
 }
 
-// URLSession's handler waits until the body is in and Spotify's delegate has chosen, so none of the
-// server's own bytes can reach the delegate ahead of it.
 static void answerMissing(id delegate, NSURLSession *session, NSURLSessionDataTask *task, SGLyricsTaskState *state,
                           SGLyricsResult *chain, NSURLResponse *response, SGDisposition handler, SGForwardResponse forward) {
-    NSData *page = decide(state.track, chain, nil, state.donor, nil);
-    if (!page) {
-        SGLog(@"lyrics: no source has lyrics for %@ either, it ends in Spotify's own %ld", state.track, (long)state.status);
-        @synchronized (state) { state.dropping = NO; }
-        forward(response, handler);
-        return;
+    if (!chain || !chain.texts.count) {
+        chain = [SGLyricsResult new];
+        chain.texts = @[@"Without lyrics."];
+        chain.starts = @[@0];
+        chain.synced = NO;
+        chain.provider = @"Vitrine";
     }
+    
+    NSData *page = decide(state.track, chain, nil, state.donor, nil);
     NSDictionary<NSString *, NSString *> *headers = @{
         @"Content-Type": @"application/protobuf",
         @"Content-Length": [NSString stringWithFormat:@"%lu", (unsigned long)page.length],
@@ -394,7 +376,6 @@ static void answerMissing(id delegate, NSURLSession *session, NSURLSessionDataTa
     if (release) release(choice);
 }
 
-// Main queue, when the chain has answered for a held task. A task that ended meanwhile gets nothing.
 static void answerHeld(id delegate, NSURLSession *session, NSURLSessionDataTask *task, SGLyricsTaskState *state,
                        SGLyricsResult *chain, NSURLResponse *response, SGDisposition handler, SGForwardResponse forward) {
     BOOL ended, cancelled = NO;
@@ -408,7 +389,6 @@ static void answerHeld(id delegate, NSURLSession *session, NSURLSessionDataTask 
     }
     if (ended || cancelled) {
         SGLog(@"lyrics: the request for %@ ended before the sources answered, nothing delivered", state.track);
-        // URLSession holds the end of a canceled task back until it has a disposition.
         if (cancelled) handler(NSURLSessionResponseCancel);
         return;
     }
@@ -448,7 +428,6 @@ static BOOL forwardsData(NSURLSessionTask *task, NSData *data) {
     }
 }
 
-// Main queue.
 static void finishSpotify(id delegate, NSURLSession *session, NSURLSessionDataTask *task, SGLyricsTaskState *state,
                           NSData *body, NSError *error, SGForwardEnd forward) {
     if (error) {
@@ -467,22 +446,22 @@ static void finishSpotify(id delegate, NSURLSession *session, NSURLSessionDataTa
     });
 }
 
-// Main queue.
 static void finishDonor(id delegate, NSURLSession *session, NSURLSessionDataTask *task, SGLyricsTaskState *state,
                         NSData *body, NSError *error, SGForwardEnd forward) {
     SGLyricsResult *chain;
     @synchronized (state) { chain = state.chain; }
-    if (error || !chain) {
-        forward(error);
-        return;
+    
+    if (!chain || !chain.texts.count) {
+        chain = [SGLyricsResult new];
+        chain.texts = @[@"Without lyrics."];
+        chain.starts = @[@0];
+        chain.synced = NO;
+        chain.provider = @"Vitrine";
     }
-    // The donor's colors are the track's own only when they were worked out from its artwork.
+
     NSData *page = decide(state.track, chain, nil, YES, state.artwork ? coloursIn(body) : nil);
     if (!page) {
-        SGLog(@"lyrics: no source has lyrics for %@ any more, its request fails", state.track);
-        NSString *reason = [NSString stringWithFormat:@"No lyrics source has lyrics for %@", state.track];
-        forward([NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorResourceUnavailable userInfo:@{NSLocalizedDescriptionKey: reason}]);
-        return;
+        page = pageBody(chain, nil);
     }
     give(delegate, session, task, state, page);
     forward(nil);
@@ -512,14 +491,12 @@ static void completed(id delegate, NSURLSession *session, NSURLSessionTask *task
             finishSpotify(delegate, session, dataTask, state, body, error, forward);
         });
     } else if (held) {
-        // Ended while the sources walk: the end goes through now, and their answer to nobody.
         forward(error);
     } else if (state.kind == SGLyricsTaskDonor) {
         dispatch_async(dispatch_get_main_queue(), ^{
             finishDonor(delegate, session, dataTask, state, body, error, forward);
         });
     } else if (delivering) {
-        // Behind the response and body the main queue is handing over.
         dispatch_async(dispatch_get_main_queue(), ^{ forward(error); });
     } else {
         forward(error);
@@ -566,8 +543,6 @@ static void completed(id delegate, NSURLSession *session, NSURLSessionTask *task
 
 %group SGLyricsEveryTrack
 
-// Spotify's own verdict is noted before it is overridden, for the donor to go by. The getter runs for
-// every track in every list many times a second, so it does a few lookups and nothing more.
 %hook SPTPlayerTrack
 - (NSDictionary *)metadata {
     NSDictionary *metadata = %orig;
@@ -576,9 +551,8 @@ static void completed(id delegate, NSURLSession *session, NSURLSessionTask *task
     BOOL has = [@"true" isEqual:metadata[@"has_lyrics"]];
     SGLyricsNoteSpotifyHas(track, has);
     SGKaraokeRememberTrack(self);
-    if (has || !SGLyricsMayHave(track)) return metadata;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{ SGLog(@"lyrics: has_lyrics forced on, first for spotify:track:%@", track); });
+    
+    // Forzamos has_lyrics = true para que el reproductor siempre muestre el botón
     NSMutableDictionary *forced = metadata ? [metadata mutableCopy] : [NSMutableDictionary dictionary];
     forced[@"has_lyrics"] = @"true";
     return forced;

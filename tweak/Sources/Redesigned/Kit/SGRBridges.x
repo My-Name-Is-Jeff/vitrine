@@ -1,6 +1,7 @@
 // The Kit's bridge into Spotify: the now playing artwork. The player's state, its open and close and
 // links are Shared's (Shared/Player/PlayerState.h, Shared/Player/PlayerEvents.h,
 // Shared/Navigation/Links.h). SGRBridges.h names the hook and why it is the one.
+#import <UIKit/UIKit.h>
 #import "Core/SGCore.h"
 #import "Shared/LocalFiles/LocalFiles.h"
 #import "Shared/Player/PlayerEvents.h"
@@ -269,6 +270,49 @@ static SGRBarArtworkWatcher *sg_barWatcher;
 %end
 %end
 
+#pragma mark - landscape cover art layout
+
+// Declaramos la interfaz para que el compilador sepa que hereda de UIView
+@interface SPTNowPlayingCoverArtView : UIView
+@end
+
+%group SGRLandscapeCoverFix
+
+%hook SPTNowPlayingCoverArtView
+
+- (void)layoutSubviews {
+    %orig;
+    
+    UIView *superview = self.superview;
+    if (!superview) return;
+    
+    // Obtenemos las dimensiones para verificar si está en modo horizontal (Landscape)
+    CGFloat containerWidth = superview.bounds.size.width;
+    CGFloat containerHeight = superview.bounds.size.height;
+    
+    // Si el ancho es mayor que el alto, estamos en modo horizontal
+    if (containerWidth > containerHeight) {        
+        // Calculamos un tamaño proporcional adecuado (hasta el 75% de la altura total)
+        CGFloat targetSide = MIN(containerWidth * 0.40, containerHeight * 0.75);
+        
+        CGRect frame = self.frame;
+        frame.size.width = targetSide;
+        frame.size.height = targetSide;
+        
+        // Centrado vertical exacto en el contenedor
+        frame.origin.y = (containerHeight - targetSide) / 2.0;
+        frame.origin.x = 24.0;
+        
+        self.frame = frame;
+        self.layer.cornerRadius = 16.0;
+        self.clipsToBounds = YES;
+    }
+}
+
+%end
+
+%end
+
 #pragma mark - the player's open and close
 
 BOOL SGRPlayerIsTransitioning(void) {
@@ -333,5 +377,6 @@ void SGRObservePlayerTransition(id owner, void (^began)(id owner), void (^ended)
         followPlayer();
     }];
     %init(SGRBarArtworkHooks);
-    SGRequireClasses(@[@"_TtC18NowPlaying_BarImpl27NowPlayingBarViewController"]);
+    %init(SGRLandscapeCoverFix);
+    SGRequireClasses(@[@"_TtC18NowPlaying_BarImpl27NowPlayingBarViewController", @"SPTNowPlayingCoverArtView"]);
 }

@@ -335,6 +335,10 @@ static void noteCredit(SGLyricsResult *result) {
 }
 
 BOOL SGLyricsCreditRequired(NSString *credit) {
+    // Si el usuario desactivó "Show source", forzar a NO (ocultar siempre)
+    if (!SGFlag(SGKeyLyricsCredit, YES)) {
+        return NO;
+    }
     return credit && sg_noted[credit].creditRequired;
 }
 
@@ -597,6 +601,10 @@ NSString *SGLyricsTranslationLanguage(void) {
 
 NSString *SGLyricsCreditFor(NSString *trackID) {
     setUp();
+    // Si el botón está desactivado, no devolver ningún nombre de crédito
+    if (!SGFlag(SGKeyLyricsCredit, YES)) {
+        return nil;
+    }
     @synchronized (sg_credits) { return trackID ? sg_credits[trackID] : nil; }
 }
 
