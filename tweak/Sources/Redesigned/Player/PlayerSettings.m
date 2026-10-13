@@ -32,6 +32,8 @@
 #import "Shared/Player/SGLastTrack.h"
 #import "Player.h"
 
+extern NSString *const SGKeyAnimatedCoversFullBrightness;
+
 // The card's height as a share of its width, kept between the two bounds.
 static const CGFloat kCardAspect = 0.5, kCardMinHeight = 168, kCardMaxHeight = 220;
 static const CGFloat kCardRadius = 26;   // continuous, the radius of the page's own cards and then some
