@@ -30,6 +30,10 @@ static CGFloat currentScale(void) {
     return SGRReduceMotion() ? kPausedScaleReduceMotion : kPausedScale;
 }
 
+CGFloat SGRPlayerCoverScale(void) {
+    return currentScale();
+}
+
 // The child of the tilt view the size of the cover.
 static UIView *coverIn(UIView *tilt) {
     UIView *cover = [sg_covers objectForKey:tilt];
