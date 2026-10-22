@@ -7,6 +7,9 @@
   Japanese lines split as before. The pieces are printed, so a script the system does not split shows;
 - KuGou's KRC (`KuGou.m`, read by `SGLyricsPieceLines` in `NetEase.m`): packed here the way KuGou packs
   it, then unpacked and read, with the word times, the joining and the line ends checked;
+- NetEase's yrc and Musixmatch's richsync (`Musixmatch.m`), whose pieces `SGKaraokePieceLine` in
+  `KaraokeTiming.m` runs together into words, as the Lyricsfile's are: which pieces join, and where each
+  word and line ends;
 - the QQ Music and KuGou asks against made-up search replies: titles, singers and lengths that do not
   fit are passed over, the closest KuGou lengths are tried first and at most three, and QQ's LRC is read.
 - LRCLIB's Lyricsfile (`Lyricsfile.m`): the spec's example and LRCLIB's own way of writing it read as word

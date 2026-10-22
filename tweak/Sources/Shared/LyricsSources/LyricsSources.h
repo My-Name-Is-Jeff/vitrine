@@ -160,6 +160,8 @@ void SGMusixmatchTranslations(NSString *trackID, NSString *language, void (^done
 NSString *SGMusixmatchLineKey(NSString *text);
 // Copies of the lines with the translations matched in, in a new array; nil when none matched.
 NSArray<SGKaraokeLine *> *SGMusixmatchTranslatedLines(NSArray<SGKaraokeLine *> *lines, NSDictionary<NSString *, NSString *> *byLine);
+// A richsync body, the JSON array its richsync_body holds, as word timed lines; nil when it has none.
+SGLyricsResult *SGMusixmatchRichsyncResult(id body);
 extern SGLyricsAsk SGUnisonAsk;
 extern SGLyricsAsk SGNetEaseAsk;
 extern SGLyricsAsk SGLrcLibAsk;

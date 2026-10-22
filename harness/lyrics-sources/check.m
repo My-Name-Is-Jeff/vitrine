@@ -34,6 +34,9 @@ NSURL *SGLyricsURL(NSString *base, NSDictionary<NSString *, NSString *> *query) 
     url.queryItems = items;
     return url.URL;
 }
+// Musixmatch.m asks these of a local file, which no check here plays.
+BOOL SGLocalFileIs(NSString *uri) { return NO; }
+NSDictionary<NSString *, id> *SGLocalFileInfo(NSString *uri) { return nil; }
 static id (^sg_answer)(NSURL *url, id body);
 void SGLyricsGetJSON(NSURL *url, NSDictionary *headers, void (^done)(id root)) { done(sg_answer(url, nil)); }
 void SGLyricsPostJSON(NSURL *url, NSDictionary *headers, id body, void (^done)(id root)) { done(sg_answer(url, body)); }
@@ -172,6 +175,45 @@ int main(int argc, char **argv) {
         CHECK(lines[1].words.count == 3 && [SGKaraokeLineText(lines[1]) isEqualToString:@"你好啊"]);
         CHECK(lines[1].words[1].joined && lines[1].words[2].start == 4800 && lines[1].words[2].end == 4801);
         CHECK(lines[2].end == 7300);
+        // NetEase's yrc, timed from the track's start: "wan" runs on into "ted ", and a piece after one
+        // with no space after it runs on into it even when it opens with a space of its own.
+        lines = SGLyricsPieceLines(@"[1000,3000](1000,200,0)wan(1200,300,0)ted (1500,0,0)to(1600,100,0) go\n"
+            "[5000,1000](5000,100,0)你(5100,100,0)好", NO);
+        CHECK(lines.count == 2 && [SGKaraokeLineText(lines[0]) isEqualToString:@"wanted togo"]);
+        CHECK(lines[0].words[0].start == 1000 && lines[0].words[0].end == 1500 && !lines[0].words[0].joined);
+        CHECK(lines[0].words[1].start == 1500 && lines[0].words[1].end == 1700 && !lines[0].words[1].joined);
+        CHECK(lines[0].start == 1000 && lines[0].end == 4000);
+        CHECK(lines[1].words.count == 2 && lines[1].words[1].joined && lines[1].words[1].start == 5100 && lines[1].end == 6000);
+        CHECK(!SGLyricsPieceLines(@"[1000,3000]", NO) && !SGLyricsPieceLines(@"", NO));
+        // A piece run on into a word that is sung longer leaves the word's end where it was.
+        lines = SGLyricsPieceLines(@"[1000,500](1000,800,0)ab(1200,100,0)cd ", NO);
+        CHECK(lines.count == 1 && lines[0].words.count == 1 && lines[0].words[0].end == 1800 && lines[0].end == 1800);
+
+        // Musixmatch's richsync: an entry's offset is from its line's start, and only an entry of spaces
+        // ends a word, so "Mil" "ion" is one word and "ab" " cd" another. A word is sung until the next
+        // word starts, the last until a space after it or the line's end; a syllable of an unspaced
+        // script is a word of its own, joined to the one before.
+        SGLyricsResult *rich = SGMusixmatchRichsyncResult(@[
+            @{@"ts": @10, @"te": @14, @"x": @"Milion +, go", @"l": @[@{@"c": @"Mil", @"o": @0}, @{@"c": @"ion", @"o": @0.3}, @{@"c": @" ", @"o": @0.6},
+                @{@"c": @"+", @"o": @0.8}, @{@"c": @",", @"o": @0.9}, @{@"c": @" ", @"o": @1.0}, @{@"c": @"go", @"o": @1.5}]},
+            @{@"ts": @20, @"te": @22, @"l": @[@{@"c": @"a", @"o": @0}, @{@"c": @" ", @"o": @0.5}]},
+            @{@"ts": @30, @"te": @31, @"l": @[@{@"c": @"日", @"o": @0}, @{@"c": @"本", @"o": @0}]},
+            @{@"ts": @40, @"te": @42, @"l": @[@{@"c": @"ab", @"o": @0}, @{@"c": @" cd", @"o": @0.5}, @{@"c": @5, @"o": @0.7}]},
+            @{@"ts": @50, @"te": @51, @"l": @[@{@"c": @" ", @"o": @0}]},
+        ]);
+        NSArray<SGKaraokeLine *> *rl = rich.karaokeLines;
+        CHECK(rich.wordTimed && rl.count == 4);
+        CHECK([SGKaraokeLineText(rl[0]) isEqualToString:@"Milion +, go"] && rl[0].start == 10000 && rl[0].end == 14000);
+        CHECK(rl[0].words[0].start == 10000 && rl[0].words[0].end == 10800 && rl[0].words[1].start == 10800 && rl[0].words[1].end == 11500);
+        CHECK(rl[0].words[2].start == 11500 && rl[0].words[2].end == 14000 && !rl[0].words[1].joined && !rl[0].words[2].joined);
+        CHECK(rl[1].words.count == 1 && rl[1].words[0].end == 20500 && rl[1].end == 22000);
+        CHECK(rl[2].words.count == 2 && rl[2].words[0].end == 30000 && rl[2].words[1].joined && rl[2].words[1].end == 31000);
+        CHECK([SGKaraokeLineText(rl[3]) isEqualToString:@"abcd"] && rl[3].words[0].start == 40000 && rl[3].words[0].end == 42000);
+        CHECK(([rich.texts isEqualToArray:@[@"Milion +, go", @"♪", @"a", @"♪", @"日本", @"♪", @"abcd", @""]]));
+        CHECK(!SGMusixmatchRichsyncResult(@[]) && !SGMusixmatchRichsyncResult(@"x"));
+        // An entry run on into a word after the line's end is sung to its own end, not cut off before it.
+        rl = SGMusixmatchRichsyncResult(@[@{@"ts": @60, @"te": @61, @"l": @[@{@"c": @"ab", @"o": @0}, @{@"c": @"cd", @"o": @2}]}]).karaokeLines;
+        CHECK(rl.count == 1 && rl[0].words.count == 1 && rl[0].words[0].end == 62000 && rl[0].end == 62000);
         CHECK(!SGKuGouLines(packed(kKRC, @"krc2")) && !SGKuGouLines(@"bm90IGtyYw==") && !SGKuGouLines(nil));
         CHECK(!SGKuGouLines(packed(@"[ar:only tags]", @"krc1")));
 

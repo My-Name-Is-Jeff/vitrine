@@ -119,48 +119,29 @@ static void withToken(void (^use)(NSString *token)) {
 // o is from the line's start. A space entry ends the word before it; a word can come in more than
 // one entry ("Milion", "+", ","), so everything between two spaces is one word.
 static SGKaraokeLine *richsyncLine(NSDictionary *entry, NSInteger start, NSInteger end) {
-    NSMutableArray<SGKaraokeWord *> *words = [NSMutableArray array];
-    BOOL open = NO;     // the word last added may still take further entries
-    BOOL spaced = YES;  // a space has gone by since the last word, so the next one is not joined
+    NSMutableArray<SGKaraokePiece *> *pieces = [NSMutableArray array];
     id parts = entry[@"l"];
     for (NSDictionary *part in [parts isKindOfClass:NSArray.class] ? parts : @[]) {
         id text = dig(part, @"c");
         if (![text isKindOfClass:NSString.class]) continue;
-        NSInteger at = start + msOf(part[@"o"]);
-        NSString *trimmed = [text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-        SGKaraokeWord *last = words.lastObject;
-        if (!trimmed.length) {
-            last.end = MAX(at, last.start);
-            open = NO;
-            spaced = YES;
-            continue;
-        }
-        if (open && !SGKaraokeUnspacedScript(trimmed)) {
-            last.text = [last.text stringByAppendingString:trimmed];
-            continue;
-        }
-        // A syllable of an unspaced script stands as a word of its own. Musixmatch times each one,
-        // but sends no space to end it, so running them together is what left a Japanese or Chinese
-        // line lighting up whole instead of sweeping.
-        last.end = MAX(at, last.start);
-        SGKaraokeWord *word = [SGKaraokeWord new];
-        word.text = trimmed;
-        word.start = at;
-        word.end = MAX(end, at);
-        word.joined = !spaced;
-        [words addObject:word];
-        open = !SGKaraokeUnspacedScript(trimmed);
-        spaced = NO;
+        SGKaraokePiece *piece = [SGKaraokePiece new];
+        piece.text = [text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        piece.start = start + msOf(part[@"o"]);
+        [pieces addObject:piece];
     }
-    if (!words.count) return nil;
-    SGKaraokeLine *line = [SGKaraokeLine new];
-    line.words = words;
-    line.start = start;
-    line.end = MAX(end, words.lastObject.end);
-    return line;
+    // An entry has no end of its own: a word is sung until the next one starts, past any space between
+    // them, and the last until the space after it or the line's end.
+    NSInteger until = end;
+    BOOL passed = NO;   // a word or a space comes after this entry
+    for (SGKaraokePiece *piece in pieces.reverseObjectEnumerator) {
+        if (piece.text.length) piece.end = MAX(until, piece.start);
+        if (piece.text.length || !passed) until = piece.start;
+        passed = YES;
+    }
+    return SGKaraokePieceLine(pieces, start, end);
 }
 
-static SGLyricsResult *fromRichsync(id body) {
+SGLyricsResult *SGMusixmatchRichsyncResult(id body) {
     if (![body isKindOfClass:NSArray.class]) return nil;
     NSMutableArray<NSNumber *> *starts = [NSMutableArray array];
     NSMutableArray<NSString *> *texts = [NSMutableArray array];
@@ -231,7 +212,7 @@ static SGLyricsResult *fromCalls(NSDictionary *calls) {
     if (truthy(dig(calls, @"matcher.track.get/message/body/track/instrumental"))) return nil;
     id richsync = dig(calls, @"track.richsync.get/message/body/richsync");
     SGLyricsResult *lyrics = nil;
-    if (richsync && !truthy(dig(richsync, @"restricted"))) lyrics = fromRichsync(jsonOf(dig(richsync, @"richsync_body")));
+    if (richsync && !truthy(dig(richsync, @"restricted"))) lyrics = SGMusixmatchRichsyncResult(jsonOf(dig(richsync, @"richsync_body")));
     if (lyrics) return lyrics;
     id list = dig(calls, @"track.subtitles.get/message/body/subtitle_list");
     id subtitle = [list isKindOfClass:NSArray.class] && [list count] ? dig([list firstObject], @"subtitle") : nil;

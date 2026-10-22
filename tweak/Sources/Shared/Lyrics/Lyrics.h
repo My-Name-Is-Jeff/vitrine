@@ -105,6 +105,19 @@ void SGKaraokeAlignVoices(NSArray<SGKaraokeLine *> *lines);
 // A color-lyrics body, protobuf or JSON, as lines: timed by the line where Spotify synced it, plain
 // (SGKaraokeTimingNone) where it did not; nil for a body with no lines.
 NSArray<SGKaraokeLine *> *SGKaraokeLinesFromBody(NSData *body);
+// One timed piece of a line as a source sends it, before the pieces are run together into words: its
+// text without the spaces around it, when it is sung, and whether a space stood before or after it. A
+// piece with no text is a space.
+@interface SGKaraokePiece : NSObject
+@property (nonatomic, copy) NSString *text;
+@property (nonatomic) NSInteger start, end;
+@property (nonatomic) BOOL spaceBefore, spaceAfter;
+@end
+// A line timed by the word from its pieces. A piece with no space between it and the one before runs
+// on into that one's word ("wan", "ted" is "wanted"), sung until the later of the two ends; a piece of
+// an unspaced script is a word of its own, joined to the one before. The line ends at `end`, or at its
+// last word when that is later. nil when no piece has text.
+SGKaraokeLine *SGKaraokePieceLine(NSArray<SGKaraokePiece *> *pieces, NSInteger start, NSInteger end);
 // Lines timed only by their starts, the words inside them estimated; a ♪ or empty text is a break.
 NSArray<SGKaraokeLine *> *SGKaraokeEstimatedLines(NSArray<NSNumber *> *starts, NSArray<NSString *> *texts);
 // Lines with no time at all, for lyrics that come as plain text; a ♪ or empty text is dropped.

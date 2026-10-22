@@ -298,17 +298,16 @@ static NSInteger msOf(id value) {
 // Where a line without an end of its own, or of its last word, is taken to stop.
 static const NSInteger kTailMs = 1000;
 
-// A word timed line, the segments of a spaced script run together into whole words as NetEase's are:
-// a segment the spec writes without the space after it ("wan", "ted ") goes on into the next one.
+// A word timed line. A segment the spec writes without the space after it ("wan", "ted ") goes on
+// into the next one, and one written with a space in front starts a word of its own.
 static SGKaraokeLine *wordLine(NSArray *rawWords, NSInteger start, NSInteger end) {
     NSInteger lineEnd = end;
     if (lineEnd < 0) {
         NSDictionary *last = rawWords.lastObject;
         lineEnd = msOf(last[@"end_ms"]) >= 0 ? msOf(last[@"end_ms"]) : msOf(last[@"start_ms"]) + kTailMs;
     }
-    NSMutableArray<SGKaraokeWord *> *words = [NSMutableArray array];
-    SGKaraokeWord *open = nil;
-    BOOL spaced = YES;
+    NSCharacterSet *space = NSCharacterSet.whitespaceAndNewlineCharacterSet;
+    NSMutableArray<SGKaraokePiece *> *pieces = [NSMutableArray array];
     for (NSUInteger i = 0; i < rawWords.count; i++) {
         NSDictionary *raw = rawWords[i];
         NSString *said = raw[@"text"];
@@ -316,37 +315,15 @@ static SGKaraokeLine *wordLine(NSArray *rawWords, NSInteger start, NSInteger end
         if (![said isKindOfClass:NSString.class] || wordStart < 0) return nil;
         if (raw[@"end_ms"] && wordEnd < wordStart) return nil;
         if (wordEnd < 0) wordEnd = i + 1 < rawWords.count ? msOf(rawWords[i + 1][@"start_ms"]) : lineEnd;
-        wordEnd = MAX(wordEnd, wordStart + 1);   // a word of no length still shows, for a moment
-        NSString *trimmed = [said stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-        if (said.length && [NSCharacterSet.whitespaceAndNewlineCharacterSet characterIsMember:[said characterAtIndex:0]]) {
-            open = nil;
-            spaced = YES;
-        }
-        BOOL unspaced = SGKaraokeUnspacedScript(trimmed);
-        if (trimmed.length && open && !unspaced) {
-            open.text = [open.text stringByAppendingString:trimmed];
-            open.end = MAX(open.end, wordEnd);
-        } else if (trimmed.length) {
-            SGKaraokeWord *word = [SGKaraokeWord new];
-            word.text = trimmed;
-            word.start = wordStart;
-            word.end = wordEnd;
-            word.joined = !spaced;
-            [words addObject:word];
-            open = unspaced ? nil : word;
-            spaced = NO;
-        }
-        if (!trimmed.length || [NSCharacterSet.whitespaceAndNewlineCharacterSet characterIsMember:[said characterAtIndex:said.length - 1]]) {
-            open = nil;
-            spaced = YES;
-        }
+        SGKaraokePiece *piece = [SGKaraokePiece new];
+        piece.text = [said stringByTrimmingCharactersInSet:space];
+        piece.start = wordStart;
+        piece.end = MAX(wordEnd, wordStart + 1);   // a word of no length still shows, for a moment
+        piece.spaceBefore = said.length && [space characterIsMember:[said characterAtIndex:0]];
+        piece.spaceAfter = said.length && [space characterIsMember:[said characterAtIndex:said.length - 1]];
+        [pieces addObject:piece];
     }
-    if (!words.count) return nil;
-    SGKaraokeLine *line = [SGKaraokeLine new];
-    line.words = words;
-    line.start = start;
-    line.end = MAX(lineEnd, words.lastObject.end);
-    return line;
+    return SGKaraokePieceLine(pieces, start, lineEnd);
 }
 
 NSArray<SGKaraokeLine *> *SGLyricsfileLines(NSString *yaml) {
