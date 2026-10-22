@@ -154,6 +154,13 @@ void SGLyricsNoteOrderChoice(NSString *trackID, SGLyricsResult *lyrics) {
     automatic.lines = lyrics.karaokeLines;
 }
 
+void SGLyricsDropChoice(NSString *trackID, NSString *key) {
+    if (!trackID || ![sg_chosen[trackID] isEqualToString:key]) return;
+    SGLog(@"lyrics: %@ gave %@ nothing or is off, back to Automatic", key, trackID);
+    [sg_chosen removeObjectForKey:trackID];
+    [sg_automatic removeObjectForKey:trackID];
+}
+
 void SGLyricsChooseAutomatic(NSString *trackID) {
     if (!trackID || !sg_chosen[trackID]) return;
     SGLyricsAutomatic *automatic = sg_automatic[trackID];

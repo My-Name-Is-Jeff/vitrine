@@ -245,6 +245,9 @@ void SGLyricsChooseSource(NSString *trackID, NSString *key);
 void SGLyricsChooseAutomatic(NSString *trackID);
 // A walk under way at the track's first pick has ended with `lyrics`: that is what Automatic puts back.
 void SGLyricsNoteOrderChoice(NSString *trackID, SGLyricsResult *lyrics);
+// A walk found the track's pick `key` answering no lines, or switched off: the pick goes, so the menu shows
+// Automatic over the order's answer the walk goes on to. Nothing when the track's pick is another by now.
+void SGLyricsDropChoice(NSString *trackID, NSString *key);
 extern NSNotificationName const SGLyricsSourceChosenNotification;
 // LyricsSources.m, for LyricsPick.m: the query a walk would start with, and a picked answer kept as the walk's.
 SGLyricsQuery *SGLyricsQueryFor(NSString *trackID);

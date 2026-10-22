@@ -483,9 +483,14 @@ static void step(SGLyricsWalk *walk) {
         step(walk);
         return;
     }
+    NSUInteger failures = atomic_load(&sg_failures);
     provider.ask(query, ^(SGLyricsResult *fresh) {
         learnFrom(query, fresh);
         noteCredit(fresh);
+        // Instrumental counts as no lines here; a failed request does not, as the server may only be busy.
+        if ([provider.key isEqualToString:walk.picked] && !fresh.karaokeLines.count && atomic_load(&sg_failures) == failures) {
+            SGLyricsDropChoice(query.trackID, walk.picked);
+        }
         if (fresh.instrumental) {
             SGLog(@"lyrics: %@ is instrumental, by %@", query.trackID, provider.key);
             merged.instrumental = YES;
@@ -525,6 +530,9 @@ static void startWalk(NSString *trackID, SGLyricsQuery *query) {
     if (chosen && [order containsObject:chosen]) {
         [order removeObject:chosen];
         [order insertObject:chosen atIndex:0];
+    } else if (chosen) {
+        SGLyricsDropChoice(trackID, chosen);
+        chosen = nil;
     }
     SGLog(@"lyrics: asking %@ for %@ as \"%@\" by \"%@\", album \"%@\", %lds",
           [order componentsJoinedByString:@", "], trackID, query.title, query.artist, query.album, (long)query.seconds);
