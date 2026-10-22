@@ -20,15 +20,11 @@
 
 // The rows of the document and the one being read. A sequence item's "- " is blanked out in place, so
 // the mapping it opens reads like any other at the column its first key is in.
-@interface SGLFReader : NSObject {
-@public
+typedef struct {
     NSMutableArray<NSString *> *rows;
     NSUInteger at, depth;
     BOOL failed;
-}
-@end
-@implementation SGLFReader
-@end
+} SGLFReader;
 
 static NSUInteger indentOf(NSString *row) {
     NSUInteger n = 0;
@@ -257,8 +253,7 @@ static id node(SGLFReader *r, NSUInteger indent) {
 
 // The document as dictionaries, arrays and strings; nil when it is not YAML this reads.
 static id parseYAML(NSString *yaml) {
-    SGLFReader *r = [SGLFReader new];
-    r->rows = [NSMutableArray array];
+    SGLFReader reader = {[NSMutableArray array]}, *r = &reader;
     for (NSString *row in [yaml componentsSeparatedByString:@"\n"]) {
         [r->rows addObject:[row hasSuffix:@"\r"] ? [row substringToIndex:row.length - 1] : row];
     }
