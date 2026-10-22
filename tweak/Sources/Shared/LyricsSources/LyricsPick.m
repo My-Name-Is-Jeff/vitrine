@@ -7,8 +7,9 @@
 
 NSNotificationName const SGLyricsSourceChosenNotification = @"spotifyglass.lyricsSourceChosen";
 
-// Each track's asks are kept for the menu opened on it again; the picks are kept for the replays.
-static const NSUInteger kAskedTracks = 10, kChosenTracks = 200;
+// Each track's asks are kept for the menu opened on it again; the picks are kept for the replays, and what
+// Automatic puts back, which holds lines, for as many tracks as the walk keeps.
+static const NSUInteger kAskedTracks = 10, kChosenTracks = 200, kAutomaticTracks = 40;
 
 // Every source asked for one track, and who waits for them all.
 @interface SGLyricsOfferAsk : NSObject
@@ -32,7 +33,7 @@ static const NSUInteger kAskedTracks = 10, kChosenTracks = 200;
 
 static NSMutableDictionary<NSString *, SGLyricsOfferAsk *> *sg_asks;
 static NSMutableDictionary<NSString *, NSString *> *sg_chosen;
-static NSMutableDictionary<NSString *, SGLyricsAutomatic *> *sg_automatic;   // the tracks in sg_chosen
+static NSMutableDictionary<NSString *, SGLyricsAutomatic *> *sg_automatic;   // the last tracks in sg_chosen
 
 NSString *SGLyricsChosenSource(NSString *trackID) {
     return trackID ? sg_chosen[trackID] : nil;
@@ -117,10 +118,8 @@ void SGLyricsChooseSource(NSString *trackID, NSString *key) {
         sg_chosen = [NSMutableDictionary dictionary];
         sg_automatic = [NSMutableDictionary dictionary];
     }
-    if (sg_chosen.count >= kChosenTracks) {
-        [sg_chosen removeAllObjects];
-        [sg_automatic removeAllObjects];
-    }
+    if (sg_chosen.count >= kChosenTracks) [sg_chosen removeAllObjects];
+    if (sg_automatic.count >= kAutomaticTracks && !sg_automatic[trackID]) [sg_automatic removeAllObjects];
     if (!sg_chosen[trackID]) {
         SGLyricsAutomatic *automatic = [SGLyricsAutomatic new];
         automatic.kept = SGLyricsKeptAnswer(trackID);
@@ -143,10 +142,17 @@ void SGLyricsNoteOrderChoice(NSString *trackID, SGLyricsResult *lyrics) {
 }
 
 void SGLyricsChooseAutomatic(NSString *trackID) {
-    SGLyricsAutomatic *automatic = trackID ? sg_automatic[trackID] : nil;
-    if (!automatic) return;
+    if (!trackID || !sg_chosen[trackID]) return;
+    SGLyricsAutomatic *automatic = sg_automatic[trackID];
     [sg_chosen removeObjectForKey:trackID];
     [sg_automatic removeObjectForKey:trackID];
+    if (!automatic.kept) {
+        // What the order chose is no longer kept, or was never learned: the walk asks the order again.
+        SGLog(@"lyrics: pick dropped for %@, asking the order again", trackID);
+        SGLyricsRestoreKept(trackID, nil);
+        SGLyricsFetch(trackID, ^(SGLyricsResult *lyrics) { show(trackID, lyrics.provider, lyrics.karaokeLines); });
+        return;
+    }
     SGLog(@"lyrics: pick dropped for %@, back to %@, %lu lines", trackID, automatic.credit, (unsigned long)automatic.lines.count);
     SGLyricsRestoreKept(trackID, automatic.kept);
     show(trackID, automatic.credit, automatic.lines);
