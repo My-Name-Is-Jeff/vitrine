@@ -386,6 +386,10 @@ void SGLyricsOpenCreditLinks(NSArray<SGLyricsLink *> *links, UIView *from) {
 @property (nonatomic, strong) NSMutableArray<NSString *> *passedOver;
 // sg_failures when the walk started. Another walk's failure counts too, which at worst asks again.
 @property (nonatomic) NSUInteger failuresAtStart;
+// The source picked for the track when the walk started, asked first.
+@property (nonatomic, copy) NSString *picked;
+// The picked source answered with lines, which are the walk's answer however they are timed.
+@property (nonatomic) BOOL pickedAnswered;
 @end
 
 @implementation SGLyricsWalk
@@ -406,7 +410,9 @@ static void finish(SGLyricsWalk *walk) {
     BOOL everyoneAsked = !walk.passedOver.count;
     BOOL failed = atomic_load(&sg_failures) != walk.failuresAtStart;
     id picked = SGLyricsChosenSource(trackID) ? sg_kept[trackID] : nil;
-    if ([picked isKindOfClass:SGLyricsResult.class]) {
+    if (walk.pickedAnswered) {
+        SGLyricsKeepChosen(trackID, lyrics);
+    } else if ([picked isKindOfClass:SGLyricsResult.class]) {
         // A source was picked from the player's ⋯ while the walk ran: the pick stands, and the walk's answer
         // is what Automatic puts back.
         SGLyricsNoteOrderChoice(trackID, lyrics);
@@ -434,11 +440,11 @@ static void finish(SGLyricsWalk *walk) {
 // Whether the walk has its answer. walk.merged is the best seen so far: betterLines keeps the finest timed
 // lines, the first in the order among equals, so a walk run to the end takes words over a line's start over
 // plain text. It stops at the first timed answer, or with Prefer word-by-word timing at the first with words
-// timed; a source picked for the track is asked first and stands, timed by words or not.
+// timed. A source picked for the track is asked first, and its answer ends the walk in step.
 static BOOL settled(SGLyricsWalk *walk) {
     SGLyricsResult *merged = walk.merged;
     if (!(merged.synced && merged.texts.count && merged.karaokeLines.count)) return NO;
-    if (!SGFlag(SGKeyLyricsPreferWordTiming, NO) || SGLyricsChosenSource(walk.query.trackID)) return YES;
+    if (!SGFlag(SGKeyLyricsPreferWordTiming, NO)) return YES;
     if (SGKaraokeLinesTiming(merged.karaokeLines) == SGKaraokeTimingWords) return YES;
     if (walk.index < walk.order.count) SGLog(@"lyrics: %@ line timed by %@, asking on for words timed", walk.query.trackID, merged.provider);
     return NO;
@@ -486,6 +492,16 @@ static void step(SGLyricsWalk *walk) {
             finish(walk);
             return;
         }
+        // The pick stands timed or not, so a timed source lower in the order cannot replace it. A pick made while
+        // the walk runs is left to finish, which keeps the order's answer for Automatic.
+        if (fresh.karaokeLines.count && [provider.key isEqualToString:walk.picked]
+            && [walk.picked isEqualToString:SGLyricsChosenSource(query.trackID)]) {
+            if (!fresh.provider) fresh.provider = provider.name;
+            walk.merged = fresh;
+            walk.pickedAnswered = YES;
+            finish(walk);
+            return;
+        }
         if (betterLines(merged, fresh)) {
             merged.karaokeLines = fresh.karaokeLines;
             merged.wordTimed = fresh.wordTimed;
@@ -514,6 +530,7 @@ static void startWalk(NSString *trackID, SGLyricsQuery *query) {
           [order componentsJoinedByString:@", "], trackID, query.title, query.artist, query.album, (long)query.seconds);
     SGLyricsWalk *walk = [SGLyricsWalk new];
     walk.order = order;
+    walk.picked = chosen;
     walk.query = query;
     walk.merged = [SGLyricsResult new];
     walk.passedOver = [NSMutableArray array];
