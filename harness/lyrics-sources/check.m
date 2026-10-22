@@ -403,6 +403,15 @@ int main(int argc, char **argv) {
         found = @[@{@"id": @8, @"trackName": @"a - Live", @"artistName": @"b, x", @"duration": @200, @"hasWordSync": @YES, @"syncedLyrics": twoLines, @"lyricsfile": wordFile}];
         got = lrclibAnswer(query, nil);
         CHECK(got.wordTimed && got.karaokeLines.count == 1);
+        // A record's words count once its Lyricsfile reads: one whose file cannot be read is weighed on its LRC,
+        // so the words of a record further off win, and with no file that reads the closer LRC does.
+        NSDictionary *unreadable = @{@"id": @9, @"trackName": @"a", @"artistName": @"b", @"duration": @202, @"hasWordSync": @YES, @"syncedLyrics": twoLines, @"lyricsfile": @"version: '9'"};
+        found = @[unreadable, @{@"id": @10, @"trackName": @"a", @"artistName": @"b", @"duration": @204, @"hasWordSync": @YES, @"syncedLyrics": twoLines, @"lyricsfile": wordFile}];
+        got = lrclibAnswer(query, nil);
+        CHECK(got.wordTimed && got.karaokeLines.count == 1);
+        found = @[unreadable, @{@"id": @11, @"trackName": @"a", @"artistName": @"b", @"duration": @200, @"syncedLyrics": @"[00:01.00]a\n[00:02.00]b\n[00:03.00]c\n"}];
+        got = lrclibAnswer(query, nil);
+        CHECK(!got.wordTimed && got.synced && got.karaokeLines.count == 3);
         // With no length to go on, a record whose LRC is null against one whose LRC is empty: the plain text wins.
         query.seconds = 0;
         found = @[@{@"id": @4, @"trackName": @"a", @"artistName": @"b", @"syncedLyrics": NSNull.null, @"plainLyrics": @"x"},
