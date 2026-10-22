@@ -600,9 +600,8 @@ Redesigned:
                   are put on that menu's own sheet instead, above Spotify's rows, and fire Spotify's own buttons.
                   The page of the songs the user liked by one artist (CollectionArtist) is Liked Songs' header kit
                   with no cover and goes through the same files: the neutral field, the wash and the bar's scrim
-                  gone, the one row of shuffle, Play and download, and its rows as the playlist's are. Its ⋯ keeps
-                  Spotify's own sheet: the system menu opens over this page's sheet but never gets its rows and stays
-                  on its loading row, so the pinned button is not recorded and the menu does not take it over. Its download button is the plain one, not the Granular one, so its state is read from its
+                  gone, the one row of shuffle, Play and download, and its rows as the playlist's are. Its pinned ⋯
+                  opens the system menu, as every other redesigned page's does. Its download button is the plain one, not the Granular one, so its state is read from its
                   owner's `currentStatus`, whose cases are its own (none, waiting, downloading, downloaded); it keeps no
                   progress while it downloads, so the ring turns (Kit/SGRDownload.m).
                   Laid out on the Mac against harness/playlist/
