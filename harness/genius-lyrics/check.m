@@ -111,6 +111,9 @@ static void checkPicks(void) {
         @[@"Dynamite", @"BTS", reply(@[@[@5813592, @"Dynamite", @[@"BTS (방탄소년단)"]]]), @5813592],
         @[@"ЗНАК (SIGN)", @"Dora", reply(@[@[@13935027, @"ЗНАК (SIGN)", @[@"Toxi$", @"Дора (Dora)"]]]), @13935027],
     ];
+    // A null where Genius sends a boolean is not instrumental, and does not throw.
+    NSDictionary *nullHit = @{@"result": @{@"id": @1063, @"title": @"Bohemian Rhapsody", @"primary_artists": @[@{@"name": @"Queen"}], @"instrumental": NSNull.null}};
+    CHECK([SGGeniusSongIn(@{@"sections": @[@{@"hits": @[nullHit]}]}, @"Bohemian Rhapsody", @"Queen") isEqual:@1063]);
     for (NSArray *c in cases) {
         NSNumber *song = SGGeniusSongIn(c[2], c[0], c[1]);
         printf("%s by %s: %s\n", [c[0] UTF8String], [c[1] UTF8String], song ? song.stringValue.UTF8String : "none");

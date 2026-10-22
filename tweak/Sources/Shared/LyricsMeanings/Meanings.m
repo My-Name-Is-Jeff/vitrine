@@ -194,7 +194,7 @@ NSNumber *SGGeniusSongIn(NSDictionary *response, NSString *title, NSString *arti
             NSDictionary *song = [hit isKindOfClass:NSDictionary.class] ? hit[@"result"] : nil;
             if (![song isKindOfClass:NSDictionary.class] || ![song[@"id"] isKindOfClass:NSNumber.class]) continue;
             NSString *hitTitle = stringIn(song[@"title"]);
-            if ([song[@"instrumental"] boolValue] || ![folded(bareTitle(hitTitle)) isEqualToString:wantTitle] || !byLead(song, leads)) continue;
+            if ([song[@"instrumental"] isEqual:@YES] || ![folded(bareTitle(hitTitle)) isEqualToString:wantTitle] || !byLead(song, leads)) continue;
             NSSet<NSString *> *version = versionOf(hitTitle);
             NSInteger rank = [version isEqualToSet:wantVersion] ? 3 : version.count == 0 ? 2 : 1;
             if (rank > bestRank) {
