@@ -227,6 +227,8 @@ NSNumber *SGGeniusSongIn(NSDictionary *response, NSString *title, NSString *arti
 // lines, nil when it has none.
 extern NSString *const SGSpicyLyricsKey;
 BOOL SGSpicyLyricsKeySet(void);
+// Removes the key from the Keychain (Mod > Clear Keychain).
+void SGSpicyLyricsForgetKey(void);
 NSString *SGSpicyLyricsStatus(void);
 @class SGModRow;
 SGModRow *SGSpicyLyricsKeyRow(void);

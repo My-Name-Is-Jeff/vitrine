@@ -512,6 +512,15 @@ static void translatorChanged(void) {
     [NSNotificationCenter.defaultCenter postNotificationName:SGLyricsTranslationsDidChangeNotification object:nil];
 }
 
+void SGAIForgetKeys(void) {
+    // One delete per provider's own service, every account in it (key and server), never another app's items.
+    for (NSUInteger i = 0; i < kProviderCount; i++) {
+        SecItemDelete((__bridge CFDictionaryRef)@{(__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
+                                                  (__bridge id)kSecAttrService: kProviders[i].service});
+    }
+    translatorChanged();
+}
+
 static void configure(UITextField *field, NSString *placeholder) {
     field.placeholder = placeholder;
     field.autocorrectionType = UITextAutocorrectionTypeNo;

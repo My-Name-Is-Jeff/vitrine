@@ -669,7 +669,9 @@ App:
 
 Every key a feature stores starts with `spotifyglass.`, whatever it holds: Reset all settings on
 the Mod page removes by that prefix and has no list to keep up to date. It leaves `SGKeyStock` behind,
-which makes every unset switch read off, so a reset is stock Spotify whatever switches exist.
+which makes every unset switch read off, so a reset is stock Spotify whatever switches exist. The API keys
+(each AI translator's, the OpenAI-compatible server, Spicy Lyrics') live in the Keychain, which a reset leaves
+alone; Clear Keychain beside it deletes each by its own service and keeps the settings.
 
 A hook reads its switch when it runs (`SGEnabled`, `SGHidden`, `SGFlag` from Core/SGPrefs.h), so a
 change shows after Spotify restarts; the tab editor on the Navbar page is the exception and applies as soon as the bar lays
@@ -864,7 +866,7 @@ Auto / Off / On control per flag (a text field for the number and text ones), an
 (the row reads out where the build stands and opens the changelog of everything newer than it, read
 from the releases Release Please cuts, with Check now, the release to get, all the releases and Tell
 me when one is out, the sheet a newer release brings up a few seconds after Spotify opens), the
-build and Spotify's version, the site and the repo, What's New and the welcome tour again, and Reset all
+build and Spotify's version, the site and the repo, What's New and the welcome tour again, Clear Keychain and Reset all
 settings. A flag switch on a page forces that one flag and off leaves Spotify's own value, so the All
 flags page is where a flag goes back to Auto. Spotify ships its newer design behind several flags at
 once, and the redesign is built on it (the glass navigation bar, the new player slider, the sheet style
