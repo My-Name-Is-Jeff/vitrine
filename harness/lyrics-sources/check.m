@@ -288,8 +288,8 @@ int main(int argc, char **argv) {
         CHECK(!SGLyricsfileLines([wordFile stringByAppendingFormat:@"plain: |\n  %@\n", [@"" stringByPaddingToLength:(1 << 20) withString:@"a" startingAtIndex:0]]));
         CHECK(!SGLyricsfileLines(@"[not, yaml") && !SGLyricsfileLines(@"") && !SGLyricsfileLines(nil) && !SGLyricsfileLines((NSString *)@3));
 
-        // LRCLIB: a record with words timed answers with them; one whose Lyricsfile cannot be read
-        // answers with its LRC; the search picks the record with words over a closer one without.
+        // LRCLIB: a record with words timed answers with them; one whose Lyricsfile cannot be read, or
+        // that says it has no word sync, answers with its LRC; the search picks the record with words over a closer one without.
         NSString *twoLines = @"[00:01.00]a\n[00:02.00]b\n";
         __block NSDictionary *record = @{@"id": @1, @"duration": @200, @"hasWordSync": @YES, @"syncedLyrics": twoLines, @"lyricsfile": wordFile};
         __block NSArray *found = nil;
@@ -301,6 +301,9 @@ int main(int argc, char **argv) {
         SGLrcLibAsk(query, ^(SGLyricsResult *result) { got = result; });
         CHECK(got.wordTimed && got.synced && got.karaokeLines.count == 1 && got.texts.count);
         record = @{@"id": @1, @"duration": @200, @"hasWordSync": @YES, @"syncedLyrics": twoLines, @"lyricsfile": @"version: '9'"};
+        SGLrcLibAsk(query, ^(SGLyricsResult *result) { got = result; });
+        CHECK(!got.wordTimed && got.synced && got.karaokeLines.count == 2);
+        record = @{@"id": @1, @"duration": @200, @"hasWordSync": @NO, @"syncedLyrics": twoLines, @"lyricsfile": wordFile};
         SGLrcLibAsk(query, ^(SGLyricsResult *result) { got = result; });
         CHECK(!got.wordTimed && got.synced && got.karaokeLines.count == 2);
         record = nil;

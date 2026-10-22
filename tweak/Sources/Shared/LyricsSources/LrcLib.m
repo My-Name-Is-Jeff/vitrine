@@ -88,12 +88,15 @@ static SGLyricsResult *resultFrom(NSDictionary *record) {
     result.instrumental = [record[@"instrumental"] boolValue];
     if (result.instrumental) return result;
     id synced = record[@"syncedLyrics"], plain = record[@"plainLyrics"];
-    SGLyricsResult *worded = syncedResult(SGLyricsfileLines(record[@"lyricsfile"]));
-    if (worded) {
-        worded.wordTimed = YES;
-        return worded;
+    // Without word sync the record's Lyricsfile only repeats its LRC's line times, so it is not read.
+    if ([record[@"hasWordSync"] isEqual:@YES]) {
+        SGLyricsResult *worded = syncedResult(SGLyricsfileLines(record[@"lyricsfile"]));
+        if (worded) {
+            worded.wordTimed = YES;
+            return worded;
+        }
+        SGLog(@"lrclib: record %@ times words in a Lyricsfile this cannot read", record[@"id"]);
     }
-    if ([record[@"hasWordSync"] isEqual:@YES]) SGLog(@"lrclib: record %@ times words in a Lyricsfile this cannot read", record[@"id"]);
     SGLyricsResult *timed = SGLyricsLRCResult(synced);
     if (timed) return timed;
     // Nothing timed, but the words still beat an empty page when no other source has any.
