@@ -1373,6 +1373,7 @@ typedef struct {
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(restyle) name:SGRLyricsTextDidChangeNotification object:nil];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(restyle) name:SGLyricsRomanisedDidChangeNotification object:nil];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(translationsChanged) name:SGLyricsTranslationsDidChangeNotification object:nil];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(sourceChosen:) name:SGLyricsSourceChosenNotification object:nil];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(lookChanged) name:SGRLyricsLookDidChangeNotification object:nil];
     // A locked phone leaves the card in its window, so the link has to be put down by the app going
     // away rather than by the view going: see scheduleLink.
@@ -2034,6 +2035,18 @@ static BOOL anyUntranslated(NSArray<SGKaraokeLine *> *lines) {
 }
 
 // The saved translations deleted, or Translate any song switched: the song is synced again and redrawn.
+// A source picked from the player's ⋯ replaces the lines of the song playing, which the page otherwise keeps
+// through any later answer: they are dropped as on a change of track, and the next tick takes the new ones.
+- (void)sourceChosen:(NSNotification *)note {
+    if (_sample || ![note.object isEqual:_track]) return;
+    _lines = nil;
+    _passedOver = nil;
+    _builtWidth = 0;
+    [self creditTo:nil];
+    [self dropLineViews];
+    [self offerExtras];
+}
+
 - (void)translationsChanged {
     if (!_lines) return;
     [self timeLines];
