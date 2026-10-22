@@ -38,6 +38,23 @@ static id (^sg_answer)(NSURL *url, id body);
 void SGLyricsGetJSON(NSURL *url, NSDictionary *headers, void (^done)(id root)) { done(sg_answer(url, nil)); }
 void SGLyricsPostJSON(NSURL *url, NSDictionary *headers, id body, void (^done)(id root)) { done(sg_answer(url, body)); }
 
+// LRCLIB reads a Lyricsfile off the main queue and answers back on it, so this runs the main queue
+// until the answer comes. answeredAtOnce says whether it came before the ask returned.
+static SGLyricsResult *lrclibAnswer(SGLyricsQuery *query, BOOL *answeredAtOnce) {
+    __block SGLyricsResult *got = nil;
+    __block BOOL answered = NO;
+    SGLrcLibAsk(query, ^(SGLyricsResult *result) {
+        CHECK(NSThread.isMainThread);
+        got = result;
+        answered = YES;
+    });
+    if (answeredAtOnce) *answeredAtOnce = answered;
+    NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:5];
+    while (!answered && deadline.timeIntervalSinceNow > 0) [NSRunLoop.mainRunLoop runMode:NSDefaultRunLoopMode beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
+    CHECK(answered);
+    return got;
+}
+
 static NSString *param(NSURL *url, NSString *name) {
     for (NSURLQueryItem *item in [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO].queryItems) {
         if ([item.name isEqualToString:name]) return item.value;
@@ -306,25 +323,29 @@ int main(int argc, char **argv) {
         query.title = @"a";
         query.artist = @"b";
         query.seconds = 200;
-        got = nil;
-        SGLrcLibAsk(query, ^(SGLyricsResult *result) { got = result; });
-        CHECK(got.wordTimed && got.synced && got.karaokeLines.count == 1 && got.texts.count);
+        // A Lyricsfile is read off the main queue, so its answer comes later; one without words at once.
+        BOOL atOnce = YES;
+        got = lrclibAnswer(query, &atOnce);
+        CHECK(got.wordTimed && got.synced && got.karaokeLines.count == 1 && got.texts.count && !atOnce);
         record = @{@"id": @1, @"duration": @200, @"hasWordSync": @YES, @"syncedLyrics": twoLines, @"lyricsfile": @"version: '9'"};
-        SGLrcLibAsk(query, ^(SGLyricsResult *result) { got = result; });
+        got = lrclibAnswer(query, nil);
         CHECK(!got.wordTimed && got.synced && got.karaokeLines.count == 2);
         record = @{@"id": @1, @"duration": @200, @"hasWordSync": @NO, @"syncedLyrics": twoLines, @"lyricsfile": wordFile};
-        SGLrcLibAsk(query, ^(SGLyricsResult *result) { got = result; });
-        CHECK(!got.wordTimed && got.synced && got.karaokeLines.count == 2);
+        got = lrclibAnswer(query, &atOnce);
+        CHECK(!got.wordTimed && got.synced && got.karaokeLines.count == 2 && atOnce);
+        // An instrumental is answered as one, its Lyricsfile not read.
+        record = @{@"id": @1, @"duration": @200, @"instrumental": @YES, @"hasWordSync": @YES, @"lyricsfile": wordFile};
+        got = lrclibAnswer(query, &atOnce);
+        CHECK(got.instrumental && atOnce);
         record = nil;
         found = @[@{@"id": @2, @"duration": @200, @"syncedLyrics": twoLines},
                   @{@"id": @3, @"duration": @202, @"hasWordSync": @YES, @"syncedLyrics": twoLines, @"lyricsfile": wordFile}];
-        SGLrcLibAsk(query, ^(SGLyricsResult *result) { got = result; });
+        got = lrclibAnswer(query, nil);
         CHECK(got.wordTimed && got.karaokeLines.count == 1);
         // With no length to go on, a record whose LRC is null against one whose LRC is empty: the plain text wins.
         query.seconds = 0;
         found = @[@{@"id": @4, @"syncedLyrics": NSNull.null, @"plainLyrics": @"x"}, @{@"id": @5, @"syncedLyrics": @"", @"plainLyrics": @"y\nz"}];
-        got = nil;
-        SGLrcLibAsk(query, ^(SGLyricsResult *result) { got = result; });
+        got = lrclibAnswer(query, nil);
         CHECK(got && !got.synced);
 
         for (int i = 1; i < argc; i++) checkLive(@(argv[i]));

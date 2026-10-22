@@ -65,6 +65,11 @@ static NSArray<SGKaraokeLine *> *linesFromLRC(NSString *lrc) {
     return SGKaraokeEstimatedLines(starts, texts);
 }
 
+// Without word sync a record's Lyricsfile only repeats its LRC's line times, so it is not read.
+static BOOL timesWords(NSDictionary *record) {
+    return [record isKindOfClass:NSDictionary.class] && [record[@"hasWordSync"] isEqual:@YES];
+}
+
 static SGLyricsResult *syncedResult(NSArray<SGKaraokeLine *> *lines) {
     if (!lines) return nil;
     SGLyricsResult *result = [SGLyricsResult new];
@@ -82,15 +87,15 @@ SGLyricsResult *SGLyricsLRCResult(NSString *lrc) {
     return syncedResult([lrc isKindOfClass:NSString.class] ? linesFromLRC(lrc) : nil);
 }
 
-static SGLyricsResult *resultFrom(NSDictionary *record) {
+// wordLines: the record's Lyricsfile as lines, nil when it has none this reads.
+static SGLyricsResult *resultFrom(NSDictionary *record, NSArray<SGKaraokeLine *> *wordLines) {
     if (![record isKindOfClass:NSDictionary.class]) return nil;
     SGLyricsResult *result = [SGLyricsResult new];
     result.instrumental = [record[@"instrumental"] boolValue];
     if (result.instrumental) return result;
     id synced = record[@"syncedLyrics"], plain = record[@"plainLyrics"];
-    // Without word sync the record's Lyricsfile only repeats its LRC's line times, so it is not read.
-    if ([record[@"hasWordSync"] isEqual:@YES]) {
-        SGLyricsResult *worded = syncedResult(SGLyricsfileLines(record[@"lyricsfile"]));
+    if (timesWords(record)) {
+        SGLyricsResult *worded = syncedResult(wordLines);
         if (worded) {
             worded.wordTimed = YES;
             return worded;
@@ -111,6 +116,20 @@ static SGLyricsResult *resultFrom(NSDictionary *record) {
     result.texts = texts;
     result.karaokeLines = SGKaraokeStaticLines(texts);
     return result;
+}
+
+// Calls back on the main queue, where it is called. A Lyricsfile is read on another queue: a long one
+// takes a good part of a second to read, and the main queue would stall for all of it.
+static void resultFor(NSDictionary *record, void (^done)(SGLyricsResult *result)) {
+    if (!timesWords(record) || [record[@"instrumental"] boolValue]) {
+        done(resultFrom(record, nil));
+        return;
+    }
+    id yaml = record[@"lyricsfile"];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSArray<SGKaraokeLine *> *worded = SGLyricsfileLines(yaml);
+        dispatch_async(dispatch_get_main_queue(), ^{ done(resultFrom(record, worded)); });
+    });
 }
 
 // How good a recording is for the track: words timed beat lines timed, which beat untimed, then the
@@ -159,13 +178,13 @@ SGLyricsAsk SGLrcLibAsk = ^(SGLyricsQuery *query, void (^done)(SGLyricsResult *r
 
     void (^bySearch)(void) = ^{
         SGLyricsGetJSON(SGLyricsURL(kSearch, search), headers(), ^(id found) {
-            NSDictionary *record = bestOf(found, query.seconds);
-            SGLyricsResult *result = resultFrom(record);
-            SGLog(@"lrclib: search for %@ by %@ gave %@", query.title, query.artist,
-                  !result ? @"nothing" : result.instrumental ? @"an instrumental"
-                  : result.synced ? [NSString stringWithFormat:@"%lu %@ lines", (unsigned long)result.karaokeLines.count, result.wordTimed ? @"word timed" : @"timed"]
-                  : [NSString stringWithFormat:@"%lu untimed lines", (unsigned long)result.texts.count]);
-            done(result);
+            resultFor(bestOf(found, query.seconds), ^(SGLyricsResult *result) {
+                SGLog(@"lrclib: search for %@ by %@ gave %@", query.title, query.artist,
+                      !result ? @"nothing" : result.instrumental ? @"an instrumental"
+                      : result.synced ? [NSString stringWithFormat:@"%lu %@ lines", (unsigned long)result.karaokeLines.count, result.wordTimed ? @"word timed" : @"timed"]
+                      : [NSString stringWithFormat:@"%lu untimed lines", (unsigned long)result.texts.count]);
+                done(result);
+            });
         });
     };
 
@@ -177,13 +196,14 @@ SGLyricsAsk SGLrcLibAsk = ^(SGLyricsQuery *query, void (^done)(SGLyricsResult *r
     NSMutableDictionary<NSString *, NSString *> *exact = [search mutableCopy];
     exact[@"duration"] = @(query.seconds).stringValue;
     SGLyricsGetJSON(SGLyricsURL(kGet, exact), headers(), ^(id record) {
-        SGLyricsResult *result = resultFrom(record);
-        if (!result) {
-            bySearch();
-            return;
-        }
-        SGLog(@"lrclib: %@ by %@ matched exactly, %@", query.title, query.artist,
-              result.instrumental ? @"instrumental" : result.wordTimed ? @"word timed" : result.synced ? @"timed" : @"untimed");
-        done(result);
+        resultFor(record, ^(SGLyricsResult *result) {
+            if (!result) {
+                bySearch();
+                return;
+            }
+            SGLog(@"lrclib: %@ by %@ matched exactly, %@", query.title, query.artist,
+                  result.instrumental ? @"instrumental" : result.wordTimed ? @"word timed" : result.synced ? @"timed" : @"untimed");
+            done(result);
+        });
     });
 };

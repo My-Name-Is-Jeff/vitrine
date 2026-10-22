@@ -12,7 +12,8 @@
 - LRCLIB's Lyricsfile (`Lyricsfile.m`): the spec's example and LRCLIB's own way of writing it read as word
   timed lines, segments run together into words, a file timed only by the line left to the LRC, a broken
   or unknown file refused whole, and the LRCLIB ask taking the words over the LRC and a record with words
-  over a closer one without.
+  over a closer one without. The ask reads a Lyricsfile off the main queue and answers on it, later than
+  a record without one.
 
 `./build.sh krc.json qq.json lrclib.json` also reads real replies saved from `lyrics.kugou.com/download`,
 QQ's `GetPlayLyricInfo` and LRCLIB's `/api/get/<id>`, and prints how many lines each has; an LRCLIB record

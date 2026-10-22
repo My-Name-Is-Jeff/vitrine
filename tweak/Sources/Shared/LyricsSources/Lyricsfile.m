@@ -283,8 +283,8 @@ static id parseYAML(NSString *yaml) {
 
 #pragma mark - the lines
 
-// A whole song timed by the word is tens of kilobytes; anything past this is no Lyricsfile. It is read on
-// the main queue, where a megabyte took a third of a second on a Mac.
+// A whole song timed by the word is tens of kilobytes; anything past this is no Lyricsfile. A megabyte
+// took a third of a second to read on a Mac.
 static const NSUInteger kMaxLength = 1 << 18;
 
 // A time in milliseconds: ASCII digits only, none negative, and at most nine of them (over a hundred
