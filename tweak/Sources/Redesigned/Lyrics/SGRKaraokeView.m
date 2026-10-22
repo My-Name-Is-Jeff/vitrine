@@ -1296,6 +1296,7 @@ typedef struct {
     BOOL _hasSpoken, _hasTranslation;   // whether the song has any line with either
     BOOL _untranslated;   // whether a line with words has no translation, which a translator can fill in
     SGTranslationSource *_saved;   // who made the song's saved translation and when, nil with none saved
+    NSString *_savedLanguage;      // the language of that saved file: the setting can change while the lyrics are open
     BOOL _foreign;        // whether the song is in a language other than the one translations are asked in
     NSArray<SGKaraokeLine *> *_passedOver;   // lines kept for the song that changed nothing here, not looked at again
     UIView *_extrasBox;   // the Kit's glass and _extras over it, which holds none, so its alpha can fade
@@ -1820,8 +1821,9 @@ static BOOL anyUntranslated(NSArray<SGKaraokeLine *> *lines) {
     _breakCount = 0;
     _hasSpoken = _hasTranslation = _untranslated = NO;
     _plain = SGKaraokeLinesTiming(_lines) == SGKaraokeTimingNone;
-    _saved = _sample ? nil : SGLyricsSyncSavedTranslation(_track, SGLyricsTranslationTarget(), _lines);
-    _foreign = inAnotherLanguage(_lines, SGLyricsTranslationTarget());
+    _savedLanguage = SGLyricsTranslationTarget();
+    _saved = _sample ? nil : SGLyricsSyncSavedTranslation(_track, _savedLanguage, _lines);
+    _foreign = inAnotherLanguage(_lines, _savedLanguage);
     NSInteger sungTo = 0;   // the top of the song counts as where the singing before the first line ends
     for (NSUInteger i = 0; i < count; i++) {
         SGKaraokeLine *line = _lines[i];
@@ -1979,9 +1981,9 @@ static BOOL anyUntranslated(NSArray<SGKaraokeLine *> *lines) {
         NSMutableArray<UIMenuElement *> *about = [NSMutableArray arrayWithObject:source];
         // Not while a translator works: its next batch would save the file again.
         if (_saved.deletable && !translating) {
-            NSString *track = _track;
+            NSString *track = _track, *language = _savedLanguage;
             UIAction *delete = [UIAction actionWithTitle:@"Delete This Translation" image:[UIImage systemImageNamed:@"trash"] identifier:nil
-                                                 handler:^(UIAction *action) { SGLyricsDeleteSavedTranslation(track, SGLyricsTranslationTarget()); }];
+                                                 handler:^(UIAction *action) { SGLyricsDeleteSavedTranslation(track, language); }];
             delete.attributes = UIMenuElementAttributesDestructive;
             [about addObject:delete];
         }
@@ -2036,14 +2038,14 @@ static BOOL anyUntranslated(NSArray<SGKaraokeLine *> *lines) {
     // Kept a batch at a time too, so a translation cut off by Spotify closing keeps what was done.
     translator(lines, track, language, ^(NSArray<NSString *> *soFar, NSString *error) {
         [self takeTranslations:soFar into:lines];
-        [self saved:SGLyricsSaveTranslation(track, language, lines, source) for:lines];
+        [self saved:SGLyricsSaveTranslation(track, language, lines, source) for:lines in:language];
     }, ^(NSArray<NSString *> *translations, NSString *error) {
         if (self->_translating == lines) self->_translating = nil;
         // Translations can come with a note, which names the lines left out. Those lines stay untranslated, and
         // asking again sends only them.
         if (translations) {
             [self takeTranslations:translations into:lines];
-            [self saved:SGLyricsSaveTranslation(track, language, lines, source) for:lines];
+            [self saved:SGLyricsSaveTranslation(track, language, lines, source) for:lines in:language];
             if (lines == self->_lines) self->_untranslated = anyUntranslated(lines);
         }
         [self offerExtras];
@@ -2075,9 +2077,10 @@ static BOOL anyUntranslated(NSArray<SGKaraokeLine *> *lines) {
 }
 
 // The menu names who made the song's translation as soon as it is saved, if the song is still the one shown.
-- (void)saved:(SGTranslationSource *)source for:(NSArray<SGKaraokeLine *> *)lines {
+- (void)saved:(SGTranslationSource *)source for:(NSArray<SGKaraokeLine *> *)lines in:(NSString *)language {
     if (!source || lines != _lines) return;
     _saved = source;
+    _savedLanguage = language;
     [self offerExtras];
 }
 
