@@ -386,13 +386,27 @@ int main(int argc, char **argv) {
         got = lrclibAnswer(query, &atOnce);
         CHECK(got.instrumental && atOnce);
         record = nil;
-        found = @[@{@"id": @2, @"duration": @200, @"syncedLyrics": twoLines},
-                  @{@"id": @3, @"duration": @202, @"hasWordSync": @YES, @"syncedLyrics": twoLines, @"lyricsfile": wordFile}];
+        found = @[@{@"id": @2, @"trackName": @"a", @"artistName": @"b", @"duration": @200, @"syncedLyrics": twoLines},
+                  @{@"id": @3, @"trackName": @"a", @"artistName": @"b", @"duration": @202, @"hasWordSync": @YES, @"syncedLyrics": twoLines, @"lyricsfile": wordFile}];
+        got = lrclibAnswer(query, nil);
+        CHECK(got.wordTimed && got.karaokeLines.count == 1);
+        // Only a record that is the track can win, however it is timed: not another song of the artist's, nor
+        // the song by someone whose name only begins with the artist's. A record that names the artist first of
+        // several is theirs, and another version of the song ("a - Live") is still the song.
+        NSDictionary *otherSong = @{@"id": @6, @"trackName": @"c", @"artistName": @"b", @"duration": @200, @"hasWordSync": @YES, @"syncedLyrics": twoLines, @"lyricsfile": wordFile};
+        NSDictionary *otherArtist = @{@"id": @7, @"trackName": @"a", @"artistName": @"b key", @"duration": @200, @"hasWordSync": @YES, @"syncedLyrics": twoLines, @"lyricsfile": wordFile};
+        found = @[otherSong, otherArtist, found[0]];
+        got = lrclibAnswer(query, nil);
+        CHECK(got.synced && !got.wordTimed && got.karaokeLines.count == 2);
+        found = @[otherSong, otherArtist];
+        CHECK(!lrclibAnswer(query, nil));
+        found = @[@{@"id": @8, @"trackName": @"a - Live", @"artistName": @"b, x", @"duration": @200, @"hasWordSync": @YES, @"syncedLyrics": twoLines, @"lyricsfile": wordFile}];
         got = lrclibAnswer(query, nil);
         CHECK(got.wordTimed && got.karaokeLines.count == 1);
         // With no length to go on, a record whose LRC is null against one whose LRC is empty: the plain text wins.
         query.seconds = 0;
-        found = @[@{@"id": @4, @"syncedLyrics": NSNull.null, @"plainLyrics": @"x"}, @{@"id": @5, @"syncedLyrics": @"", @"plainLyrics": @"y\nz"}];
+        found = @[@{@"id": @4, @"trackName": @"a", @"artistName": @"b", @"syncedLyrics": NSNull.null, @"plainLyrics": @"x"},
+                  @{@"id": @5, @"trackName": @"a", @"artistName": @"b", @"syncedLyrics": @"", @"plainLyrics": @"y\nz"}];
         got = lrclibAnswer(query, nil);
         CHECK(got && !got.synced);
 

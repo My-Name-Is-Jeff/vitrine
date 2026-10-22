@@ -27,42 +27,6 @@ SGModRow *SGLyricsMeaningsRow(void) {
 
 #pragma mark - text
 
-// Letters and digits only, lowercase, accents gone and apostrophes closed up, so "Don’t" and "dont"
-// read alike across sources.
-static NSString *folded(NSString *text) {
-    static NSCharacterSet *kept;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{ kept = NSCharacterSet.alphanumericCharacterSet; });
-    NSString *plain = [text stringByFoldingWithOptions:NSCaseInsensitiveSearch | NSDiacriticInsensitiveSearch | NSWidthInsensitiveSearch
-                                                locale:nil];
-    NSMutableString *out = [NSMutableString stringWithCapacity:plain.length];
-    BOOL space = NO;
-    for (NSUInteger i = 0; i < plain.length; i++) {
-        unichar c = [plain characterAtIndex:i];
-        if (c == '\'' || c == 0x2019 || c == 0x2018 || c == '`') continue;
-        if ([kept characterIsMember:c]) {
-            if (space && out.length) [out appendString:@" "];
-            space = NO;
-            [out appendFormat:@"%C", c];
-        } else {
-            space = YES;
-        }
-    }
-    return out;
-}
-
-// "Song (feat. X) - Remastered 2011" as Genius titles it: "Song".
-static NSString *bareTitle(NSString *title) {
-    NSString *bare = title ?: @"";
-    NSRange dash = [bare rangeOfString:@" - "];
-    if (dash.location != NSNotFound) bare = [bare substringToIndex:dash.location];
-    static NSRegularExpression *brackets;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{ brackets = [NSRegularExpression regularExpressionWithPattern:@"\\s*[\\(\\[][^\\)\\]]*[\\)\\]]" options:0 error:nil]; });
-    bare = [brackets stringByReplacingMatchesInString:bare options:0 range:NSMakeRange(0, bare.length) withTemplate:@""];
-    return [bare stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
-}
-
 static BOOL sameLine(NSString *a, NSString *b) {
     if (!a.length || !b.length) return NO;
     if ([a isEqualToString:b]) return YES;
@@ -85,7 +49,7 @@ static NSArray<NSString *> *fragmentLines(NSString *fragment) {
     for (NSString *row in [fragment componentsSeparatedByCharactersInSet:NSCharacterSet.newlineCharacterSet]) {
         NSString *trimmed = [row stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
         if ([trimmed hasPrefix:@"["] && [trimmed hasSuffix:@"]"]) continue;
-        NSString *text = folded(trimmed);
+        NSString *text = SGLyricsFoldedText(trimmed);
         if (text.length) [lines addObject:text];
     }
     return lines;
@@ -127,65 +91,14 @@ static NSString *stringIn(id value) {
 }
 
 NSDictionary<NSString *, NSString *> *SGGeniusSearchQuery(NSString *title, NSString *artist) {
-    return @{@"q": [NSString stringWithFormat:@"%@ %@", bareTitle(title), artist], @"per_page": @"10"};
-}
-
-// What a title says beyond the song's name: "Old Town Road - Remix" is {remix}, "Blinding Lights (Live)" {live}.
-static NSSet<NSString *> *versionOf(NSString *title) {
-    NSMutableSet<NSString *> *words = [NSMutableSet setWithArray:[folded(title) componentsSeparatedByString:@" "]];
-    [words minusSet:[NSSet setWithArray:[folded(bareTitle(title)) componentsSeparatedByString:@" "]]];
-    [words removeObject:@""];
-    return words;
-}
-
-// The track's title without Spotify's "(feat. Billy Ray Cyrus)" or "(with Diplo)": who sings with the lead
-// is not which recording it is. Genius's titles keep theirs, so a version of its own with a guest stays apart.
-static NSString *withoutGuests(NSString *title) {
-    static NSRegularExpression *guests;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        guests = [NSRegularExpression regularExpressionWithPattern:@"\\s*[\\(\\[](feat\\.?|ft\\.?|featuring|with)\\s[^\\)\\]]*[\\)\\]]"
-                                                            options:NSRegularExpressionCaseInsensitive error:nil];
-    });
-    return [guests stringByReplacingMatchesInString:title options:0 range:NSMakeRange(0, title.length) withTemplate:@""];
-}
-
-// Spotify joins a track's artists with ", ", which a name can hold too ("Tyler, The Creator"), so the
-// lead artist is any run of the first names; a local file's tag may name the lead before " feat." instead.
-static NSSet<NSString *> *leadNames(NSString *artist) {
-    NSMutableSet<NSString *> *names = [NSMutableSet setWithObject:folded(SGLyricsLeadArtist(artist))];
-    NSString *run = @"";
-    for (NSString *part in [artist componentsSeparatedByString:@", "]) {
-        run = run.length ? [run stringByAppendingFormat:@" %@", folded(part)] : folded(part);
-        if (run.length) [names addObject:run];
-    }
-    return names;
-}
-
-// Whether one of the song's own artists is the track's lead, the way Genius names them or by either name
-// of one it writes twice over ("BTS (방탄소년단)", "Дора (Dora)"); a featured singer or a translation page's "Genius English Translations"
-// never is.
-static BOOL byLead(NSDictionary *song, NSSet<NSString *> *leads) {
-    id primaries = song[@"primary_artists"];
-    for (NSDictionary *primary in [primaries isKindOfClass:NSArray.class] ? primaries : @[]) {
-        NSString *name = [primary isKindOfClass:NSDictionary.class] ? stringIn(primary[@"name"]) : nil;
-        if (!name) continue;
-        NSArray<NSString *> *parts = [name componentsSeparatedByCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"()"]];
-        for (NSString *part in [parts arrayByAddingObject:name]) {
-            if ([leads containsObject:folded(part)]) return YES;
-        }
-    }
-    return NO;
+    return @{@"q": [NSString stringWithFormat:@"%@ %@", SGLyricsBareTitle(title), artist], @"per_page": @"10"};
 }
 
 NSNumber *SGGeniusSongIn(NSDictionary *response, NSString *title, NSString *artist) {
     if (![response isKindOfClass:NSDictionary.class] || !title.length || !artist.length) return nil;
-    NSString *wantTitle = folded(bareTitle(title));
-    if (!wantTitle.length) return nil;
-    NSSet<NSString *> *wantVersion = versionOf(withoutGuests(title));
     // Genius files a song's words under the song; a track with none sung would get them anyway.
-    if ([wantVersion containsObject:@"instrumental"] || [wantVersion containsObject:@"karaoke"]) return nil;
-    NSSet<NSString *> *leads = leadNames(artist);
+    NSSet<NSString *> *version = SGLyricsTitleVersion(title);
+    if ([version containsObject:@"instrumental"] || [version containsObject:@"karaoke"]) return nil;
     // Best first: the same version, then the plain song, then any other version of it.
     NSNumber *best = nil;
     NSInteger bestRank = 0;
@@ -195,10 +108,14 @@ NSNumber *SGGeniusSongIn(NSDictionary *response, NSString *title, NSString *arti
         for (NSDictionary *hit in [hits isKindOfClass:NSArray.class] ? hits : @[]) {
             NSDictionary *song = [hit isKindOfClass:NSDictionary.class] ? hit[@"result"] : nil;
             if (![song isKindOfClass:NSDictionary.class] || ![song[@"id"] isKindOfClass:NSNumber.class]) continue;
-            NSString *hitTitle = stringIn(song[@"title"]);
-            if ([song[@"instrumental"] isEqual:@YES] || ![folded(bareTitle(hitTitle)) isEqualToString:wantTitle] || !byLead(song, leads)) continue;
-            NSSet<NSString *> *version = versionOf(hitTitle);
-            NSInteger rank = [version isEqualToSet:wantVersion] ? 3 : version.count == 0 ? 2 : 1;
+            if ([song[@"instrumental"] isEqual:@YES]) continue;
+            NSMutableArray<NSString *> *names = [NSMutableArray array];
+            id primaries = song[@"primary_artists"];
+            for (NSDictionary *primary in [primaries isKindOfClass:NSArray.class] ? primaries : @[]) {
+                NSString *name = [primary isKindOfClass:NSDictionary.class] ? stringIn(primary[@"name"]) : nil;
+                if (name) [names addObject:name];
+            }
+            NSInteger rank = SGLyricsSongRank(title, artist, stringIn(song[@"title"]), names);
             if (rank > bestRank) {
                 best = song[@"id"];
                 bestRank = rank;
@@ -308,7 +225,7 @@ static NSDictionary<NSNumber *, NSArray<SGLyricsMeaning *> *> *matched(NSArray<S
                                                                         NSArray<SGKaraokeLine *> *lines,
                                                                         SGLyricsMeaningsLevel level) {
     NSMutableArray<NSString *> *texts = [NSMutableArray arrayWithCapacity:lines.count];
-    for (SGKaraokeLine *line in lines) [texts addObject:folded(SGKaraokeLineText(line))];
+    for (SGKaraokeLine *line in lines) [texts addObject:SGLyricsFoldedText(SGKaraokeLineText(line))];
     SGLyricsMeaningAuthor furthest = level == SGLyricsMeaningsArtist ? SGLyricsMeaningByArtist
                                    : level == SGLyricsMeaningsEditors ? SGLyricsMeaningByEditors : SGLyricsMeaningByCommunity;
     NSMutableDictionary<NSNumber *, NSMutableArray<SGLyricsMeaning *> *> *byLine = [NSMutableDictionary dictionary];

@@ -197,6 +197,18 @@ BOOL SGLyricsSameArtist(NSString *credited, NSString *artist);
 // KuGou.m. A download's base64 content as lines, nil when it is not KRC or holds no timed line.
 NSArray<SGKaraokeLine *> *SGKuGouLines(NSString *content);
 
+// SongMatch.m, for the searches that answer with whole songs (Genius, LRCLIB). Text as the two are
+// matched by: letters and digits only, lowercase, accents gone and apostrophes closed up, so "Don’t"
+// and "dont" read alike across sources. A title with a version in brackets or after " - " set aside
+// ("Song (feat. X) - Remastered 2011" is "Song"), and the version words of the track's title, its
+// guests left out ("Old Town Road (feat. Billy Ray Cyrus) - Remix" is {remix}). How closely a song
+// a catalog names by title and artists is the track: 0 when it is not (another title, or none of its
+// artists is the track's lead), 1 for another version of it, 2 for the plain song, 3 for the same version.
+NSString *SGLyricsFoldedText(NSString *text);
+NSString *SGLyricsBareTitle(NSString *title);
+NSSet<NSString *> *SGLyricsTitleVersion(NSString *title);
+NSInteger SGLyricsSongRank(NSString *title, NSString *artist, NSString *songTitle, NSArray<NSString *> *songArtists);
+
 // SpicyLyrics.m. Its key in the order; whether the user's own API key is in the Keychain; what keeps
 // it from answering, for its row on the sources page ("Needs a key", why the key was refused), nil
 // while nothing does; the Lyrics page's row that sets or removes the key; and an API response as
