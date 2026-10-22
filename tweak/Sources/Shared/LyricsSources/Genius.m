@@ -103,24 +103,13 @@ SGLyricsAsk SGGeniusAsk = ^(SGLyricsQuery *query, void (^done)(SGLyricsResult *r
         NSURL *embed = [NSURL URLWithString:[NSString stringWithFormat:@"https://genius.com/songs/%@/embed.js", song]];
         SGLyricsGetText(embed, ^(NSString *js) {
             NSArray<NSString *> *rows = SGGeniusEmbedRows(js);
-            SGLog(@"genius: %@ by %@ is song %@, %@", query.title, query.artist, song,
-                  rows ? [NSString stringWithFormat:@"%lu untimed lines", (unsigned long)rows.count] : @"no lines in its embed");
             if (!rows) {
+                SGLog(@"genius: %@ by %@ is song %@, no lines in its embed", query.title, query.artist, song);
                 done(nil);
                 return;
             }
-            // As LrcLib.m takes its plain lyrics: every start 0, a ♪ where a stanza ends.
-            NSMutableArray<NSNumber *> *starts = [NSMutableArray array];
-            NSMutableArray<NSString *> *texts = [NSMutableArray array];
-            for (NSString *row in rows) {
-                [starts addObject:@0];
-                [texts addObject:row.length ? row : @"♪"];
-            }
-            SGLyricsResult *result = [SGLyricsResult new];
-            result.starts = starts;
-            result.texts = texts;
-            result.karaokeLines = SGKaraokeStaticLines(texts);
-            done(result);
+            SGLog(@"genius: %@ by %@ is song %@, %lu untimed lines", query.title, query.artist, song, (unsigned long)rows.count);
+            done(SGLyricsPlainResult(rows));
         });
     });
 };

@@ -87,6 +87,20 @@ SGLyricsResult *SGLyricsLRCResult(NSString *lrc) {
     return syncedResult([lrc isKindOfClass:NSString.class] ? linesFromLRC(lrc) : nil);
 }
 
+SGLyricsResult *SGLyricsPlainResult(NSArray<NSString *> *rows) {
+    NSMutableArray<NSNumber *> *starts = [NSMutableArray array];
+    NSMutableArray<NSString *> *texts = [NSMutableArray array];
+    for (NSString *row in rows) {
+        [starts addObject:@0];
+        [texts addObject:row.length ? row : @"♪"];
+    }
+    SGLyricsResult *result = [SGLyricsResult new];
+    result.starts = starts;
+    result.texts = texts;
+    result.karaokeLines = SGKaraokeStaticLines(texts);
+    return result;
+}
+
 // wordLines: the record's Lyricsfile as lines, nil when it has none this reads.
 static SGLyricsResult *resultFrom(NSDictionary *record, NSArray<SGKaraokeLine *> *wordLines) {
     if (![record isKindOfClass:NSDictionary.class]) return nil;
@@ -106,16 +120,7 @@ static SGLyricsResult *resultFrom(NSDictionary *record, NSArray<SGKaraokeLine *>
     if (timed) return timed;
     // Nothing timed, but the words still beat an empty page when no other source has any.
     if (![plain isKindOfClass:NSString.class] || ![plain length]) return nil;
-    NSMutableArray<NSNumber *> *starts = [NSMutableArray array];
-    NSMutableArray<NSString *> *texts = [NSMutableArray array];
-    for (NSString *row in [plain componentsSeparatedByCharactersInSet:NSCharacterSet.newlineCharacterSet]) {
-        [starts addObject:@0];
-        [texts addObject:row.length ? row : @"♪"];
-    }
-    result.starts = starts;
-    result.texts = texts;
-    result.karaokeLines = SGKaraokeStaticLines(texts);
-    return result;
+    return SGLyricsPlainResult([plain componentsSeparatedByCharactersInSet:NSCharacterSet.newlineCharacterSet]);
 }
 
 // Calls back on the main queue, where it is called. A Lyricsfile is read on another queue: a long one

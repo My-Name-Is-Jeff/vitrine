@@ -161,19 +161,18 @@ static NSSet<NSString *> *leadNames(NSString *artist) {
     return names;
 }
 
-// Whether one of the song's own artists is the track's lead, the way Genius names them or without the
-// bracket ("BTS (방탄소년단)"); a featured singer or a translation page's "Genius English Translations"
+// Whether one of the song's own artists is the track's lead, the way Genius names them or by either name
+// of one it writes twice over ("BTS (방탄소년단)", "Дора (Dora)"); a featured singer or a translation page's "Genius English Translations"
 // never is.
 static BOOL byLead(NSDictionary *song, NSSet<NSString *> *leads) {
     id primaries = song[@"primary_artists"];
     for (NSDictionary *primary in [primaries isKindOfClass:NSArray.class] ? primaries : @[]) {
         NSString *name = [primary isKindOfClass:NSDictionary.class] ? stringIn(primary[@"name"]) : nil;
         if (!name) continue;
-        if ([leads containsObject:folded(name)] || [leads containsObject:folded(bareTitle(name))]) return YES;
-        // "Дора (Dora)": the name in the bracket is the one Spotify may use.
-        NSRange open = [name rangeOfString:@"("], close = [name rangeOfString:@")" options:NSBackwardsSearch];
-        if (open.location != NSNotFound && close.location != NSNotFound && close.location > NSMaxRange(open)
-            && [leads containsObject:folded([name substringWithRange:NSMakeRange(NSMaxRange(open), close.location - NSMaxRange(open))])]) return YES;
+        NSArray<NSString *> *parts = [name componentsSeparatedByCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"()"]];
+        for (NSString *part in [parts arrayByAddingObject:name]) {
+            if ([leads containsObject:folded(part)]) return YES;
+        }
     }
     return NO;
 }

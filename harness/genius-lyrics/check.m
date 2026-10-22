@@ -11,7 +11,7 @@
 
 #define CHECK(cond) do { if (!(cond)) { fprintf(stderr, "FAILED line %d: %s\n", __LINE__, #cond); exit(1); } } while (0)
 
-// What the two files reach outside themselves for. The requests go to genius.com in live mode and
+// What the files reach outside themselves for. The requests go to genius.com in live mode and
 // answer nothing otherwise.
 @implementation SGLyricsResult
 @end
@@ -20,6 +20,7 @@
 NSInteger SGInt(NSString *key, NSInteger fallback) { return fallback; }
 SGModRow *SGChoiceRow(NSString *title, NSString *subtitle, NSString *key, NSArray<NSString *> *choices, NSInteger fallback) { return nil; }
 SPTPlayerTrack *SGKaraokeTrackFor(NSString *trackID) { return nil; }
+void SGLyricsPageLines(NSArray<SGKaraokeLine *> *lines, NSArray<NSNumber *> **starts, NSArray<NSString *> **texts) {}
 NSURL *SGLyricsURL(NSString *base, NSDictionary<NSString *, NSString *> *query) {
     NSURLComponents *url = [NSURLComponents componentsWithString:base];
     NSMutableArray<NSURLQueryItem *> *items = [NSMutableArray array];
