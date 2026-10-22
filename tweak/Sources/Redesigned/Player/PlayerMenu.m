@@ -67,24 +67,26 @@ static NSString *timingText(NSArray<SGKaraokeLine *> *lines) {
     }
 }
 
-// The sources with lines for the track, in the order, the one shown checked: the one picked, else the one the
-// credit names.
+// Automatic, checked while nothing is picked and naming what the order chose, then the sources with lines for
+// the track, in the order, the one picked checked.
 static NSArray<UIMenuElement *> *sourceItems(NSString *track, NSDictionary<NSString *, SGLyricsResult *> *offers) {
     NSString *current = SGLyricsChosenSource(track);
-    NSString *credit = SGLyricsCreditFor(track);
-    NSMutableArray<UIMenuElement *> *items = [NSMutableArray array];
+    UIAction *automatic = [UIAction actionWithTitle:@"Automatic" image:nil identifier:nil
+                                            handler:^(UIAction *action) { SGLyricsChooseAutomatic(track); }];
+    automatic.subtitle = current ? @"As the order chooses" : SGLyricsCreditFor(track);
+    automatic.state = current ? UIMenuElementStateOff : UIMenuElementStateOn;
+    NSMutableArray<UIMenuElement *> *items = [NSMutableArray arrayWithObject:automatic];
     for (NSString *key in SGLyricsOrder()) {
         SGLyricsResult *offer = offers[key];
         if (!offer) continue;
         SGLyricsProvider *provider = SGLyricsProviderFor(key);
-        if (!current && [credit containsString:provider.name]) current = key;
         UIAction *pick = [UIAction actionWithTitle:provider.name image:nil identifier:nil
                                            handler:^(UIAction *action) { SGLyricsChooseSource(track, key); }];
         pick.subtitle = timingText(offer.karaokeLines);
         pick.state = [key isEqualToString:current] ? UIMenuElementStateOn : UIMenuElementStateOff;
         [items addObject:pick];
     }
-    if (!items.count) {
+    if (items.count == 1) {
         UIAction *none = [UIAction actionWithTitle:@"No Source Has Lyrics" image:nil identifier:nil handler:^(UIAction *action) {}];
         none.attributes = UIMenuElementAttributesDisabled;
         [items addObject:none];

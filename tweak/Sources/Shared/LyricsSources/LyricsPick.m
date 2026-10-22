@@ -20,8 +20,19 @@ static const NSUInteger kAskedTracks = 10, kChosenTracks = 200;
 @implementation SGLyricsOfferAsk
 @end
 
+// What a track showed before its first pick, the order's choice, for Automatic to put back.
+@interface SGLyricsAutomatic : NSObject
+@property (nonatomic, strong) id kept;   // the walk's kept answer, as SGLyricsKeptAnswer reads it
+@property (nonatomic, copy) NSString *credit;
+@property (nonatomic, copy) NSArray<SGKaraokeLine *> *lines;
+@end
+
+@implementation SGLyricsAutomatic
+@end
+
 static NSMutableDictionary<NSString *, SGLyricsOfferAsk *> *sg_asks;
 static NSMutableDictionary<NSString *, NSString *> *sg_chosen;
+static NSMutableDictionary<NSString *, SGLyricsAutomatic *> *sg_automatic;   // the tracks in sg_chosen
 
 NSString *SGLyricsChosenSource(NSString *trackID) {
     return trackID ? sg_chosen[trackID] : nil;
@@ -88,20 +99,48 @@ void SGLyricsOffers(NSString *trackID, NSTimeInterval wait, void (^done)(NSDicti
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(wait * NSEC_PER_SEC)), dispatch_get_main_queue(), once);
 }
 
-void SGLyricsChooseSource(NSString *trackID, NSString *key) {
-    id result = sg_asks[trackID].answers[key];
-    if (![result isKindOfClass:SGLyricsResult.class]) return;
-    SGLyricsResult *lyrics = result;
-    if (!sg_chosen) sg_chosen = [NSMutableDictionary dictionary];
-    if (sg_chosen.count >= kChosenTracks) [sg_chosen removeAllObjects];
-    sg_chosen[trackID] = key;
-    SGLog(@"lyrics: %@ picked for %@, %lu lines", key, trackID, (unsigned long)lyrics.karaokeLines.count);
-    SGLyricsKeepChosen(trackID, lyrics);
+// The track's lines and credit everywhere they show, at once.
+static void show(NSString *trackID, NSString *credit, NSArray<SGKaraokeLine *> *lines) {
     // The credit before the lines, which the lyrics page asks for once it has them.
-    SGLyricsSetCredit(trackID, lyrics.provider);
-    SGKaraokeKeepLines(trackID, lyrics.karaokeLines);
+    SGLyricsSetCredit(trackID, credit);
+    SGKaraokeKeepLines(trackID, lines);
     // Queued behind the keep above, so a page that drops its lines on this finds the new ones kept.
     dispatch_async(dispatch_get_main_queue(), ^{
         [NSNotificationCenter.defaultCenter postNotificationName:SGLyricsSourceChosenNotification object:trackID];
     });
+}
+
+void SGLyricsChooseSource(NSString *trackID, NSString *key) {
+    id result = sg_asks[trackID].answers[key];
+    if (![result isKindOfClass:SGLyricsResult.class]) return;
+    SGLyricsResult *lyrics = result;
+    if (!sg_chosen) {
+        sg_chosen = [NSMutableDictionary dictionary];
+        sg_automatic = [NSMutableDictionary dictionary];
+    }
+    if (sg_chosen.count >= kChosenTracks) {
+        [sg_chosen removeAllObjects];
+        [sg_automatic removeAllObjects];
+    }
+    if (!sg_chosen[trackID]) {
+        SGLyricsAutomatic *automatic = [SGLyricsAutomatic new];
+        automatic.kept = SGLyricsKeptAnswer(trackID);
+        automatic.credit = SGLyricsCreditFor(trackID);
+        automatic.lines = SGKaraokeLinesForTrack(trackID);
+        sg_automatic[trackID] = automatic;
+    }
+    sg_chosen[trackID] = key;
+    SGLog(@"lyrics: %@ picked for %@, %lu lines", key, trackID, (unsigned long)lyrics.karaokeLines.count);
+    SGLyricsKeepChosen(trackID, lyrics);
+    show(trackID, lyrics.provider, lyrics.karaokeLines);
+}
+
+void SGLyricsChooseAutomatic(NSString *trackID) {
+    SGLyricsAutomatic *automatic = trackID ? sg_automatic[trackID] : nil;
+    if (!automatic) return;
+    [sg_chosen removeObjectForKey:trackID];
+    [sg_automatic removeObjectForKey:trackID];
+    SGLog(@"lyrics: pick dropped for %@, back to %@, %lu lines", trackID, automatic.credit, (unsigned long)automatic.lines.count);
+    SGLyricsRestoreKept(trackID, automatic.kept);
+    show(trackID, automatic.credit, automatic.lines);
 }

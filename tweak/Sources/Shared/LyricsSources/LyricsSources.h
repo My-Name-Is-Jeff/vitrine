@@ -13,6 +13,8 @@
 #define SGKeyLyricsProviders @"spotifyglass.lyricsProviders"
 // Offers the lyrics card on tracks Spotify itself has no lyrics for.
 #define SGKeyLyricsAllTracks @"spotifyglass.lyricsAllTracks"
+// The walk goes on past a line-timed answer to the first source with words timed; read by every walk.
+#define SGKeyLyricsPreferWordTiming @"spotifyglass.lyricsPreferWordTiming"
 // Names the source the shown lines came from, on the full screen page.
 #define SGKeyLyricsCredit @"spotifyglass.lyricsCredit"
 // The language a line's translation is asked for in, as an index into SGLyricsTranslationLanguages;
@@ -239,7 +241,12 @@ void SGLyricsOffers(NSString *trackID, NSTimeInterval wait, void (^done)(NSDicti
 // Makes the offer of `key` the track's lyrics now, everywhere they show, and posts
 // SGLyricsSourceChosenNotification (object the track's id) once its lines are kept.
 void SGLyricsChooseSource(NSString *trackID, NSString *key);
+// Drops the track's pick and puts back what the order had chosen, shown before the first pick, the same way.
+void SGLyricsChooseAutomatic(NSString *trackID);
 extern NSNotificationName const SGLyricsSourceChosenNotification;
 // LyricsSources.m, for LyricsPick.m: the query a walk would start with, and a picked answer kept as the walk's.
 SGLyricsQuery *SGLyricsQueryFor(NSString *trackID);
 void SGLyricsKeepChosen(NSString *trackID, SGLyricsResult *result);
+// The walk's kept answer for the track: a result, NSNull for none, nil when not kept; and that put back.
+id SGLyricsKeptAnswer(NSString *trackID);
+void SGLyricsRestoreKept(NSString *trackID, id kept);

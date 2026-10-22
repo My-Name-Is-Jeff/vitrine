@@ -425,11 +425,23 @@ static void finish(SGLyricsWalk *walk) {
     for (void (^done)(SGLyricsResult *) in waiting) done(lyrics);
 }
 
+// Whether the walk has its answer. walk.merged is the best seen so far: betterLines keeps the finest timed
+// lines, the first in the order among equals, so a walk run to the end takes words over a line's start over
+// plain text. It stops at the first timed answer, or with Prefer word-by-word timing at the first with words
+// timed; a source picked for the track is asked first and stands, timed by words or not.
+static BOOL settled(SGLyricsWalk *walk) {
+    SGLyricsResult *merged = walk.merged;
+    if (!(merged.synced && merged.texts.count && merged.karaokeLines.count)) return NO;
+    if (!SGFlag(SGKeyLyricsPreferWordTiming, NO) || SGLyricsChosenSource(walk.query.trackID)) return YES;
+    if (SGKaraokeLinesTiming(merged.karaokeLines) == SGKaraokeTimingWords) return YES;
+    if (walk.index < walk.order.count) SGLog(@"lyrics: %@ line timed by %@, asking on for words timed", walk.query.trackID, merged.provider);
+    return NO;
+}
+
 static void step(SGLyricsWalk *walk) {
     SGLyricsQuery *query = walk.query;
     SGLyricsResult *merged = walk.merged;
-    // A source higher in the order has answered with timed lyrics: that is the answer.
-    if (merged.synced && merged.texts.count && merged.karaokeLines.count) {
+    if (settled(walk)) {
         finish(walk);
         return;
     }
@@ -646,7 +658,10 @@ UIViewController *SGLyricsSourcesPage(void) {
         NSString *detail = [provider.key isEqualToString:SGSpicyLyricsKey] ? SGSpicyLyricsStatus() ?: provider.detail : provider.detail;
         [all addObject:[SGSource sourceWithKey:provider.key name:provider.name detail:detail]];
     }
-    return SGSourcesPageMake(@"Lyrics sources", @"Asked top to bottom until one has word timing. Sources get only the track, never your account.",
+    NSString *note = SGFlag(SGKeyLyricsPreferWordTiming, NO)
+        ? @"Asked top to bottom until one has word timing. Sources get only the track, never your account."
+        : @"Asked top to bottom until one has timed lyrics. Sources get only the track, never your account.";
+    return SGSourcesPageMake(@"Lyrics sources", note,
                              all, ^NSArray<NSString *> * { return SGLyricsOrder(); }, ^(NSArray<NSString *> *keys) { SGLyricsSetOrder(keys); });
 }
 
@@ -672,4 +687,19 @@ void SGLyricsKeepChosen(NSString *trackID, SGLyricsResult *result) {
     if (sg_kept.count >= kKeptTracks) [sg_kept removeAllObjects];
     sg_kept[trackID] = result;
     @synchronized (sg_missing) { [sg_missing removeObject:trackID]; }
+}
+
+id SGLyricsKeptAnswer(NSString *trackID) {
+    setUp();
+    return sg_kept[trackID];
+}
+
+void SGLyricsRestoreKept(NSString *trackID, id kept) {
+    setUp();
+    if (kept) sg_kept[trackID] = kept;
+    else [sg_kept removeObjectForKey:trackID];
+    @synchronized (sg_missing) {
+        if (kept == NSNull.null) [sg_missing addObject:trackID];
+        else [sg_missing removeObject:trackID];
+    }
 }

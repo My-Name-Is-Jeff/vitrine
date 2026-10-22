@@ -138,7 +138,11 @@ Shared:
                   source is on. In the redesign, with a translation language chosen, lines kept for the lyrics view with
                   no translation of their own take Musixmatch's community translations (Musixmatch.m), whichever
                   source won, Spotify's own included: matched by the line's folded text, as copies kept in place of the
-                  lines (KaraokeSource.x), which the view picks up
+                  lines (KaraokeSource.x), which the view picks up. The walk stops at the first timed answer; with
+                  Prefer word-by-word timing (off by default, read by every walk) it asks on to the first source with
+                  words timed and else keeps the finest it saw, the highest among equals (settled()). The redesigned
+                  player's ⋯ has Lyrics Source (LyricsPick.m): every source asked at once for the song playing, a pick
+                  shown at once and kept in memory until Spotify quits, and Automatic putting back what the order chose
     LyricsTranslation/ a song's lines translated from the lyrics' corner menu, for the lines no source translated, three
                   ways, each its own item: on the iPhone by Apple's Translate (iOS 26, the song's language told by
                   NaturalLanguage, both languages downloaded in the Translate app or the item says where to) and by Apple
