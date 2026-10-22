@@ -78,23 +78,38 @@ static NSString *doubleQuoted(NSString *text, NSUInteger *end) {
         NSUInteger digits = e == 'x' ? 2 : e == 'u' ? 4 : e == 'U' ? 8 : 0;
         if (digits) {
             if (i + digits >= text.length) return nil;
-            NSString *hex = [text substringWithRange:NSMakeRange(i + 1, digits)];
-            if ([hex rangeOfCharacterFromSet:[NSCharacterSet characterSetWithCharactersInString:@"0123456789abcdefABCDEF"].invertedSet].location != NSNotFound) return nil;
-            UTF32Char point = (UTF32Char)strtoul(hex.UTF8String, NULL, 16);
+            UTF32Char point = 0;
+            for (NSUInteger k = i + 1; k <= i + digits; k++) {
+                unichar h = [text characterAtIndex:k];
+                if (h > 127 || !isxdigit(h)) return nil;
+                point = point * 16 + digittoint(h);
+            }
             NSString *ch = [[NSString alloc] initWithBytes:&point length:4 encoding:NSUTF32LittleEndianStringEncoding];
             if (!ch) return nil;
             [out appendString:ch];
             i += digits;
             continue;
         }
+        // YAML's escapes, which libyaml's writer uses for these characters in a lyric.
+        unichar plain;
         switch (e) {
-            case 'n': [out appendString:@"\n"]; break;
-            case 't': [out appendString:@"\t"]; break;
-            case 'r': [out appendString:@"\r"]; break;
-            case ' ': case '"': case '/': case '\\': [out appendFormat:@"%C", e]; break;
-            case '_': [out appendString:@" "]; break;
+            case '0': plain = 0; break;
+            case 'a': plain = 7; break;
+            case 'b': plain = 8; break;
+            case 't': case '\t': plain = '\t'; break;
+            case 'n': plain = '\n'; break;
+            case 'v': plain = 11; break;
+            case 'f': plain = 12; break;
+            case 'r': plain = '\r'; break;
+            case 'e': plain = 27; break;
+            case ' ': case '"': case '/': case '\\': plain = e; break;
+            case '_': plain = ' '; break;
+            case 'N': plain = 0x85; break;
+            case 'L': plain = 0x2028; break;
+            case 'P': plain = 0x2029; break;
             default: return nil;
         }
+        [out appendString:[NSString stringWithCharacters:&plain length:1]];
     }
     return nil;   // the closing quote is on a later row, which this does not read
 }
@@ -158,11 +173,14 @@ static BOOL splitKey(NSString *text, NSString **key, NSString **rest) {
 
 static id node(SGLFReader *r, NSUInteger indent);
 
-// The rows of a | or > block after the row that opens it, all indented deeper than `parent`.
+// The rows of a | or > block after the row that opens it, all indented deeper than `parent`: by the
+// digit in its header when it has one (a writer gives it when the first row starts with a space),
+// else as deep as its first row.
 // shortcut: read as | with its chomping ignored; only `plain` is written this way, and nothing reads it.
-static NSString *blockScalar(SGLFReader *r, NSUInteger parent) {
+static NSString *blockScalar(SGLFReader *r, NSUInteger parent, NSString *header) {
+    NSRange digit = [header rangeOfCharacterFromSet:[NSCharacterSet characterSetWithCharactersInString:@"123456789"]];
+    NSUInteger indent = digit.location == NSNotFound ? 0 : parent + [header characterAtIndex:digit.location] - '0';
     NSMutableArray<NSString *> *lines = [NSMutableArray array];
-    NSUInteger indent = 0;
     while (r->at < r->rows.count) {
         NSString *row = r->rows[r->at];
         BOOL blank = ![row stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet].length;
@@ -181,7 +199,7 @@ static NSString *blockScalar(SGLFReader *r, NSUInteger parent) {
 // or (after a key) a sequence at the key's own indent.
 static id valueAfter(SGLFReader *r, NSString *rest, NSUInteger indent, BOOL afterKey) {
     NSString *trimmed = [rest stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
-    if ([trimmed hasPrefix:@"|"] || [trimmed hasPrefix:@">"]) return blockScalar(r, indent);
+    if ([trimmed hasPrefix:@"|"] || [trimmed hasPrefix:@">"]) return blockScalar(r, indent, trimmed);
     if (!restIsEmpty(trimmed)) {
         id value = inlineScalar(trimmed);
         if (!value) r->failed = YES;
@@ -265,13 +283,15 @@ static id parseYAML(NSString *yaml) {
 
 #pragma mark - the lines
 
-// A whole song is tens of kilobytes; anything past this is no Lyricsfile.
-static const NSUInteger kMaxLength = 1 << 20;
+// A whole song timed by the word is tens of kilobytes; anything past this is no Lyricsfile. It is read on
+// the main queue, where a megabyte took a third of a second on a Mac.
+static const NSUInteger kMaxLength = 1 << 18;
 
-// A time in milliseconds: digits only, none negative. -1 for anything else.
+// A time in milliseconds: ASCII digits only, none negative, and at most nine of them (over a hundred
+// hours), so the sums below cannot overflow. -1 for anything else.
 static NSInteger msOf(id value) {
-    if (![value isKindOfClass:NSString.class] || ![value length]) return -1;
-    if ([value rangeOfCharacterFromSet:NSCharacterSet.decimalDigitCharacterSet.invertedSet].location != NSNotFound) return -1;
+    if (![value isKindOfClass:NSString.class] || ![value length] || [value length] > 9) return -1;
+    if ([value rangeOfCharacterFromSet:[NSCharacterSet characterSetWithCharactersInString:@"0123456789"].invertedSet].location != NSNotFound) return -1;
     return [value integerValue];
 }
 
@@ -305,7 +325,7 @@ static SGKaraokeLine *wordLine(NSArray *rawWords, NSInteger start, NSInteger end
         BOOL unspaced = SGKaraokeUnspacedScript(trimmed);
         if (trimmed.length && open && !unspaced) {
             open.text = [open.text stringByAppendingString:trimmed];
-            open.end = wordEnd;
+            open.end = MAX(open.end, wordEnd);
         } else if (trimmed.length) {
             SGKaraokeWord *word = [SGKaraokeWord new];
             word.text = trimmed;
@@ -360,5 +380,5 @@ NSArray<SGKaraokeLine *> *SGLyricsfileLines(NSString *yaml) {
         if (line) [lines addObject:line];
     }
     // Lines timed only as whole lines are what the record's LRC has already.
-    return anyWords ? lines : nil;
+    return anyWords ? SGKaraokeInTimeOrder(lines) : nil;
 }

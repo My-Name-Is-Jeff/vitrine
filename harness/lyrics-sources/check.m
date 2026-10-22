@@ -270,10 +270,19 @@ int main(int argc, char **argv) {
                                             @[@"  start_ms: 10\n  words", @"\tstart_ms: 10\n  words"], @[@"    start_ms: 10", @"    start_ms: -10"],
                                             @[@"    start_ms: 10", @"    start_ms: 10\n    end_ms: 5"], @[@"- text: a", @"- text: \"a"],
                                             @[@"  - text: a\n    start_ms: 10\n", @"  a\n"], @[@"- text: a", @"- text: *a"],
-                                            @[@"lines:", @"  stray\nlines:"]]) {
+                                            @[@"lines:", @"  stray\nlines:"], @[@"    start_ms: 10", @"    start_ms: 9223372036854775807"],
+                                            @[@"- text: a", @"- text: \"\\u1\U0001F600\""]]) {
             CHECK(!SGLyricsfileLines([wordFile stringByReplacingOccurrencesOfString:swap[0] withString:swap[1]]));
         }
-        // Nested far past the spec's four levels, or over a megabyte: refused, not followed. The same file
+        // YAML's other escapes, a block whose header gives its indent, and lines listed out of time order.
+        lf = SGLyricsfileLines([wordFile stringByAppendingString:@"- text: \"b\\Lc\\N\"\n  start_ms: 5\n  words:\n  - text: \"b\\Lc\"\n    start_ms: 5\nplain: |2\n     a\n    b\n"]);
+        CHECK(lf.count == 2 && lf[0].start == 5 && [lf[0].words[0].text isEqualToString:@"b\u2028c"]);
+        // A segment that runs into a word sung before it leaves the word's end where it was.
+        lf = SGLyricsfileLines(@"version: '1.0'\nlines:\n- text: wanted\n  start_ms: 10\n  words:\n  - text: wan\n    start_ms: 50\n"
+            "  - text: ted\n    start_ms: 20\n    end_ms: 30\n");
+        CHECK(lf.count == 1 && lf[0].words.count == 1);
+        checkWordLines(lf);
+        // Nested far past the spec's four levels, or over 256 KB: refused, not followed. The same file
         // with its extra key nested ten deep still reads.
         NSString *(^nested)(NSUInteger) = ^NSString *(NSUInteger levels) {
             NSMutableString *doc = [NSMutableString stringWithString:wordFile];
@@ -285,7 +294,7 @@ int main(int argc, char **argv) {
         };
         CHECK(SGLyricsfileLines(nested(10)).count == 1);
         CHECK(!SGLyricsfileLines(nested(20)) && !SGLyricsfileLines(nested(1000)));
-        CHECK(!SGLyricsfileLines([wordFile stringByAppendingFormat:@"plain: |\n  %@\n", [@"" stringByPaddingToLength:(1 << 20) withString:@"a" startingAtIndex:0]]));
+        CHECK(!SGLyricsfileLines([wordFile stringByAppendingFormat:@"plain: |\n  %@\n", [@"" stringByPaddingToLength:(1 << 18) withString:@"a" startingAtIndex:0]]));
         CHECK(!SGLyricsfileLines(@"[not, yaml") && !SGLyricsfileLines(@"") && !SGLyricsfileLines(nil) && !SGLyricsfileLines((NSString *)@3));
 
         // LRCLIB: a record with words timed answers with them; one whose Lyricsfile cannot be read, or
