@@ -511,7 +511,8 @@ static void runChecks(SGRKaraokeView *karaoke, UIView *host) {
         if ([item.title isEqualToString:@"Translate with Gemini"]) gemini = (UIAction *)item;
     }
     expect(gemini.subtitle.length > 0, [NSString stringWithFormat:@"the Gemini item says: %@", gemini.subtitle]);
-    ((void (*)(id, SEL))objc_msgSend)(karaoke, NSSelectorFromString(@"translateWithGemini"));
+    // The item's own handler, as a tap runs it: UIAction has no public way to run one.
+    ((UIActionHandler)[gemini valueForKey:@"handler"])(gemini);
     BOOL offered = NO;
     for (UIMenuElement *item in extras.menu.children) offered |= [item.title isEqualToString:@"Translate with Gemini"];
     expect(extras.configuration.showsActivityIndicator && !offered, @"while Gemini works the button spins and the item is gone");
