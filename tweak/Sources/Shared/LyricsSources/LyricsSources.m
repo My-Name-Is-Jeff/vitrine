@@ -405,7 +405,13 @@ static void finish(SGLyricsWalk *walk) {
     // server's 503 read as "no lyrics" hid a track's lyrics until Spotify was restarted.
     BOOL everyoneAsked = !walk.passedOver.count;
     BOOL failed = atomic_load(&sg_failures) != walk.failuresAtStart;
-    if (lyrics || (everyoneAsked && !failed) || merged.instrumental) {
+    id picked = SGLyricsChosenSource(trackID) ? sg_kept[trackID] : nil;
+    if ([picked isKindOfClass:SGLyricsResult.class]) {
+        // A source was picked from the player's ⋯ while the walk ran: the pick stands, and the walk's answer
+        // is what Automatic puts back.
+        SGLyricsNoteOrderChoice(trackID, lyrics);
+        lyrics = picked;
+    } else if (lyrics || (everyoneAsked && !failed) || merged.instrumental) {
         if (sg_kept.count >= kKeptTracks) [sg_kept removeAllObjects];
         sg_kept[trackID] = lyrics ?: NSNull.null;
         if (!lyrics) {

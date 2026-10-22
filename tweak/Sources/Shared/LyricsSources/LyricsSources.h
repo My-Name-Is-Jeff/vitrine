@@ -243,6 +243,8 @@ void SGLyricsOffers(NSString *trackID, NSTimeInterval wait, void (^done)(NSDicti
 void SGLyricsChooseSource(NSString *trackID, NSString *key);
 // Drops the track's pick and puts back what the order had chosen, shown before the first pick, the same way.
 void SGLyricsChooseAutomatic(NSString *trackID);
+// A walk under way at the track's first pick has ended with `lyrics`: that is what Automatic puts back.
+void SGLyricsNoteOrderChoice(NSString *trackID, SGLyricsResult *lyrics);
 extern NSNotificationName const SGLyricsSourceChosenNotification;
 // LyricsSources.m, for LyricsPick.m: the query a walk would start with, and a picked answer kept as the walk's.
 SGLyricsQuery *SGLyricsQueryFor(NSString *trackID);

@@ -135,6 +135,14 @@ void SGLyricsChooseSource(NSString *trackID, NSString *key) {
     show(trackID, lyrics.provider, lyrics.karaokeLines);
 }
 
+void SGLyricsNoteOrderChoice(NSString *trackID, SGLyricsResult *lyrics) {
+    SGLyricsAutomatic *automatic = sg_automatic[trackID];
+    if (!automatic || automatic.kept) return;
+    automatic.kept = lyrics;
+    automatic.credit = lyrics.provider;
+    automatic.lines = lyrics.karaokeLines;
+}
+
 void SGLyricsChooseAutomatic(NSString *trackID) {
     SGLyricsAutomatic *automatic = trackID ? sg_automatic[trackID] : nil;
     if (!automatic) return;
