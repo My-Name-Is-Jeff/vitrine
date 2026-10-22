@@ -45,6 +45,7 @@ SGTranslationSource *SGLyricsSyncSavedTranslation(NSString *track, NSString *lan
     NSData *data = [NSData dataWithContentsOfURL:fileFor(track, language)];
     SGTranslationSource *source = nil;
     NSDictionary *saved = SGSavedTranslationLines(data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil, &source);
+    BOOL shown = NO;
     for (SGKaraokeLine *line in lines) {
         id translation = saved[SGKaraokeLineText(line) ?: @""];
         BOOL has = [translation isKindOfClass:NSString.class] && [translation length];
@@ -55,8 +56,10 @@ SGTranslationSource *SGLyricsSyncSavedTranslation(NSString *track, NSString *lan
             line.translation = translation;
             line.translationMade = YES;
         }
+        shown |= line.translationMade;
     }
-    return source;
+    // A file none of these lines matched (lyrics from another source) made nothing that shows.
+    return shown ? source : nil;
 }
 
 // One at a time, in the order asked: a song is saved after every batch, and an older write must not land last.

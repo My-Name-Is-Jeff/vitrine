@@ -81,7 +81,7 @@ NSArray<SGModRow *> *SGAITranslatorRows(void);
 // SavedTranslations.m: a song's translations kept on disk by track and language, matched to lines by their text,
 // with who made them and when. The saved ones are the truth for translations made here: syncing fills the lines
 // with no translation from them, and takes a made translation off a line that has none saved (after Delete).
-// Syncing and saving give the saved file's source, nil when there is none. Main thread.
+// Syncing gives the saved file's source, nil when none of its lines shows; saving gives the new one. Main thread.
 SGTranslationSource *SGLyricsSyncSavedTranslation(NSString *track, NSString *language, NSArray<SGKaraokeLine *> *lines);
 SGTranslationSource *SGLyricsSaveTranslation(NSString *track, NSString *language, NSArray<SGKaraokeLine *> *lines, SGTranslationSource *source);
 // Deletes the song's saved translation and the launch's answers for it, then posts SGLyricsTranslationsDidChangeNotification.

@@ -1977,7 +1977,8 @@ static BOOL anyUntranslated(NSArray<SGKaraokeLine *> *lines) {
                                       : @"Date unknown";
         source.attributes = UIMenuElementAttributesDisabled;
         NSMutableArray<UIMenuElement *> *about = [NSMutableArray arrayWithObject:source];
-        if (_saved.deletable) {
+        // Not while a translator works: its next batch would save the file again.
+        if (_saved.deletable && !translating) {
             NSString *track = _track;
             UIAction *delete = [UIAction actionWithTitle:@"Delete This Translation" image:[UIImage systemImageNamed:@"trash"] identifier:nil
                                                  handler:^(UIAction *action) { SGLyricsDeleteSavedTranslation(track, SGLyricsTranslationTarget()); }];
