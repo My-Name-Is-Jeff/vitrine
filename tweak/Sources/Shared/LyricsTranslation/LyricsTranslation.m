@@ -507,6 +507,11 @@ SGModRow *SGTranslateEverySongRow(void) {
     return row;
 }
 
+// The provider, its key, server or model changed: an open lyrics menu names who gets the lyrics, so it is built again.
+static void translatorChanged(void) {
+    [NSNotificationCenter.defaultCenter postNotificationName:SGLyricsTranslationsDidChangeNotification object:nil];
+}
+
 static void configure(UITextField *field, NSString *placeholder) {
     field.placeholder = placeholder;
     field.autocorrectionType = UITextAutocorrectionTypeNo;
@@ -533,6 +538,7 @@ static void askForKey(void) {
         [around addCharactersInString:@"\"'“”‘’"];
         NSString *key = [keyField().text stringByTrimmingCharactersInSet:around];
         if (key.length) storeSecret(p, kKeyAccount, key);   // empty keeps the one stored: Remove is what takes it away
+        translatorChanged();
     }];
     __weak UIAlertAction *weakSave = save;
     void (^check)(void) = ^{
@@ -561,6 +567,7 @@ static void askForKey(void) {
         [alert addAction:[UIAlertAction actionWithTitle:@"Remove" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
             storeSecret(p, kKeyAccount, nil);
             storeSecret(p, kServerAccount, nil);
+            translatorChanged();
         }]];
     }
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
@@ -577,6 +584,7 @@ static void askForModel(void) {
     UIAlertAction *save = [UIAlertAction actionWithTitle:@"Save" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         NSString *modelID = modelIDIn(weakAlert.textFields.firstObject.text, p);
         if (modelID) [NSUserDefaults.standardUserDefaults setObject:modelID forKey:modelKey(p)];
+        translatorChanged();
     }];
     save.enabled = NO;
     __weak UIAlertAction *weakSave = save;
@@ -682,12 +690,14 @@ NSArray<SGModRow *> *SGAITranslatorRows(void) {
         if (index == 0 && p->models[0]) [NSUserDefaults.standardUserDefaults removeObjectForKey:modelKey(p)];
         else if (index < 4 && p->models[index]) [NSUserDefaults.standardUserDefaults setObject:p->models[index] forKey:modelKey(p)];
         else askForModel();
+        translatorChanged();
     };
     SGModRow *provider = SGMenuRow(@"AI translator", names, ^NSString *{ return chosen()->name; }, ^(NSInteger index) {
         if (index == 0) [NSUserDefaults.standardUserDefaults removeObjectForKey:SGKeyAITranslator];
         else [NSUserDefaults.standardUserDefaults setObject:kProviders[index].tag forKey:SGKeyAITranslator];
         weakModels.menu = modelMenu(chosen());
         SGLog(@"ai: translator %@", chosen()->tag);
+        translatorChanged();
     });
     SGModRow *key = SGStatActionRow(@"API key", @"Translate any song from the lyrics' corner menu", ^NSString *{
         const SGAIProvider *p = chosen();
