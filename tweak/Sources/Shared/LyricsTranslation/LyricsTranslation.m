@@ -14,7 +14,10 @@ static NSString *const kDefaultPrompt =
     @"the same order. Translate the meaning naturally, keep each line short like a lyric, and keep an empty line "
     @"empty. A line already in {language} stays as it is.";
 static NSString *const kOpenAIDefaultURL = @"https://api.openai.com/v1";
-static NSString *const kOpenAIURLKey = @"spotifyglass.lyrics.openai.url";
+// The OpenAI-compatible server is kept beside its key, never in the settings: a settings file from someone
+// else could otherwise point a key stored here at their own server.
+static NSString *const kKeyAccount = @"api-key", *const kServerAccount = @"server";
+
 
 #pragma mark - the providers
 
@@ -103,7 +106,7 @@ static NSString *geminiAnswer(NSDictionary *reply, NSString *speaker, NSString *
 
 // A server URL as typed or restored: http or https with a host, nothing that could carry a secret (a user,
 // a password, a query) into an exported settings file, and without /chat/completions if it was pasted whole.
-static NSString *serverIn(NSString *text) {
+NSString *SGAIServerIn(NSString *text) {
     NSString *trimmed = [text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     NSURLComponents *url = trimmed.length ? [NSURLComponents componentsWithString:trimmed] : nil;
     NSString *scheme = url.scheme.lowercaseString;
@@ -116,10 +119,13 @@ static NSString *serverIn(NSString *text) {
     return url.string;
 }
 
+static const SGAIProvider *providerFor(NSString *tag);
+static NSString *storedSecret(const SGAIProvider *p, NSString *account);
+
 // Unset: OpenAI's own. Set to something unusable: none, so a key meant for another server never goes to OpenAI.
 static NSString *openAIServer(void) {
-    NSString *stored = [NSUserDefaults.standardUserDefaults stringForKey:kOpenAIURLKey];
-    return stored.length ? serverIn(stored) : kOpenAIDefaultURL;
+    NSString *stored = storedSecret(providerFor(@"openai"), kServerAccount);
+    return stored.length ? SGAIServerIn(stored) : kOpenAIDefaultURL;
 }
 
 // OpenAI-compatible: chat completions with a bearer key, the lines forced into {"lines": [...]} by a strict
@@ -212,30 +218,33 @@ static NSString *speaker(const SGAIProvider *p) {
 
 #pragma mark - the keys
 
-static NSDictionary *keyQuery(const SGAIProvider *p) {
+static NSDictionary *keyQuery(const SGAIProvider *p, NSString *account) {
     return @{(__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
-             (__bridge id)kSecAttrService: p->service, (__bridge id)kSecAttrAccount: @"api-key"};
+             (__bridge id)kSecAttrService: p->service, (__bridge id)kSecAttrAccount: account};
 }
 
-static NSString *storedKey(const SGAIProvider *p) {
-    NSMutableDictionary *query = [keyQuery(p) mutableCopy];
+static NSString *storedSecret(const SGAIProvider *p, NSString *account) {
+    NSMutableDictionary *query = [keyQuery(p, account) mutableCopy];
     query[(__bridge id)kSecReturnData] = @YES;
     query[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitOne;
     CFTypeRef data = NULL;
     if (SecItemCopyMatching((__bridge CFDictionaryRef)query, &data) != errSecSuccess || !data) return nil;
-    NSString *key = [[NSString alloc] initWithData:(__bridge_transfer NSData *)data encoding:NSUTF8StringEncoding];
-    return key.length ? key : nil;
+    NSString *value = [[NSString alloc] initWithData:(__bridge_transfer NSData *)data encoding:NSUTF8StringEncoding];
+    return value.length ? value : nil;
 }
 
-static void storeKey(const SGAIProvider *p, NSString *key) {
-    SecItemDelete((__bridge CFDictionaryRef)keyQuery(p));
-    if (!key.length) return;
-    NSMutableDictionary *item = [keyQuery(p) mutableCopy];
-    item[(__bridge id)kSecValueData] = [key dataUsingEncoding:NSUTF8StringEncoding];
+static void storeSecret(const SGAIProvider *p, NSString *account, NSString *value) {
+    SecItemDelete((__bridge CFDictionaryRef)keyQuery(p, account));
+    if (!value.length) return;
+    NSMutableDictionary *item = [keyQuery(p, account) mutableCopy];
+    item[(__bridge id)kSecValueData] = [value dataUsingEncoding:NSUTF8StringEncoding];
     item[(__bridge id)kSecAttrAccessible] = (__bridge id)kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly;
     OSStatus status = SecItemAdd((__bridge CFDictionaryRef)item, NULL);
-    if (status != errSecSuccess) SGLog(@"ai: the %@ key could not be kept (%d)", p->tag, (int)status);
+    if (status != errSecSuccess) SGLog(@"ai: the %@ %@ could not be kept (%d)", p->tag, account, (int)status);
 }
+
+static NSString *storedKey(const SGAIProvider *p) { return storedSecret(p, kKeyAccount); }
+static void storeKey(const SGAIProvider *p, NSString *key) { storeSecret(p, kKeyAccount, key); }
 
 #pragma mark - the model and the prompt
 
@@ -512,9 +521,8 @@ static void askForKey(void) {
     UITextField *(^keyField)(void) = ^UITextField *{ return weakAlert.textFields.lastObject; };
     UIAlertAction *save = [UIAlertAction actionWithTitle:@"Save" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         if (server) {
-            NSString *url = serverIn(weakAlert.textFields.firstObject.text);
-            if (url && ![url isEqualToString:kOpenAIDefaultURL]) [NSUserDefaults.standardUserDefaults setObject:url forKey:kOpenAIURLKey];
-            else [NSUserDefaults.standardUserDefaults removeObjectForKey:kOpenAIURLKey];
+            NSString *url = SGAIServerIn(weakAlert.textFields.firstObject.text);
+            storeSecret(p, kServerAccount, [url isEqualToString:kOpenAIDefaultURL] ? nil : url);
         }
         // A key copied with the quotes around it, as from a code sample, is turned down as it stands.
         NSMutableCharacterSet *around = [NSMutableCharacterSet whitespaceAndNewlineCharacterSet];
@@ -526,13 +534,13 @@ static void askForKey(void) {
     void (^check)(void) = ^{
         BOOL typed = [keyField().text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].length > 0;
         NSString *url = weakAlert.textFields.firstObject.text;
-        BOOL serverOK = !server || !url.length || serverIn(url);
+        BOOL serverOK = !server || !url.length || SGAIServerIn(url);
         weakSave.enabled = (typed || (server && stored)) && serverOK;
     };
     if (server) {
         [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
             configure(field, kOpenAIDefaultURL);
-            field.text = storedString(kOpenAIURLKey);
+            field.text = storedSecret(p, kServerAccount);
             field.keyboardType = UIKeyboardTypeURL;
             field.textContentType = UITextContentTypeURL;
             [field addAction:[UIAction actionWithHandler:^(UIAction *action) { check(); }] forControlEvents:UIControlEventEditingChanged];
@@ -548,6 +556,7 @@ static void askForKey(void) {
     if (stored) {
         [alert addAction:[UIAlertAction actionWithTitle:@"Remove" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
             storeKey(p, nil);
+            storeSecret(p, kServerAccount, nil);
         }]];
     }
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];

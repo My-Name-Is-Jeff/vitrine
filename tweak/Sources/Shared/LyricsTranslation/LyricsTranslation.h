@@ -15,8 +15,8 @@ extern NSNotificationName const SGLyricsTranslationsDidChangeNotification;
 SGModRow *SGTranslateEverySongRow(void);
 
 // The AI translator: a provider's id (gemini, openai, anthropic; unset: gemini), the prompt every provider gets
-// (unset: Vitrine's), and per provider spotifyglass.lyrics.<id>.model, plus spotifyglass.lyrics.openai.url
-// for an OpenAI-compatible server (unset: OpenAI's). All read at each translation.
+// (unset: Vitrine's), and per provider spotifyglass.lyrics.<id>.model. An OpenAI-compatible server (unset: OpenAI's)
+// is kept in the Keychain beside its key, not here. All read at each translation.
 #define SGKeyAITranslator @"spotifyglass.lyrics.ai"
 #define SGKeyAIPrompt @"spotifyglass.lyrics.prompt"
 
@@ -56,6 +56,8 @@ NSString *SGLyricsGeminiLanguage(void);
 // The request a provider is sent, plain being the one without the optional fields some models turn down.
 // nil for an unknown provider or a server URL that is not usable.
 NSURLRequest *SGAITranslationRequest(NSString *provider, NSString *model, NSString *prompt, NSString *key, BOOL plain);
+// An OpenAI-compatible server URL as typed: nil when it is not http(s) with a host or could carry a secret.
+NSString *SGAIServerIn(NSString *text);
 // A provider's reply read: one translation per line when it has exactly `count`, else nil and in `problem`
 // why not (the key, the limit, a filter, a refusal, a length stop, a line count that does not match).
 NSArray<NSString *> *SGAITranslationsIn(NSString *provider, id root, NSInteger status, NSError *error, NSUInteger count, NSString **problem);

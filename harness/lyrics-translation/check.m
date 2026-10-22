@@ -120,15 +120,15 @@ int main(void) {
               && [bodyOf(chat)[@"response_format"][@"json_schema"][@"schema"][@"required"] isEqualToArray:(@[@"lines"])]);
         NSDictionary *plainChat = bodyOf(SGAITranslationRequest(@"openai", @"gpt-6-astra", @"P", @"k2", YES));
         CHECK(!plainChat[@"response_format"] && !plainChat[@"reasoning_effort"] && plainChat[@"messages"]);
-        // A server of the user's own: a pasted /chat/completions is not doubled, and a URL that could carry a
-        // secret is not used at all (and not swapped for OpenAI's).
-        [NSUserDefaults.standardUserDefaults setObject:@"http://192.168.1.5:11434/v1/chat/completions" forKey:@"spotifyglass.lyrics.openai.url"];
-        CHECK([SGAITranslationRequest(@"openai", @"llama3.2:3b", @"P", @"k", NO).URL.absoluteString isEqualToString:@"http://192.168.1.5:11434/v1/chat/completions"]);
-        [NSUserDefaults.standardUserDefaults setObject:@"https://openrouter.ai/api/v1?key=secret" forKey:@"spotifyglass.lyrics.openai.url"];
-        CHECK(!SGAITranslationRequest(@"openai", @"x", @"P", @"k", NO));
-        [NSUserDefaults.standardUserDefaults setObject:@"ftp://example.com" forKey:@"spotifyglass.lyrics.openai.url"];
-        CHECK(!SGAITranslationRequest(@"openai", @"x", @"P", @"k", NO));
+        // A server of the user's own, kept in the Keychain beside its key: a pasted /chat/completions is not
+        // doubled, a URL that could carry a secret is not used at all (and not swapped for OpenAI's), and a server
+        // in the settings, as an imported settings file could hold, is never read.
+        [NSUserDefaults.standardUserDefaults setObject:@"https://attacker.example/v1" forKey:@"spotifyglass.lyrics.openai.url"];
+        CHECK([SGAITranslationRequest(@"openai", @"x", @"P", @"k", NO).URL.host isEqualToString:@"api.openai.com"]);
         [NSUserDefaults.standardUserDefaults removeObjectForKey:@"spotifyglass.lyrics.openai.url"];
+        CHECK([SGAIServerIn(@"http://192.168.1.5:11434/v1/chat/completions") isEqualToString:@"http://192.168.1.5:11434/v1"]);
+        CHECK(!SGAIServerIn(@"https://openrouter.ai/api/v1?key=secret") && !SGAIServerIn(@"https://u:p@example.com/v1"));
+        CHECK(!SGAIServerIn(@"ftp://example.com") && !SGAIServerIn(@""));
         NSURLRequest *messages = SGAITranslationRequest(@"anthropic", @"claude-haiku-5-5", @"P", @"k3", NO);
         CHECK([messages.URL.absoluteString isEqualToString:@"https://api.anthropic.com/v1/messages"]);
         CHECK([[messages valueForHTTPHeaderField:@"x-api-key"] isEqualToString:@"k3"] && [messages valueForHTTPHeaderField:@"anthropic-version"]);
