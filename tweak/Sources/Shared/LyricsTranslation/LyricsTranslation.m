@@ -189,7 +189,7 @@ static const SGAIProvider kProviders[] = {
     {@"openai", @"OpenAI-compatible", nil, @"Vitrine.OpenAI",
      @"Sends the song's lyrics to the server below: OpenAI's own unless you name another, such as OpenRouter, or an "
      @"Ollama on your network (http works for local addresses). The key stays on this iPhone; for a server without "
-     @"keys, type anything.",
+     @"keys, copy any word and paste that.",
      kLinesFormat,
      {nil}, {nil}, NO, {@"response_format", @"json_schema", @"reasoning"}, openAIRequest, openAIAnswer},
     {@"anthropic", @"Anthropic", @"Anthropic", @"Vitrine.Anthropic",
@@ -518,51 +518,65 @@ static void configure(UITextField *field, NSString *placeholder) {
     field.autocapitalizationType = UITextAutocapitalizationTypeNone;
 }
 
-// The key, and for an OpenAI-compatible provider its server above it. Says what leaves the phone, not only
-// where the key stays: each song translated goes to the provider whole.
+// The key comes from the clipboard and is never shown: a text field showed it on screen, where a screenshot
+// catches it, and a secure field made iOS offer to save it in Passwords, which syncs it through iCloud. An
+// OpenAI-compatible provider's server is typed above. Says what leaves the phone, not only where the key stays:
+// each song translated goes to the provider whole.
 static void askForKey(void) {
     const SGAIProvider *p = chosen();
     BOOL server = isOpenAI(p), stored = storedSecret(p, kKeyAccount) != nil;
+    NSString *message = [p->keyNote stringByAppendingString:@"\n\nCopy the key, then tap Paste Key."];
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"%@ API key", p->name]
-                                                                   message:p->keyNote preferredStyle:UIAlertControllerStyleAlert];
+                                                                   message:message preferredStyle:UIAlertControllerStyleAlert];
     alert.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;   // over the dark settings, whatever the system's
     __weak UIAlertController *weakAlert = alert;
-    UITextField *(^keyField)(void) = ^UITextField *{ return weakAlert.textFields.lastObject; };
-    UIAlertAction *save = [UIAlertAction actionWithTitle:@"Save" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        if (server) {
-            NSString *url = SGAIServerIn(weakAlert.textFields.firstObject.text);
-            storeSecret(p, kServerAccount, [url isEqualToString:kOpenAIDefaultURL] ? nil : url);
-        }
+    void (^saveServer)(void) = ^{
+        if (!server) return;
+        NSString *url = SGAIServerIn(weakAlert.textFields.firstObject.text);
+        storeSecret(p, kServerAccount, [url isEqualToString:kOpenAIDefaultURL] ? nil : url);
+    };
+    UIAlertAction *paste = [UIAlertAction actionWithTitle:@"Paste Key" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         // A key copied with the quotes around it, as from a code sample, is turned down as it stands.
         NSMutableCharacterSet *around = [NSMutableCharacterSet whitespaceAndNewlineCharacterSet];
         [around addCharactersInString:@"\"'“”‘’"];
-        NSString *key = [keyField().text stringByTrimmingCharactersInSet:around];
-        if (key.length) storeSecret(p, kKeyAccount, key);   // empty keeps the one stored: Remove is what takes it away
+        UIPasteboard *board = UIPasteboard.generalPasteboard;
+        NSString *key = [board.string stringByTrimmingCharactersInSet:around];
+        if (!key.length || [key rangeOfCharacterFromSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].location != NSNotFound) {
+            UIAlertController *none = [UIAlertController alertControllerWithTitle:@"No key on the clipboard"
+                                                                          message:@"Copy the API key, then tap Paste Key again."
+                                                                   preferredStyle:UIAlertControllerStyleAlert];
+            none.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+            [none addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];
+            [SGTopController() presentViewController:none animated:YES completion:nil];
+            return;
+        }
+        saveServer();
+        storeSecret(p, kKeyAccount, key);
+        // Left on the clipboard, Universal Clipboard would hand the key on to the user's other devices.
+        board.items = @[];
         translatorChanged();
     }];
-    __weak UIAlertAction *weakSave = save;
-    void (^check)(void) = ^{
-        BOOL typed = [keyField().text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].length > 0;
-        NSString *url = weakAlert.textFields.firstObject.text;
-        BOOL serverOK = !server || !url.length || SGAIServerIn(url);
-        weakSave.enabled = (typed || (server && stored)) && serverOK;
-    };
+    UIAlertAction *save = server && stored ? [UIAlertAction actionWithTitle:@"Save Server" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        saveServer();
+        translatorChanged();
+    }] : nil;
     if (server) {
+        __weak UIAlertAction *weakPaste = paste, *weakSave = save;
         [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
             configure(field, kOpenAIDefaultURL);
             field.text = storedSecret(p, kServerAccount);
             field.keyboardType = UIKeyboardTypeURL;
             field.textContentType = UITextContentTypeURL;
-            [field addAction:[UIAction actionWithHandler:^(UIAction *action) { check(); }] forControlEvents:UIControlEventEditingChanged];
+            [field addAction:[UIAction actionWithHandler:^(UIAction *action) {
+                NSString *url = weakAlert.textFields.firstObject.text;
+                BOOL usable = !url.length || SGAIServerIn(url);
+                weakPaste.enabled = usable;
+                weakSave.enabled = usable;
+            }] forControlEvents:UIControlEventEditingChanged];
         }];
     }
-    [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
-        configure(field, stored ? @"API key (unchanged)" : @"API key");
-        // Not a secure field: iOS offers to save what one held in Passwords, which syncs it through iCloud.
-        [field addAction:[UIAction actionWithHandler:^(UIAction *action) { check(); }] forControlEvents:UIControlEventEditingChanged];
-    }];
-    [alert addAction:save];
-    check();
+    [alert addAction:paste];
+    if (save) [alert addAction:save];
     if (stored) {
         [alert addAction:[UIAlertAction actionWithTitle:@"Remove" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
             storeSecret(p, kKeyAccount, nil);
