@@ -248,6 +248,8 @@ void SGLyricsNoteOrderChoice(NSString *trackID, SGLyricsResult *lyrics);
 extern NSNotificationName const SGLyricsSourceChosenNotification;
 // LyricsSources.m, for LyricsPick.m: the query a walk would start with, and a picked answer kept as the walk's.
 SGLyricsQuery *SGLyricsQueryFor(NSString *trackID);
+// How many source requests have failed since launch; any thread.
+NSUInteger SGLyricsFailures(void);
 void SGLyricsKeepChosen(NSString *trackID, SGLyricsResult *result);
 // The walk's kept answer for the track: a result, NSNull for none, nil when not kept; and that put back.
 id SGLyricsKeptAnswer(NSString *trackID);

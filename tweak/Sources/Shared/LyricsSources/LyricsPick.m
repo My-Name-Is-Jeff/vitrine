@@ -13,8 +13,11 @@ static const NSUInteger kAskedTracks = 10, kChosenTracks = 200, kAutomaticTracks
 
 // Every source asked for one track, and who waits for them all.
 @interface SGLyricsOfferAsk : NSObject
-@property (nonatomic, copy) NSArray<NSString *> *order;
-@property (nonatomic, strong) NSMutableDictionary<NSString *, id> *answers;   // a result with lines, else NSNull
+@property (nonatomic, copy) NSString *trackID;
+// A result with lines, else NSNull. A source unasked for want of a name, or whose request may have failed, has
+// none, and is asked again the next time the menu opens, as is one switched on since.
+@property (nonatomic, strong) NSMutableDictionary<NSString *, id> *answers;
+@property (nonatomic, strong) NSMutableSet<NSString *> *asking;
 @property (nonatomic, strong) NSMutableArray<void (^)(void)> *waiting;
 @end
 
@@ -47,35 +50,40 @@ static NSDictionary<NSString *, SGLyricsResult *> *offersIn(SGLyricsOfferAsk *as
     return offers;
 }
 
-static void answer(SGLyricsOfferAsk *ask, NSString *key, SGLyricsResult *result) {
-    ask.answers[key] = result.karaokeLines.count ? result : NSNull.null;
-    if (ask.answers.count < ask.order.count) return;
-    NSArray *waiting = ask.waiting;
-    ask.waiting = nil;
-    for (void (^done)(void) in waiting) done();
-}
-
-static SGLyricsOfferAsk *askAll(NSString *trackID) {
-    SGLyricsOfferAsk *ask = [SGLyricsOfferAsk new];
-    ask.order = SGLyricsOrder();
-    ask.answers = [NSMutableDictionary dictionary];
-    ask.waiting = [NSMutableArray array];
-    SGLog(@"lyrics: asking %@ at once for %@, for the player's ⋯", [ask.order componentsJoinedByString:@", "], trackID);
-    for (NSString *key in ask.order) {
-        SGLyricsProvider *provider = SGLyricsProviderFor(key);
+// Asks every source in the order without an answer kept and not being asked already.
+static void askMissing(SGLyricsOfferAsk *ask) {
+    NSString *trackID = ask.trackID;
+    NSMutableDictionary<NSString *, SGLyricsQuery *> *queries = [NSMutableDictionary dictionary];
+    NSMutableArray<NSString *> *keys = [NSMutableArray array];
+    for (NSString *key in SGLyricsOrder()) {
+        if (ask.answers[key] || [ask.asking containsObject:key]) continue;
         // A query each, so what one source learns does not change what the next is asked.
         SGLyricsQuery *query = SGLyricsQueryFor(trackID);
-        if (provider.needsName && !(query.title.length && query.artist.length)) {
-            answer(ask, key, nil);
-            continue;
-        }
+        if (SGLyricsProviderFor(key).needsName && !(query.title.length && query.artist.length)) continue;
+        queries[key] = query;
+        [keys addObject:key];
+    }
+    if (!keys.count) return;
+    SGLog(@"lyrics: asking %@ at once for %@, for the player's ⋯", [keys componentsJoinedByString:@", "], trackID);
+    [ask.asking addObjectsFromArray:keys];
+    for (NSString *key in keys) {
+        SGLyricsProvider *provider = SGLyricsProviderFor(key);
+        SGLyricsQuery *query = queries[key];
+        NSUInteger failures = SGLyricsFailures();
         provider.ask(query, ^(SGLyricsResult *result) {
             if (result.karaokeLines.count && !result.provider) result.provider = provider.name;
-            SGLog(@"lyrics: %@ offers %lu lines for %@", key, (unsigned long)result.karaokeLines.count, trackID);
-            answer(ask, key, result);
+            // As in the walk: nothing, while a request failed, may be a busy server rather than no lyrics.
+            BOOL failed = !result.karaokeLines.count && SGLyricsFailures() != failures;
+            SGLog(@"lyrics: %@ offers %lu lines for %@%@", key, (unsigned long)result.karaokeLines.count, trackID,
+                  failed ? @", a request failed on the way; not kept" : @"");
+            if (!failed) ask.answers[key] = result.karaokeLines.count ? result : NSNull.null;
+            [ask.asking removeObject:key];
+            if (ask.asking.count) return;
+            NSArray *waiting = [ask.waiting copy];
+            [ask.waiting removeAllObjects];
+            for (void (^done)(void) in waiting) done();
         });
     }
-    return ask;
 }
 
 void SGLyricsOffers(NSString *trackID, NSTimeInterval wait, void (^done)(NSDictionary<NSString *, SGLyricsResult *> *offers)) {
@@ -83,15 +91,20 @@ void SGLyricsOffers(NSString *trackID, NSTimeInterval wait, void (^done)(NSDicti
     SGLyricsOfferAsk *ask = sg_asks[trackID];
     if (!ask) {
         if (sg_asks.count >= kAskedTracks) [sg_asks removeAllObjects];
-        ask = sg_asks[trackID] = askAll(trackID);
+        ask = sg_asks[trackID] = [SGLyricsOfferAsk new];
+        ask.trackID = trackID;
+        ask.answers = [NSMutableDictionary dictionary];
+        ask.asking = [NSMutableSet set];
+        ask.waiting = [NSMutableArray array];
     }
+    askMissing(ask);
     __block BOOL called = NO;
     void (^once)(void) = ^{
         if (called) return;
         called = YES;
         done(offersIn(ask));
     };
-    if (!ask.waiting) {
+    if (!ask.asking.count) {
         once();
         return;
     }

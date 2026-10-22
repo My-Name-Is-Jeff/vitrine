@@ -694,6 +694,10 @@ SGLyricsQuery *SGLyricsQueryFor(NSString *trackID) {
     return queryFor(trackID);
 }
 
+NSUInteger SGLyricsFailures(void) {
+    return atomic_load(&sg_failures);
+}
+
 // The picked answer stands in for the walk's, so a later request for the track, Spotify's own page's included,
 // gets the same lines. A source that times words but has no page text gets the page lines made from its own.
 void SGLyricsKeepChosen(NSString *trackID, SGLyricsResult *result) {
