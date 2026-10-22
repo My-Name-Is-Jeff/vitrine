@@ -535,7 +535,7 @@ Redesigned:
                   the hooks reach, declines while the redesign runs, so the track falls to Spotify's other Free mode,
                   built from the units the redesign styles (PlayerFree.x, read from the binary, not yet seen on a Free
                   account). Animated artwork (PlayerMotion.x)
-                  runs the clip edge to edge from the top over its own last rows drawn on down, with a blur coming in
+                  runs the clip edge to edge from the top over the color of its last rows drawn on down, with a blur coming in
                   from the seam under the controls and over the whole clip behind the lyrics. The clip and the cover
                   cross over as one comes and the other goes, the clip from its poster frame before the video has
                   decoded one, and the Fluid field under a clip holds still and, once the clip has faded in, is hidden
