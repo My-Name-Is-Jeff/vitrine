@@ -71,7 +71,8 @@ typedef void (^SGLyricsAsk)(SGLyricsQuery *query, void (^done)(SGLyricsResult *r
 // Searches by title and artist, so it has nothing to ask with until someone has named the track.
 // Musixmatch matches by Spotify's id and can go without.
 @property (nonatomic) BOOL needsName;
-// Has only untimed lines, which never replace lines already found, so it is asked only while there are none.
+// Has only untimed lines, which never replace lines already found, so it is asked only while there are none
+// and Spotify has none of its own.
 @property (nonatomic) BOOL untimed;
 @property (nonatomic, copy) SGLyricsAsk ask;
 @end
@@ -93,8 +94,8 @@ BOOL SGLyricsMayHave(NSString *trackID);
 // comes; a walk already run or running is left alone. Safe from any thread.
 void SGLyricsPrefetch(NSString *trackID);
 // What Spotify's own metadata says of a track: 1 has lyrics, 0 has none, -1 not seen yet. The
-// player-track hook notes it; the request hook reads it to send a track Spotify has none for to
-// the donor. Safe from any thread.
+// player-track hook notes it, and the walk when it names a track; the request hook reads it to send a
+// track Spotify has none for to the donor, and the walk to pass Genius over. Safe from any thread.
 NSInteger SGLyricsSpotifyHas(NSString *trackID);
 void SGLyricsNoteSpotifyHas(NSString *trackID, BOOL has);
 // The remote-config values the lyrics feature forces while a source is on, nil for any other flag:

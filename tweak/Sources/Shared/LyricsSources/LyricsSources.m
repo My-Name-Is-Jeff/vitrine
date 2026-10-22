@@ -258,6 +258,10 @@ static SGLyricsQuery *queryFor(NSString *trackID) {
     query.title = track.trackTitle;
     query.artist = track.artistName;
     NSDictionary<NSString *, NSString *> *metadata = track.metadata;
+    // With "every track" on, the metadata hook has just noted Spotify's own verdict and forced has_lyrics on;
+    // off, nothing notes it and has_lyrics is Spotify's own.
+    id has = metadata[@"has_lyrics"];
+    if (has && SGLyricsSpotifyHas(trackID) < 0) SGLyricsNoteSpotifyHas(trackID, [@"true" isEqual:has]);
     id album = metadata[@"album_title"];
     id length = metadata[@"duration"];
     if ([album isKindOfClass:NSString.class]) query.album = album;
@@ -445,7 +449,8 @@ static void step(SGLyricsWalk *walk) {
         return;
     }
     SGLyricsProvider *provider = SGLyricsProviderFor(walk.order[walk.index++]);
-    if (provider.untimed && (merged.karaokeLines.count || merged.texts.count)) {
+    // Not yet known asks: wrongly passing Genius over would keep "no lyrics" for a track Spotify has none for.
+    if (provider.untimed && (merged.karaokeLines.count || merged.texts.count || SGLyricsSpotifyHas(query.trackID) == 1)) {
         step(walk);
         return;
     }
