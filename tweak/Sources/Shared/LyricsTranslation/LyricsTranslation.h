@@ -16,7 +16,7 @@ extern NSNotificationName const SGLyricsTranslationsDidChangeNotification;
 SGModRow *SGTranslateEverySongRow(void);
 
 // One translation per line, in order, or nil and a message to show. Main queue. The same song in the
-// same language is asked once a launch.
+// same language, model and prompt is asked once a launch.
 void SGLyricsTranslateWithGemini(NSString *trackID, NSArray<SGKaraokeLine *> *lines, NSString *languageTag,
                                  void (^done)(NSArray<NSString *> *translations, NSString *error));
 
@@ -32,6 +32,13 @@ NSArray<NSString *> *SGGeminiTranslationsIn(id root, NSInteger status, NSError *
 
 // The Lyrics page's row: shows whether a key is set, and sets or removes it.
 SGModRow *SGGeminiKeyRow(void);
+
+// The model Gemini translates with and the prompt it gets, read at each translation. Unset: gemini-flash-latest
+// and Vitrine's own prompt.
+#define SGKeyGeminiModel @"spotifyglass.lyrics.gemini.model"
+#define SGKeyGeminiPrompt @"spotifyglass.lyrics.gemini.prompt"
+SGModRow *SGGeminiModelRow(void);
+SGModRow *SGGeminiPromptRow(void);
 
 // On the iPhone itself (OnDeviceTranslation.swift): Apple's Translate, with both languages downloaded in the
 // Translate app, and Apple Intelligence's model. Each gives one translation per line ("" for a line with no

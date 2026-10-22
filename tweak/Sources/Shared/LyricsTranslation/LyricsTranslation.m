@@ -1,3 +1,4 @@
+#import <CommonCrypto/CommonDigest.h>
 #import <Security/Security.h>
 #import "Core/SGCore.h"
 #import "Settings/SGModPage.h"
@@ -9,7 +10,14 @@
 #import "LyricsTranslation.h"
 
 // gemini-flash-latest follows each Flash release; Google gives two weeks' notice of a breaking change.
-static NSString *const kEndpoint = @"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent";
+static NSString *const kDefaultModel = @"gemini-flash-latest";
+// The default, then cheaper ones, which is why a model is picked: Google's ids, and the names shown for them.
+static NSArray<NSString *> *models(void) { return @[kDefaultModel, @"gemini-3.6-flash", @"gemini-3.5-flash-lite"]; }
+static NSArray<NSString *> *modelNames(void) { return @[@"Flash (latest)", @"3.6 Flash", @"3.5 Flash-Lite"]; }
+static NSString *const kDefaultPrompt =
+    @"Translate the lines of this song into {language}. Answer with a JSON array of exactly {count} strings, one "
+    @"per input line and in the same order. Translate the meaning naturally, keep each line short like a "
+    @"lyric, and keep an empty line empty. A line already in {language} stays as it is.";
 static NSString *const kService = @"Vitrine.Gemini", *const kAccount = @"api-key";
 
 #pragma mark - the key
@@ -41,6 +49,42 @@ static void storeKey(NSString *key) {
 
 BOOL SGGeminiKeySet(void) {
     return storedKey() != nil;
+}
+
+#pragma mark - the model and the prompt
+
+static NSString *storedString(NSString *key) {
+    NSString *value = [NSUserDefaults.standardUserDefaults stringForKey:key];
+    return value.length ? value : nil;
+}
+
+// A model id as Google writes them, or nil: it goes into the request's URL, and a restored backup can bring
+// any text under its key.
+static NSString *modelIDIn(NSString *text) {
+    static NSCharacterSet *other;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        other = [NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-_"].invertedSet;
+    });
+    NSString *modelID = [text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if ([modelID hasPrefix:@"models/"]) modelID = [modelID substringFromIndex:7];
+    return modelID.length && [modelID rangeOfCharacterFromSet:other].location == NSNotFound ? modelID : nil;
+}
+
+static NSString *model(void) {
+    return modelIDIn(storedString(SGKeyGeminiModel)) ?: kDefaultModel;
+}
+
+static NSString *promptTemplate(void) {
+    return storedString(SGKeyGeminiPrompt) ?: kDefaultPrompt;
+}
+
+// The first 8 hex digits of the template's SHA-256, for the log: which prompt went, never what the lyrics were.
+static NSString *fingerprint(NSString *text) {
+    NSData *data = [text dataUsingEncoding:NSUTF8StringEncoding];
+    unsigned char digest[CC_SHA256_DIGEST_LENGTH];
+    CC_SHA256(data.bytes, (CC_LONG)data.length, digest);
+    return [NSString stringWithFormat:@"%02x%02x%02x%02x", digest[0], digest[1], digest[2], digest[3]];
 }
 
 #pragma mark - asking
@@ -146,7 +190,9 @@ void SGLyricsTranslateWithGemini(NSString *trackID, NSArray<SGKaraokeLine *> *li
         return;
     }
     if (!sg_done) sg_done = [NSMutableDictionary dictionary];
-    NSString *memo = [NSString stringWithFormat:@"%@|%@", trackID, languageTag];
+    // By model and prompt too: a translation asked again after either changed is a new one.
+    NSString *modelID = model(), *template = promptTemplate();
+    NSString *memo = [NSString stringWithFormat:@"%@|%@|%@|%@", trackID, languageTag, modelID, template];
     if (trackID && sg_done[memo].count == lines.count) {
         done(sg_done[memo], nil);
         return;
@@ -156,11 +202,10 @@ void SGLyricsTranslateWithGemini(NSString *trackID, NSArray<SGKaraokeLine *> *li
     // By the whole tag, so the script stays: zh-Hant is "Chinese, Traditional" where its language alone is "Chinese".
     NSString *language = [[NSLocale localeWithLocaleIdentifier:@"en"] localizedStringForLocaleIdentifier:languageTag] ?: languageTag;
     NSData *input = [NSJSONSerialization dataWithJSONObject:texts options:0 error:nil];
-    NSString *prompt = [NSString stringWithFormat:
-        @"Translate the lines of this song into %@. Answer with a JSON array of exactly %lu strings, one "
-        @"per input line and in the same order. Translate the meaning naturally, keep each line short like a "
-        @"lyric, and keep an empty line empty. A line already in %@ stays as it is.\n\n%@",
-        language, (unsigned long)texts.count, language, [[NSString alloc] initWithData:input encoding:NSUTF8StringEncoding]];
+    // Filled in by replacing, never as a format: the template is the user's own text.
+    NSString *instructions = [[template stringByReplacingOccurrencesOfString:@"{language}" withString:language]
+                              stringByReplacingOccurrencesOfString:@"{count}" withString:@(texts.count).stringValue];
+    NSString *prompt = [NSString stringWithFormat:@"%@\n\n%@", instructions, [[NSString alloc] initWithData:input encoding:NSUTF8StringEncoding]];
     // Lyrics are often explicit, and translating them is what the user asked for, so every filter that can
     // be lowered is. Recitation cannot be switched off, and is named when it stops an answer.
     NSMutableArray *safety = [NSMutableArray array];
@@ -179,7 +224,8 @@ void SGLyricsTranslateWithGemini(NSString *trackID, NSArray<SGKaraokeLine *> *li
             @"thinkingConfig": @{@"thinkingLevel": @"low"},
         },
     };
-    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:kEndpoint]];
+    NSString *endpoint = [NSString stringWithFormat:@"https://generativelanguage.googleapis.com/v1beta/models/%@:generateContent", modelID];
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:endpoint]];
     request.HTTPMethod = @"POST";
     request.timeoutInterval = 60;
     [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
@@ -190,6 +236,7 @@ void SGLyricsTranslateWithGemini(NSString *trackID, NSArray<SGKaraokeLine *> *li
     [plainConfig removeObjectForKey:@"thinkingConfig"];
     plainBody[@"generationConfig"] = plainConfig;
     plain.HTTPBody = [NSJSONSerialization dataWithJSONObject:plainBody options:0 error:nil];
+    SGLog(@"gemini: asking %@, prompt %@%@", modelID, fingerprint(template), storedString(SGKeyGeminiPrompt) ? @" (edited)" : @"");
     sendToGemini(request, plain, 0, ^(NSData *data, NSInteger status, NSError *error) {
         id root = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
         NSString *problem = nil;
@@ -254,4 +301,121 @@ SGModRow *SGTranslateEverySongRow(void) {
 SGModRow *SGGeminiKeyRow(void) {
     return SGStatActionRow(@"Gemini API key", @"Translate any song from the lyrics' corner menu",
                            ^NSString *{ return SGGeminiKeySet() ? @"Set" : @"Off"; }, ^{ askForKey(); });
+}
+
+#pragma mark - the model and prompt rows
+
+static void askForModel(void) {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Gemini model"
+        message:@"A model id from Google AI Studio, such as gemini-3.5-flash-lite." preferredStyle:UIAlertControllerStyleAlert];
+    __weak UIAlertController *weakAlert = alert;
+    UIAlertAction *save = [UIAlertAction actionWithTitle:@"Save" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        NSString *modelID = modelIDIn(weakAlert.textFields.firstObject.text);
+        if (modelID) [NSUserDefaults.standardUserDefaults setObject:modelID forKey:SGKeyGeminiModel];
+    }];
+    save.enabled = NO;
+    __weak UIAlertAction *weakSave = save;
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
+        field.placeholder = kDefaultModel;
+        field.text = storedString(SGKeyGeminiModel);
+        field.autocorrectionType = UITextAutocorrectionTypeNo;
+        field.autocapitalizationType = UITextAutocapitalizationTypeNone;
+        __weak UITextField *weakField = field;
+        [field addAction:[UIAction actionWithHandler:^(UIAction *action) { weakSave.enabled = modelIDIn(weakField.text) != nil; }]
+        forControlEvents:UIControlEventEditingChanged];
+    }];
+    [alert addAction:save];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [SGTopController() presentViewController:alert animated:YES completion:nil];
+}
+
+SGModRow *SGGeminiModelRow(void) {
+    NSArray<NSString *> *names = [modelNames() arrayByAddingObject:@"Other…"];
+    return SGMenuRow(@"Gemini model", names, ^NSString *{
+        NSUInteger index = [models() indexOfObject:model()];
+        return index == NSNotFound ? model() : modelNames()[index];
+    }, ^(NSInteger index) {
+        if (index < (NSInteger)models().count) {
+            if (index == 0) [NSUserDefaults.standardUserDefaults removeObjectForKey:SGKeyGeminiModel];
+            else [NSUserDefaults.standardUserDefaults setObject:models()[(NSUInteger)index] forKey:SGKeyGeminiModel];
+        } else {
+            askForModel();
+        }
+    });
+}
+
+// The prompt in a sheet: the checkmark stores it, Default puts Vitrine's back in the field. Stored equal to the
+// default, or empty, it is removed, so a later change to the default reaches it.
+@interface SGPromptEditor : UIViewController
+@end
+
+@implementation SGPromptEditor {
+    UITextView *_text;
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.title = @"Translation prompt";
+    self.view.backgroundColor = UIColor.systemGroupedBackgroundColor;
+    _text = [UITextView new];
+    _text.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+    _text.adjustsFontForContentSizeCategory = YES;
+    _text.backgroundColor = UIColor.clearColor;
+    _text.textContainerInset = UIEdgeInsetsMake(16, 16, 16, 16);
+    _text.alwaysBounceVertical = YES;
+    _text.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
+    _text.text = promptTemplate();
+    _text.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:_text];
+    UILabel *note = [UILabel new];
+    note.text = @"{language} and {count} are filled in for each song, and its lines follow the prompt as a JSON array.";
+    note.font = [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
+    note.adjustsFontForContentSizeCategory = YES;
+    note.textColor = UIColor.secondaryLabelColor;
+    note.numberOfLines = 0;
+    note.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:note];
+    UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
+    [NSLayoutConstraint activateConstraints:@[
+        [note.topAnchor constraintEqualToAnchor:safe.topAnchor constant:12],
+        [note.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:20],
+        [note.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-20],
+        [_text.topAnchor constraintEqualToAnchor:note.bottomAnchor constant:4],
+        [_text.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor],
+        [_text.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor],
+        [_text.bottomAnchor constraintEqualToAnchor:self.view.keyboardLayoutGuide.topAnchor],
+    ]];
+    self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemClose target:self action:@selector(close)];
+    // Plain: Spotify's white tint fills a Done item's glass and hides its glyph.
+    UIBarButtonItem *done = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"checkmark"] style:UIBarButtonItemStylePlain target:self action:@selector(save)];
+    done.accessibilityLabel = @"Save";
+    UIBarButtonItem *reset = [[UIBarButtonItem alloc] initWithTitle:@"Default" style:UIBarButtonItemStylePlain target:self action:@selector(reset)];
+    self.navigationItem.rightBarButtonItems = @[done, reset];
+}
+
+- (void)close {
+    [self dismissViewControllerAnimated:YES completion:nil];
+}
+
+- (void)reset {
+    _text.text = kDefaultPrompt;
+}
+
+- (void)save {
+    NSString *prompt = [_text.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (!prompt.length || [prompt isEqualToString:kDefaultPrompt]) [NSUserDefaults.standardUserDefaults removeObjectForKey:SGKeyGeminiPrompt];
+    else [NSUserDefaults.standardUserDefaults setObject:prompt forKey:SGKeyGeminiPrompt];
+    SGLog(@"gemini: prompt %@", storedString(SGKeyGeminiPrompt) ? [@"edited, " stringByAppendingString:fingerprint(prompt)] : @"default");
+    [self close];
+}
+@end
+
+SGModRow *SGGeminiPromptRow(void) {
+    return SGStatActionRow(@"Translation prompt", @"What Gemini is told to do with a song's lines",
+                           ^NSString *{ return storedString(SGKeyGeminiPrompt) ? @"Edited" : @"Default"; }, ^{
+        UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:[SGPromptEditor new]];
+        nav.modalPresentationStyle = UIModalPresentationPageSheet;
+        SGPresentDark(nav);
+        [SGTopController() presentViewController:nav animated:YES completion:nil];
+    });
 }
