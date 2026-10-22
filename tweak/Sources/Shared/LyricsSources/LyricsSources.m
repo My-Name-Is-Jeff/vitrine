@@ -169,6 +169,7 @@ NSArray<SGLyricsProvider *> *SGLyricsAllProviders(void) {
             // A source that matches by Spotify's own track id has everything it needs from the
             // start; the rest wait for the player to name the track before they can search.
             provider.needsName = ![key isEqualToString:@"musixmatch"] && ![key isEqualToString:SGSpicyLyricsKey];
+            provider.untimed = [key isEqualToString:@"genius"];
             provider.ask = ask;
             return provider;
         };
@@ -444,6 +445,10 @@ static void step(SGLyricsWalk *walk) {
         return;
     }
     SGLyricsProvider *provider = SGLyricsProviderFor(walk.order[walk.index++]);
+    if (provider.untimed && (merged.karaokeLines.count || merged.texts.count)) {
+        step(walk);
+        return;
+    }
     if (provider.needsName && !named(query)) {
         [walk.passedOver addObject:provider.key];
         step(walk);

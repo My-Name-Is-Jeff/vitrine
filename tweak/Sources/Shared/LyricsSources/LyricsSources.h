@@ -71,6 +71,8 @@ typedef void (^SGLyricsAsk)(SGLyricsQuery *query, void (^done)(SGLyricsResult *r
 // Searches by title and artist, so it has nothing to ask with until someone has named the track.
 // Musixmatch matches by Spotify's id and can go without.
 @property (nonatomic) BOOL needsName;
+// Has only untimed lines, which never replace lines already found, so it is asked only while there are none.
+@property (nonatomic) BOOL untimed;
 @property (nonatomic, copy) SGLyricsAsk ask;
 @end
 
