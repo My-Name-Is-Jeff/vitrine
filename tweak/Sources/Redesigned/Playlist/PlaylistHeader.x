@@ -377,7 +377,10 @@ static void showPlaylist(SGRHeaderInfo *info, UIView *block, UIView *root, id mo
     // More, pinned over the page rather than left in the block, which is concealed and scrolls away; and
     // Spotify's own Sort, from the find-on-page toolbar this header conceals, for the ⋯ sheet to fire.
     UIView *page = SGRPlaylistPageOf(root);
-    SGRPinnedMore(page, &kPinnedMoreKey, SGRFindByIdentifier(block, @"Components.UI.ContextMenuButton*", &kMoreKey));
+    SGRMirrorButton *more = SGRPinnedMore(page, &kPinnedMoreKey, SGRFindByIdentifier(block, @"Components.UI.ContextMenuButton*", &kMoreKey));
+    // The songs liked by one artist keep the sheet Spotify gives them: the system menu opens over it, but this
+    // page's sheet never gives it its rows, so the menu would stay on its loading row (device, 2026-10-22).
+    if (artistPage) SGRPinnedMoreLeavesSheetAlone(more);
     SGRPlaylistTakeSort(page, SGRFindByIdentifier(root, @"Components.Header.UI.Toolbar.Button", &kSortKey));
 
     static BOOL logged;

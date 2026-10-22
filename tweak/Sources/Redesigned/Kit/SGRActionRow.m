@@ -450,6 +450,11 @@ SGRMirrorButton *SGRPinnedMoreRecentButton(void) {
 }
 @end
 
+void SGRPinnedMoreLeavesSheetAlone(SGRMirrorButton *button) {
+    SGRPinnedMoreRecorder *recorder = button ? objc_getAssociatedObject(button, &kRecorderKey) : nil;
+    if (recorder) [button removeTarget:recorder action:@selector(sgr_moreTapped:) forControlEvents:UIControlEventTouchDown];
+}
+
 // Over the page's list and its header both, and put back on top whenever Spotify adds to the page.
 static void keepOnTop(UIView *page, UIView *button) {
     if (button.superview != page) [page addSubview:button];

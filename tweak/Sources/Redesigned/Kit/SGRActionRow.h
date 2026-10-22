@@ -76,6 +76,10 @@ static const NSTimeInterval SGRPinnedMoreWindow = 3;
 // The page whose pinned ⋯ was tapped within that window, or nil: for a screen that puts rows of its own on
 // Spotify's context menu sheet and has to know which page the sheet belongs to.
 UIView *SGRPinnedMoreRecentPage(void);
+
+// Leaves what the pinned ⋯ opens alone: its touch is no longer recorded, so the sheet Spotify puts up is Spotify's
+// own, for a page whose menu the redesign does not take over.
+void SGRPinnedMoreLeavesSheetAlone(SGRMirrorButton *button);
 // The pinned ⋯ itself, tapped within that window, or nil: what the redesign's system menu opens from
 // (Redesigned/ContextMenu).
 SGRMirrorButton *SGRPinnedMoreRecentButton(void);
