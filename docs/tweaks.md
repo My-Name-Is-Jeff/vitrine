@@ -124,7 +124,10 @@ Shared:
                   kept per track, a rate limit is waited out and a refused key is left for 10 min, its reason on the
                   source's row; checked on the Mac against harness/spicy-lyrics/. QQMusic.m (line timed LRC) and KuGou.m (word timed KRC, unpacked with
                   zlib and read by NetEase.m's parser) for Chinese and other Asian songs, matched by title, singer
-                  and length; checked on the Mac against harness/lyrics-sources/. color-lyrics is answered with whichever won
+                  and length; checked on the Mac against harness/lyrics-sources/. Genius.m, last: untimed words for a track no
+                  other source has, the song found by the line meanings' search (SGGeniusSongIn in LyricsMeanings/Meanings.m)
+                  and the words read from its embed script, which is scraping (no API gives the text); checked on
+                  the Mac against harness/genius-lyrics/. color-lyrics is answered with whichever won
                   (LyricsHook.x): Spotify's own 200 gets our lines swapped in; a track Spotify's metadata says has none has
                   its request sent to a donor track that does, so the reply is a real 200 (a 404 answered as a 200 in the
                   delegate alone never showed the card on 9.1.78); a 404 for a track not seen yet is held until the chain

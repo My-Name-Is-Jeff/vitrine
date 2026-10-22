@@ -168,6 +168,10 @@ extern SGLyricsAsk SGLrcLibAsk;
 extern SGLyricsAsk SGSpicyLyricsAsk;
 extern SGLyricsAsk SGQQMusicAsk;
 extern SGLyricsAsk SGKuGouAsk;
+extern SGLyricsAsk SGGeniusAsk;
+// Genius.m. The rows of the lyrics in Genius's embed script, "" between stanzas and the [Chorus]
+// headings left out; nil when the script is not the shape it reads or holds no line.
+NSArray<NSString *> *SGGeniusEmbedRows(NSString *js);
 
 // LrcLib.m. Timed LRC as a synced result, nil when no line in it is timed.
 SGLyricsResult *SGLyricsLRCResult(NSString *lrc);

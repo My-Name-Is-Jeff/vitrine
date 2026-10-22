@@ -182,6 +182,7 @@ NSArray<SGLyricsProvider *> *SGLyricsAllProviders(void) {
             make(@"qqmusic", @"QQ Music", @"Line timing, Chinese catalog", SGQQMusicAsk),
             make(@"kugou", @"KuGou", @"Word timing, Chinese catalog", SGKuGouAsk),
             make(SGImportedLRCKey, @"Imported LRC", @"Your own .lrc files", SGImportedLRCAsk),
+            make(@"genius", @"Genius", @"Untimed, when no other has lyrics", SGGeniusAsk),
         ];
     });
     return all;
@@ -204,10 +205,11 @@ static NSArray<NSString *> *fromLegacyKeys(void) {
 }
 
 // With nothing stored and nothing to carry over, every source is on: the user's own files first, word
-// timing ahead of line timing, and the two Chinese catalogs last, asked only once the rest have missed.
+// timing ahead of line timing, the two Chinese catalogs once the rest have missed, and Genius's untimed
+// words under everything.
 // Spicy Lyrics passes straight on without its key.
 static NSArray<NSString *> *defaultOrder(void) {
-    return @[SGImportedLRCKey, SGSpicyLyricsKey, @"binilyrics", @"musixmatch", @"unison", @"netease", @"lrclib", @"qqmusic", @"kugou"];
+    return @[SGImportedLRCKey, SGSpicyLyricsKey, @"binilyrics", @"musixmatch", @"unison", @"netease", @"lrclib", @"qqmusic", @"kugou", @"genius"];
 }
 
 NSArray<NSString *> *SGLyricsOrder(void) {

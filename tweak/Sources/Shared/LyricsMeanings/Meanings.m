@@ -3,7 +3,6 @@
 #import "Headers/SPTPlayer.h"
 #import "Meanings.h"
 
-static NSString *const kSearch = @"https://genius.com/api/search/song";
 static NSString *const kReferents = @"https://genius.com/api/referents";
 static const NSUInteger kMostPages = 5, kPerPage = 50;
 // Shorter than this, a fragment found inside a line is more likely a common phrase than the line.
@@ -126,26 +125,86 @@ static NSString *stringIn(id value) {
     return [value isKindOfClass:NSString.class] ? value : nil;
 }
 
-// The hit whose title and artist both agree with the track's; a song only near it would explain
-// lines it does not have.
-static NSNumber *songIn(NSDictionary *response, NSString *title, NSString *artist) {
+NSDictionary<NSString *, NSString *> *SGGeniusSearchQuery(NSString *title, NSString *artist) {
+    return @{@"q": [NSString stringWithFormat:@"%@ %@", bareTitle(title), artist], @"per_page": @"10"};
+}
+
+// What a title says beyond the song's name: "Old Town Road - Remix" is {remix}, "Blinding Lights (Live)" {live}.
+static NSSet<NSString *> *versionOf(NSString *title) {
+    NSMutableSet<NSString *> *words = [NSMutableSet setWithArray:[folded(title) componentsSeparatedByString:@" "]];
+    [words minusSet:[NSSet setWithArray:[folded(bareTitle(title)) componentsSeparatedByString:@" "]]];
+    [words removeObject:@""];
+    return words;
+}
+
+// The track's title without Spotify's "(feat. Billy Ray Cyrus)" or "(with Diplo)": who sings with the lead
+// is not which recording it is. Genius's titles keep theirs, so a version of its own with a guest stays apart.
+static NSString *withoutGuests(NSString *title) {
+    static NSRegularExpression *guests;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        guests = [NSRegularExpression regularExpressionWithPattern:@"\\s*[\\(\\[](feat\\.?|ft\\.?|featuring|with)\\s[^\\)\\]]*[\\)\\]]"
+                                                            options:NSRegularExpressionCaseInsensitive error:nil];
+    });
+    return [guests stringByReplacingMatchesInString:title options:0 range:NSMakeRange(0, title.length) withTemplate:@""];
+}
+
+// Spotify joins a track's artists with ", ", which a name can hold too ("Tyler, The Creator"), so the
+// lead artist is any run of the first names.
+static NSSet<NSString *> *leadNames(NSString *artist) {
+    NSMutableSet<NSString *> *names = [NSMutableSet set];
+    NSString *run = @"";
+    for (NSString *part in [artist componentsSeparatedByString:@", "]) {
+        run = run.length ? [run stringByAppendingFormat:@" %@", folded(part)] : folded(part);
+        if (run.length) [names addObject:run];
+    }
+    return names;
+}
+
+// Whether one of the song's own artists is the track's lead, the way Genius names them or without the
+// bracket ("BTS (방탄소년단)"); a featured singer or a translation page's "Genius English Translations"
+// never is.
+static BOOL byLead(NSDictionary *song, NSSet<NSString *> *leads) {
+    id primaries = song[@"primary_artists"];
+    for (NSDictionary *primary in [primaries isKindOfClass:NSArray.class] ? primaries : @[]) {
+        NSString *name = [primary isKindOfClass:NSDictionary.class] ? stringIn(primary[@"name"]) : nil;
+        if (!name) continue;
+        if ([leads containsObject:folded(name)] || [leads containsObject:folded(bareTitle(name))]) return YES;
+        // "Дора (Dora)": the name in the bracket is the one Spotify may use.
+        NSRange open = [name rangeOfString:@"("], close = [name rangeOfString:@")" options:NSBackwardsSearch];
+        if (open.location != NSNotFound && close.location != NSNotFound && close.location > NSMaxRange(open)
+            && [leads containsObject:folded([name substringWithRange:NSMakeRange(NSMaxRange(open), close.location - NSMaxRange(open))])]) return YES;
+    }
+    return NO;
+}
+
+NSNumber *SGGeniusSongIn(NSDictionary *response, NSString *title, NSString *artist) {
+    if (![response isKindOfClass:NSDictionary.class] || !title.length || !artist.length) return nil;
     NSString *wantTitle = folded(bareTitle(title));
-    NSString *wantArtist = folded([artist componentsSeparatedByString:@", "].firstObject);
+    NSSet<NSString *> *wantVersion = versionOf(withoutGuests(title));
+    // Genius files a song's words under the song; a track with none sung would get them anyway.
+    if ([wantVersion containsObject:@"instrumental"] || [wantVersion containsObject:@"karaoke"]) return nil;
+    NSSet<NSString *> *leads = leadNames(artist);
+    // Best first: the same version, then the plain song, then any other version of it.
+    NSNumber *best = nil;
+    NSInteger bestRank = 0;
     id sections = response[@"sections"];
     for (NSDictionary *section in [sections isKindOfClass:NSArray.class] ? sections : @[]) {
         id hits = [section isKindOfClass:NSDictionary.class] ? section[@"hits"] : nil;
         for (NSDictionary *hit in [hits isKindOfClass:NSArray.class] ? hits : @[]) {
             NSDictionary *song = [hit isKindOfClass:NSDictionary.class] ? hit[@"result"] : nil;
             if (![song isKindOfClass:NSDictionary.class] || ![song[@"id"] isKindOfClass:NSNumber.class]) continue;
-            NSString *hitTitle = folded(bareTitle(stringIn(song[@"title"])));
-            NSString *hitArtists = folded(stringIn(song[@"artist_names"]) ?: @"");
-            BOOL titled = [hitTitle isEqualToString:wantTitle];
-            BOOL byArtist = wantArtist.length && hitArtists.length
-                && ([hitArtists containsString:wantArtist] || [wantArtist containsString:hitArtists]);
-            if (titled && byArtist) return song[@"id"];
+            NSString *hitTitle = stringIn(song[@"title"]);
+            if ([song[@"instrumental"] boolValue] || ![folded(bareTitle(hitTitle)) isEqualToString:wantTitle] || !byLead(song, leads)) continue;
+            NSSet<NSString *> *version = versionOf(hitTitle);
+            NSInteger rank = [version isEqualToSet:wantVersion] ? 3 : version.count == 0 ? 2 : 1;
+            if (rank > bestRank) {
+                best = song[@"id"];
+                bestRank = rank;
+            }
         }
     }
-    return nil;
+    return best;
 }
 
 // By the annotation, not the referent: a referent the artist spoke to is "verified" as a whole, the
@@ -227,9 +286,8 @@ static void meaningsOf(NSString *trackID, void (^done)(NSArray<SGLyricsMeaning *
         answer(trackID, @[], NO);
         return;
     }
-    NSString *q = [NSString stringWithFormat:@"%@ %@", bareTitle(title), artist];
-    getJSON(kSearch, @{@"q": q, @"per_page": @"10"}, ^(NSDictionary *response) {
-        NSNumber *song = songIn(response, title, artist);
+    getJSON(SGGeniusSearchURL, SGGeniusSearchQuery(title, artist), ^(NSDictionary *response) {
+        NSNumber *song = SGGeniusSongIn(response, title, artist);
         if (!song) {
             SGLog(@"meanings: no Genius song for %@ by %@", title, artist);
             answer(trackID, @[], response != nil);   // a failed search is asked again next time
