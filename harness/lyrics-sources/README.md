@@ -9,8 +9,13 @@
   it, then unpacked and read, with the word times, the joining and the line ends checked;
 - the QQ Music and KuGou asks against made-up search replies: titles, singers and lengths that do not
   fit are passed over, the closest KuGou lengths are tried first and at most three, and QQ's LRC is read.
+- LRCLIB's Lyricsfile (`Lyricsfile.m`): the spec's example and LRCLIB's own way of writing it read as word
+  timed lines, segments run together into words, a file timed only by the line left to the LRC, a broken
+  or unknown file refused whole, and the LRCLIB ask taking the words over the LRC and a record with words
+  over a closer one without.
 
-`./build.sh krc.json qq.json` also reads real replies saved from `lyrics.kugou.com/download` and QQ's
-`GetPlayLyricInfo`, and prints how many lines each has. None are kept here, since they are real lyrics.
+`./build.sh krc.json qq.json lrclib.json` also reads real replies saved from `lyrics.kugou.com/download`,
+QQ's `GetPlayLyricInfo` and LRCLIB's `/api/get/<id>`, and prints how many lines each has; an LRCLIB record
+must read as word timed exactly when it says `hasWordSync`. None are kept here, since they are real lyrics.
 
 It does not cover the requests themselves, the order on the Lyrics page, or the lines on the lyrics view.

@@ -77,8 +77,35 @@ static NSString *const kKRC = @"﻿[id:$00000000]\r\n[ar:Someone]\r\n"
     "[4000,1500]<0,400,0>你<400,400,0>好<800,0,0>啊\r\n"
     "[7000,100]<0,300,0>late\r\n";
 
+// Every line's words read back as its text, the spaces aside, and start in order inside it.
+static void checkWordLines(NSArray<SGKaraokeLine *> *lines) {
+    for (SGKaraokeLine *line in lines) {
+        CHECK(line.timing != SGKaraokeTimingWords || line.words.count);
+        for (NSUInteger i = 0; i < line.words.count; i++) {
+            CHECK(line.words[i].start >= line.start && line.words[i].end > line.words[i].start && line.words[i].end <= line.end);
+            CHECK(!i || line.words[i].start >= line.words[i - 1].start);
+        }
+    }
+}
+
 static void checkLive(NSString *path) {
     NSDictionary *root = [NSJSONSerialization JSONObjectWithData:[NSData dataWithContentsOfFile:path] options:0 error:nil];
+    if (root[@"lyricsfile"]) {
+        // An LRCLIB record: one that times words reads as word timed lines with the text it had.
+        NSArray<SGKaraokeLine *> *lines = SGLyricsfileLines(root[@"lyricsfile"]);
+        NSUInteger words = 0, timed = 0;
+        NSInteger startSum = 0;
+        for (SGKaraokeLine *line in lines) {
+            words += line.words.count;
+            timed += line.timing == SGKaraokeTimingWords;
+            startSum += line.start;
+        }
+        printf("%s: Lyricsfile, %lu lines (%lu word timed), %lu words, starts sum %ld\n", path.lastPathComponent.UTF8String,
+               (unsigned long)lines.count, (unsigned long)timed, (unsigned long)words, (long)startSum);
+        CHECK(!!lines == [root[@"hasWordSync"] boolValue]);
+        checkWordLines(lines);
+        return;
+    }
     if (root[@"content"]) {
         NSArray<SGKaraokeLine *> *lines = SGKuGouLines(root[@"content"]);
         printf("%s: KRC, %lu word timed lines; first \"%s\" at %ld\n", path.lastPathComponent.UTF8String, (unsigned long)lines.count,
@@ -201,6 +228,73 @@ int main(int argc, char **argv) {
         got = [SGLyricsResult new];
         SGQQMusicAsk(query, ^(SGLyricsResult *result) { got = result; });
         CHECK(!got && !asked);
+
+        // Lyricsfile: the spec's own example, two words timed to the end of each.
+        NSArray<SGKaraokeLine *> *lf = SGLyricsfileLines(@"version: '1.0'\n\nmetadata:\n  title: 'Example Song'\n  artist: 'Example Artist'\n"
+            "  language: 'en'\n  instrumental: false\n\nlines:\n  - text: 'Hello world'\n    start_ms: 1200\n    end_ms: 2800\n    words:\n"
+            "      - text: 'Hello '\n        start_ms: 1200\n        end_ms: 1900\n      - text: 'world'\n        start_ms: 1900\n        end_ms: 2800\n\n"
+            "plain: |\n  Hello world\n");
+        CHECK(lf.count == 1 && lf[0].words.count == 2 && [SGKaraokeLineText(lf[0]) isEqualToString:@"Hello world"]);
+        CHECK(lf[0].start == 1200 && lf[0].end == 2800 && lf[0].timing == SGKaraokeTimingWords);
+        CHECK(lf[0].words[0].end == 1900 && lf[0].words[1].start == 1900 && !lf[0].words[1].joined);
+
+        // As LRCLIB writes it: keys in any order, words with no end of their own ending where the next
+        // starts and the last one with its line; a segment with no space after it runs into the next
+        // one, Japanese syllables stay apart and flush, and a line timed only as a whole is estimated.
+        // The rows a sequence's items start on are at its key's indent, quoted the way YAML quotes.
+        NSString *lrclib = @"version: \"1.0\"\nmetadata:\n  title: ကမ္ဘာ\n  artist: Someone # a comment\nlines:\n"
+            "- text: \"Hold on \"\n  words:\n  - text: \"Hold \"\n    start_ms: 48712\n  - text: \"on \"\n    start_ms: 49109\n  start_ms: 48712\n  end_ms: 52187\n"
+            "- text: wanted now\n  start_ms: 53000\n  words:\n    - text: wan\n      start_ms: 53000\n    - text: \"ted \"\n      start_ms: 53200\n      end_ms: 53500\n"
+            "    - {text: now}\n";
+        CHECK(!SGLyricsfileLines(lrclib));   // a flow mapping is refused, and the whole file with it
+        lrclib = [lrclib stringByReplacingOccurrencesOfString:@"    - {text: now}\n" withString:@"    - text: now\n      start_ms: 54000\n"];
+        lrclib = [lrclib stringByAppendingString:@"- text: '''Cause I''m-'\n  start_ms: 60000\n  end_ms: 62000\n- text: ''\n  start_ms: 62000\n"
+            "- text: \"\\u65e5\\u672c語\"\n  start_ms: 63000\n  end_ms: 64000\n  words:\n  - text: 日本\n    start_ms: 63000\n  - text: 語\n    start_ms: 63500\n"
+            "plain: |-\n  Hold on\n\n  wanted now\n"];
+        lf = SGLyricsfileLines(lrclib);
+        CHECK(lf.count == 4);
+        checkWordLines(lf);
+        CHECK([SGKaraokeLineText(lf[0]) isEqualToString:@"Hold on"] && lf[0].words[0].end == 49109 && lf[0].words[1].end == 52187);
+        CHECK(lf[1].words.count == 2 && [lf[1].words[0].text isEqualToString:@"wanted"] && lf[1].words[0].end == 53500);
+        CHECK([lf[1].words[1].text isEqualToString:@"now"] && !lf[1].words[1].joined && lf[1].end == 55000);   // no end anywhere: a second past its last word
+        CHECK([SGKaraokeLineText(lf[2]) isEqualToString:@"'Cause I'm-"] && lf[2].timing == SGKaraokeTimingLine && lf[2].start == 60000);
+        CHECK(lf[3].words.count == 2 && lf[3].words[1].joined && [SGKaraokeLineText(lf[3]) isEqualToString:@"日本語"]);
+
+        // LRCLIB's Lyricsfile for a record timed by the line alone: nothing the LRC does not have.
+        CHECK(!SGLyricsfileLines(@"version: '1.0'\nmetadata:\n  title: a\n  artist: b\nlines:\n- text: Biatch!\n  start_ms: 90\n  end_ms: 960\n"));
+        // Refused whole: another version, a key twice, a tab for indent, a negative time, an end before its
+        // start, a quote never closed, words not a list, an alias, a stray row, not YAML at all.
+        NSString *wordFile = @"version: '1.0'\nlines:\n- text: a\n  start_ms: 10\n  words:\n  - text: a\n    start_ms: 10\n";
+        CHECK(SGLyricsfileLines(wordFile).count == 1);
+        for (NSArray<NSString *> *swap in @[@[@"'1.0'", @"'2.0'"], @[@"  start_ms: 10\n  words", @"  start_ms: 10\n  start_ms: 11\n  words"],
+                                            @[@"  start_ms: 10\n  words", @"\tstart_ms: 10\n  words"], @[@"    start_ms: 10", @"    start_ms: -10"],
+                                            @[@"    start_ms: 10", @"    start_ms: 10\n    end_ms: 5"], @[@"- text: a", @"- text: \"a"],
+                                            @[@"  - text: a\n    start_ms: 10\n", @"  a\n"], @[@"- text: a", @"- text: *a"],
+                                            @[@"lines:", @"  stray\nlines:"]]) {
+            CHECK(!SGLyricsfileLines([wordFile stringByReplacingOccurrencesOfString:swap[0] withString:swap[1]]));
+        }
+        CHECK(!SGLyricsfileLines(@"[not, yaml") && !SGLyricsfileLines(@"") && !SGLyricsfileLines(nil) && !SGLyricsfileLines((NSString *)@3));
+
+        // LRCLIB: a record with words timed answers with them; one whose Lyricsfile cannot be read
+        // answers with its LRC; the search picks the record with words over a closer one without.
+        NSString *twoLines = @"[00:01.00]a\n[00:02.00]b\n";
+        __block NSDictionary *record = @{@"id": @1, @"duration": @200, @"hasWordSync": @YES, @"syncedLyrics": twoLines, @"lyricsfile": wordFile};
+        __block NSArray *found = nil;
+        sg_answer = ^id(NSURL *url, id body) { return [url.path hasSuffix:@"/get"] ? record : found; };
+        query.title = @"a";
+        query.artist = @"b";
+        query.seconds = 200;
+        got = nil;
+        SGLrcLibAsk(query, ^(SGLyricsResult *result) { got = result; });
+        CHECK(got.wordTimed && got.synced && got.karaokeLines.count == 1 && got.texts.count);
+        record = @{@"id": @1, @"duration": @200, @"hasWordSync": @YES, @"syncedLyrics": twoLines, @"lyricsfile": @"version: '9'"};
+        SGLrcLibAsk(query, ^(SGLyricsResult *result) { got = result; });
+        CHECK(!got.wordTimed && got.synced && got.karaokeLines.count == 2);
+        record = nil;
+        found = @[@{@"id": @2, @"duration": @200, @"syncedLyrics": twoLines},
+                  @{@"id": @3, @"duration": @202, @"hasWordSync": @YES, @"syncedLyrics": twoLines, @"lyricsfile": wordFile}];
+        SGLrcLibAsk(query, ^(SGLyricsResult *result) { got = result; });
+        CHECK(got.wordTimed && got.karaokeLines.count == 1);
 
         for (int i = 1; i < argc; i++) checkLive(@(argv[i]));
         printf("lyrics-sources: all checks passed\n");

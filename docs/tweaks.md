@@ -117,7 +117,7 @@ Shared:
                   pronunciation of a line, each keyed to the line by its itunes:key or lrc:key, the pronunciation
                   timed word by word (the translation taken in the Lyrics page's language); Musixmatch.m, matched by
                   Spotify's track id with an anonymous token, word timed where it has richsync; NetEase.m, word timing from yrc for what the others only line time; LrcLib.m, open and
-                  keyless and timed by the line, the floor under the rest. SpicyLyrics.m, Spicy Lyrics' Developer Platform
+                  keyless and timed by the line, by the word where a record carries a Lyricsfile (Lyricsfile.m reads its YAML), the floor under the rest. SpicyLyrics.m, Spicy Lyrics' Developer Platform
                   by track id on the user's own publishable key (Keychain), syllable timed where it has a sync, with
                   its pronunciations and translations; its credit, which its terms require, shows whatever Show source
                   says and opens the uploader's and maker's pages from a tap (both looks), its answers and misses are

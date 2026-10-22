@@ -169,6 +169,9 @@ extern SGLyricsAsk SGKuGouAsk;
 
 // LrcLib.m. Timed LRC as a synced result, nil when no line in it is timed.
 SGLyricsResult *SGLyricsLRCResult(NSString *lrc);
+// Lyricsfile.m. LRCLIB's Lyricsfile YAML as word timed lines; nil when it times no word, or is not
+// a Lyricsfile 1.0 this reads.
+NSArray<SGKaraokeLine *> *SGLyricsfileLines(NSString *yaml);
 // NetEase.m. Word timed lines from NetEase's yrc, or with krc from KuGou's KRC text; nil for none.
 NSArray<SGKaraokeLine *> *SGLyricsPieceLines(NSString *body, BOOL krc);
 // QQMusic.m, for it and KuGou. A title as the two are matched by: lowercased, without spaces,
