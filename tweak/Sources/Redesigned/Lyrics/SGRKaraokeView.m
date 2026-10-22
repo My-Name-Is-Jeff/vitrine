@@ -2034,11 +2034,14 @@ static BOOL anyUntranslated(NSArray<SGKaraokeLine *> *lines) {
     });
 }
 
-// The saved translations deleted, or Translate any song switched: the song is synced again and redrawn.
 // A source picked from the player's ⋯ replaces the lines of the song playing, which the page otherwise keeps
 // through any later answer: they are dropped as on a change of track, and the next tick takes the new ones.
 - (void)sourceChosen:(NSNotification *)note {
     if (_sample || ![note.object isEqual:_track]) return;
+    [self dropLines];
+}
+
+- (void)dropLines {
     _lines = nil;
     _passedOver = nil;
     _builtWidth = 0;
@@ -2047,6 +2050,7 @@ static BOOL anyUntranslated(NSArray<SGKaraokeLine *> *lines) {
     [self offerExtras];
 }
 
+// The saved translations deleted, or Translate any song switched: the song is synced again and redrawn.
 - (void)translationsChanged {
     if (!_lines) return;
     [self timeLines];
@@ -2343,12 +2347,7 @@ static BOOL anyUntranslated(NSArray<SGKaraokeLine *> *lines) {
     if (!(track == _track || [track isEqualToString:_track])) {
         SGLog(@"karaoke: page shows track %@, lyrics %@", track, [self linesFor:track] ? @"captured" : @"not captured yet");
         _track = track;
-        _lines = nil;
-        _passedOver = nil;
-        _builtWidth = 0;
-        [self creditTo:nil];
-        [self dropLineViews];
-        [self offerExtras];
+        [self dropLines];
     }
     NSArray<SGKaraokeLine *> *kept = _lines && track ? [self linesFor:track] : nil;
     if (kept && kept != _lines && kept != _passedOver) {

@@ -59,13 +59,12 @@ static SGLyricsOfferAsk *askAll(NSString *trackID) {
     ask.order = SGLyricsOrder();
     ask.answers = [NSMutableDictionary dictionary];
     ask.waiting = [NSMutableArray array];
-    SGLyricsQuery *named = SGLyricsQueryFor(trackID);
     SGLog(@"lyrics: asking %@ at once for %@, for the player's ⋯", [ask.order componentsJoinedByString:@", "], trackID);
     for (NSString *key in ask.order) {
         SGLyricsProvider *provider = SGLyricsProviderFor(key);
         // A query each, so what one source learns does not change what the next is asked.
         SGLyricsQuery *query = SGLyricsQueryFor(trackID);
-        if (provider.needsName && !(named.title.length && named.artist.length)) {
+        if (provider.needsName && !(query.title.length && query.artist.length)) {
             answer(ask, key, nil);
             continue;
         }

@@ -235,8 +235,8 @@ UIViewController *SGLyricsSourcesPage(void);   // the ordered list on the Lyrics
 // than the one that answered (issue #67). The pick is a track's id against a source's key, kept until Spotify
 // quits; a track's walk asks its picked source first, the rest of the order after it. Main queue.
 NSString *SGLyricsChosenSource(NSString *trackID);
-// Every source in the order is asked for the track at once, each once a launch, and `done` gets the ones with
-// lines, by key, when all have answered or `wait` has passed.
+// Every source in the order is asked for the track at once, the answers kept for the last few tracks, and
+// `done` gets the ones with lines, by key, when all have answered or `wait` has passed.
 void SGLyricsOffers(NSString *trackID, NSTimeInterval wait, void (^done)(NSDictionary<NSString *, SGLyricsResult *> *offers));
 // Makes the offer of `key` the track's lyrics now, everywhere they show, and posts
 // SGLyricsSourceChosenNotification (object the track's id) once its lines are kept.
