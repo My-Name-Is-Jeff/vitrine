@@ -51,7 +51,7 @@ void SGLyricsForgetAITranslation(NSString *trackID, NSString *languageTag);
 NSString *SGLyricsSongName(NSString *trackID);
 
 // The language a translation is asked in: the Lyrics page's, else the phone's own.
-NSString *SGLyricsGeminiLanguage(void);
+NSString *SGLyricsTranslationTarget(void);
 
 // The request a provider is sent, plain being the one without the optional fields some models turn down.
 // nil for an unknown provider or a server URL that is not usable.

@@ -56,7 +56,7 @@ SGTranslationSource *SGLyricsSyncSavedTranslation(NSString *track, NSString *lan
             line.translationMade = YES;
         }
     }
-    return saved ? source : nil;
+    return source;
 }
 
 // One at a time, in the order asked: a song is saved after every batch, and an older write must not land last.

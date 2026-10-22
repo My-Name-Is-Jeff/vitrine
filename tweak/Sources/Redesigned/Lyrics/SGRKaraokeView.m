@@ -1820,8 +1820,8 @@ static BOOL anyUntranslated(NSArray<SGKaraokeLine *> *lines) {
     _breakCount = 0;
     _hasSpoken = _hasTranslation = _untranslated = NO;
     _plain = SGKaraokeLinesTiming(_lines) == SGKaraokeTimingNone;
-    _saved = _sample ? nil : SGLyricsSyncSavedTranslation(_track, SGLyricsGeminiLanguage(), _lines);
-    _foreign = inAnotherLanguage(_lines, SGLyricsGeminiLanguage());
+    _saved = _sample ? nil : SGLyricsSyncSavedTranslation(_track, SGLyricsTranslationTarget(), _lines);
+    _foreign = inAnotherLanguage(_lines, SGLyricsTranslationTarget());
     NSInteger sungTo = 0;   // the top of the song counts as where the singing before the first line ends
     for (NSUInteger i = 0; i < count; i++) {
         SGKaraokeLine *line = _lines[i];
@@ -1919,7 +1919,7 @@ static BOOL anyUntranslated(NSArray<SGKaraokeLine *> *lines) {
 // The button shows only for a song with a pronunciation or a translation to show, and its menu only
 // what the song has: a switch for each, reading what tapping it will do.
 - (void)offerExtras {
-    NSString *language = SGLyricsGeminiLanguage();
+    NSString *language = SGLyricsTranslationTarget();
     BOOL ai = SGAITranslatorReady(), onDevice = SGOnDeviceTranslation.translationAvailable;
     BOOL intelligence = [SGOnDeviceTranslation appleIntelligenceAvailable:language];
     // A translator is offered only for a song in another language than the one it would translate into.
@@ -1980,7 +1980,7 @@ static BOOL anyUntranslated(NSArray<SGKaraokeLine *> *lines) {
         if (_saved.deletable) {
             NSString *track = _track;
             UIAction *delete = [UIAction actionWithTitle:@"Delete This Translation" image:[UIImage systemImageNamed:@"trash"] identifier:nil
-                                                 handler:^(UIAction *action) { SGLyricsDeleteSavedTranslation(track, SGLyricsGeminiLanguage()); }];
+                                                 handler:^(UIAction *action) { SGLyricsDeleteSavedTranslation(track, SGLyricsTranslationTarget()); }];
             delete.attributes = UIMenuElementAttributesDestructive;
             [about addObject:delete];
         }
@@ -2031,7 +2031,7 @@ static BOOL anyUntranslated(NSArray<SGKaraokeLine *> *lines) {
     if (!lines.count || _translating == lines) return;
     _translating = lines;
     [self offerExtras];
-    NSString *language = SGLyricsGeminiLanguage();
+    NSString *language = SGLyricsTranslationTarget();
     // Kept a batch at a time too, so a translation cut off by Spotify closing keeps what was done.
     translator(lines, track, language, ^(NSArray<NSString *> *soFar, NSString *error) {
         [self takeTranslations:soFar into:lines];

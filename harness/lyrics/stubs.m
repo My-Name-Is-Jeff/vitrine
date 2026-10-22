@@ -57,7 +57,7 @@ NSString *SGAITranslatorRecipient(void) { return @"Google"; }
 - (BOOL)deletable { return YES; }
 @end
 SGTranslationSource *SGAITranslatorSource(void) { return [SGTranslationSource by:@"gemini" model:@"harness" made:nil]; }
-NSString *SGLyricsGeminiLanguage(void) { return SGLyricsTranslationLanguage() ?: @"en"; }
+NSString *SGLyricsTranslationTarget(void) { return SGLyricsTranslationLanguage() ?: @"en"; }
 void SGLyricsTranslateWithAI(NSString *trackID, NSArray<SGKaraokeLine *> *lines, NSString *languageTag,
                              void (^done)(NSArray<NSString *> *translations, NSString *error)) {
     NSMutableArray<NSString *> *translations = [NSMutableArray array];

@@ -17,6 +17,8 @@ static NSString *const kOpenAIDefaultURL = @"https://api.openai.com/v1";
 // The OpenAI-compatible server is kept beside its key, never in the settings: a settings file from someone
 // else could otherwise point a key stored here at their own server.
 static NSString *const kKeyAccount = @"api-key", *const kServerAccount = @"server";
+// A macro, not a constant: the provider table below needs a literal.
+#define kLinesFormat @"Answer with a JSON object whose \"lines\" array holds the {count} translations as strings."
 
 
 #pragma mark - the providers
@@ -89,23 +91,23 @@ static NSMutableURLRequest *geminiRequest(NSString *model, NSString *prompt, NSS
 }
 
 // Why Gemini stopped short, as finishReason or promptFeedback.blockReason name it.
-static NSString *geminiStop(NSString *reason) {
-    if ([reason isEqualToString:@"RECITATION"]) return @"Gemini stopped because its answer repeated published lyrics.";
-    if ([@[@"SAFETY", @"PROHIBITED_CONTENT", @"BLOCKLIST", @"SPII"] containsObject:reason]) return filtered(@"Gemini");
-    if ([reason isEqualToString:@"MAX_TOKENS"]) return tooLong(@"Gemini");
-    return [NSString stringWithFormat:@"Gemini stopped before translating the song (%@).", reason];
+static NSString *geminiStop(NSString *reason, NSString *speaker) {
+    if ([reason isEqualToString:@"RECITATION"]) return [NSString stringWithFormat:@"%@ stopped because its answer repeated published lyrics.", speaker];
+    if ([@[@"SAFETY", @"PROHIBITED_CONTENT", @"BLOCKLIST", @"SPII"] containsObject:reason]) return filtered(speaker);
+    if ([reason isEqualToString:@"MAX_TOKENS"]) return tooLong(speaker);
+    return [NSString stringWithFormat:@"%@ stopped before translating the song (%@).", speaker, reason];
 }
 
 static NSString *geminiAnswer(NSDictionary *reply, NSString *speaker, NSString **stopped) {
     NSString *blocked = string(dig(reply, @[@"promptFeedback", @"blockReason"]));
     NSString *finished = string(dig(reply, @[@"candidates", @0, @"finishReason"]));
-    if (blocked) *stopped = geminiStop(blocked);
-    else if (finished && ![finished isEqualToString:@"STOP"]) *stopped = geminiStop(finished);
+    if (blocked) *stopped = geminiStop(blocked, speaker);
+    else if (finished && ![finished isEqualToString:@"STOP"]) *stopped = geminiStop(finished, speaker);
     return *stopped ? nil : string(dig(reply, @[@"candidates", @0, @"content", @"parts", @0, @"text"]));
 }
 
-// A server URL as typed or restored: http or https with a host, nothing that could carry a secret (a user,
-// a password, a query) into an exported settings file, and without /chat/completions if it was pasted whole.
+// A server URL as typed or stored: http or https with a host, no user, password or query (which could carry a
+// secret into the log and the key row), and without /chat/completions if it was pasted whole.
 NSString *SGAIServerIn(NSString *text) {
     NSString *trimmed = [text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     NSURLComponents *url = trimmed.length ? [NSURLComponents componentsWithString:trimmed] : nil;
@@ -188,11 +190,11 @@ static const SGAIProvider kProviders[] = {
      @"Sends the song's lyrics to the server below: OpenAI's own unless you name another, such as OpenRouter, or an "
      @"Ollama on your network (http works for local addresses). The key stays on this iPhone; for a server without "
      @"keys, type anything.",
-     @"Answer with a JSON object whose \"lines\" array holds the {count} translations as strings.",
+     kLinesFormat,
      {nil}, {nil}, NO, {@"response_format", @"json_schema", @"reasoning"}, openAIRequest, openAIAnswer},
     {@"anthropic", @"Anthropic", @"Anthropic", @"Vitrine.Anthropic",
      @"Translate with Anthropic sends the song's lyrics to Anthropic, on your own key from the Claude Console. The key stays on this iPhone.",
-     @"Answer with a JSON object whose \"lines\" array holds the {count} translations as strings.",
+     kLinesFormat,
      // The cheapest current model first: the reason a model is picked at all is what translating costs.
      {@"claude-haiku-5-5", @"claude-sonnet-5-5", @"claude-opus-5-5"}, {@"Haiku 5.5", @"Sonnet 5.5", @"Opus 5.5"},
      NO, {@"output_config", @"effort", @"json_schema"}, anthropicRequest, anthropicAnswer},
@@ -211,9 +213,13 @@ static const SGAIProvider *chosen(void) {
 
 static BOOL isOpenAI(const SGAIProvider *p) { return [p->tag isEqualToString:@"openai"]; }
 
+static NSString *serverHost(void) {
+    return [NSURL URLWithString:openAIServer() ?: @""].host;
+}
+
 // Who the messages name: the provider, or for an OpenAI-compatible one its server's host.
 static NSString *speaker(const SGAIProvider *p) {
-    return isOpenAI(p) ? ([NSURL URLWithString:openAIServer() ?: @""].host ?: @"The server") : p->name;
+    return isOpenAI(p) ? serverHost() ?: @"The server" : p->name;
 }
 
 #pragma mark - the keys
@@ -243,8 +249,6 @@ static void storeSecret(const SGAIProvider *p, NSString *account, NSString *valu
     if (status != errSecSuccess) SGLog(@"ai: the %@ %@ could not be kept (%d)", p->tag, account, (int)status);
 }
 
-static NSString *storedKey(const SGAIProvider *p) { return storedSecret(p, kKeyAccount); }
-static void storeKey(const SGAIProvider *p, NSString *key) { storeSecret(p, kKeyAccount, key); }
 
 #pragma mark - the model and the prompt
 
@@ -290,12 +294,12 @@ static NSString *fingerprint(NSString *text) {
 
 BOOL SGAITranslatorReady(void) {
     const SGAIProvider *p = chosen();
-    return storedKey(p) && model(p) && (!isOpenAI(p) || openAIServer());
+    return storedSecret(p, kKeyAccount) && model(p) && (!isOpenAI(p) || openAIServer());
 }
 
 NSString *SGAITranslatorName(void) {
     const SGAIProvider *p = chosen();
-    return isOpenAI(p) ? model(p) ?: p->name : p->name;
+    return isOpenAI(p) && model(p) ? model(p) : p->name;
 }
 
 NSString *SGAITranslatorRecipient(void) {
@@ -343,7 +347,7 @@ NSString *SGLyricsSongName(NSString *trackID) {
                                                                      : [NSString stringWithFormat:@"“%@”", title];
 }
 
-NSString *SGLyricsGeminiLanguage(void) {
+NSString *SGLyricsTranslationTarget(void) {
     return SGLyricsTranslationLanguage() ?: NSLocale.preferredLanguages.firstObject ?: @"en";
 }
 
@@ -448,7 +452,7 @@ void SGLyricsForgetAITranslation(NSString *trackID, NSString *languageTag) {
 void SGLyricsTranslateWithAI(NSString *trackID, NSArray<SGKaraokeLine *> *lines, NSString *languageTag,
                              void (^done)(NSArray<NSString *> *translations, NSString *error)) {
     const SGAIProvider *p = chosen();
-    NSString *key = storedKey(p), *modelID = model(p), *template = promptTemplate();
+    NSString *key = storedSecret(p, kKeyAccount), *modelID = model(p), *template = promptTemplate();
     if (!key || !modelID) {
         done(nil, [NSString stringWithFormat:@"Add a %@ API key%@ on the Lyrics page first.", p->name, modelID ? @"" : @" and a model"]);
         return;
@@ -513,7 +517,7 @@ static void configure(UITextField *field, NSString *placeholder) {
 // where the key stays: each song translated goes to the provider whole.
 static void askForKey(void) {
     const SGAIProvider *p = chosen();
-    BOOL server = isOpenAI(p), stored = storedKey(p) != nil;
+    BOOL server = isOpenAI(p), stored = storedSecret(p, kKeyAccount) != nil;
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"%@ API key", p->name]
                                                                    message:p->keyNote preferredStyle:UIAlertControllerStyleAlert];
     alert.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;   // over the dark settings, whatever the system's
@@ -528,7 +532,7 @@ static void askForKey(void) {
         NSMutableCharacterSet *around = [NSMutableCharacterSet whitespaceAndNewlineCharacterSet];
         [around addCharactersInString:@"\"'“”‘’"];
         NSString *key = [keyField().text stringByTrimmingCharactersInSet:around];
-        if (key.length) storeKey(p, key);   // empty keeps the one stored: Remove is what takes it away
+        if (key.length) storeSecret(p, kKeyAccount, key);   // empty keeps the one stored: Remove is what takes it away
     }];
     __weak UIAlertAction *weakSave = save;
     void (^check)(void) = ^{
@@ -555,7 +559,7 @@ static void askForKey(void) {
     check();
     if (stored) {
         [alert addAction:[UIAlertAction actionWithTitle:@"Remove" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
-            storeKey(p, nil);
+            storeSecret(p, kKeyAccount, nil);
             storeSecret(p, kServerAccount, nil);
         }]];
     }
@@ -687,8 +691,8 @@ NSArray<SGModRow *> *SGAITranslatorRows(void) {
     });
     SGModRow *key = SGStatActionRow(@"API key", @"Translate any song from the lyrics' corner menu", ^NSString *{
         const SGAIProvider *p = chosen();
-        if (!storedKey(p)) return @"Off";
-        return isOpenAI(p) ? [NSURL URLWithString:openAIServer() ?: @""].host ?: @"Server not usable" : @"Set";
+        if (!storedSecret(p, kKeyAccount)) return @"Off";
+        return isOpenAI(p) ? serverHost() ?: @"Server not usable" : @"Set";
     }, ^{ askForKey(); });
     SGModRow *prompt = SGStatActionRow(@"Translation prompt", @"What the AI translator is told to do with a song's lines",
                                        ^NSString *{ return storedString(SGKeyAIPrompt) ? @"Edited" : @"Default"; }, ^{

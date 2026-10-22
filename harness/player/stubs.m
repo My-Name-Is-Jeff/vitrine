@@ -131,7 +131,7 @@ void SGLyricsMeaningsFor(NSString *trackID, NSArray<SGKaraokeLine *> *lines,
 // AI translation and the settings framework's top controller: not part of the harness.
 #import "Shared/LyricsTranslation/LyricsTranslation.h"
 BOOL SGAITranslatorReady(void) { return NO; }
-NSString *SGLyricsGeminiLanguage(void) { return @"en"; }
+NSString *SGLyricsTranslationTarget(void) { return @"en"; }
 void SGLyricsTranslateWithAI(NSString *trackID, NSArray<SGKaraokeLine *> *lines, NSString *languageTag,
                              void (^done)(NSArray<NSString *> *translations, NSString *error)) { done(nil, @"harness"); }
 
