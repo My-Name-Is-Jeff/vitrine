@@ -131,7 +131,7 @@ static BOOL betterRecord(NSDictionary *record, NSDictionary *best, NSInteger sec
     }
     NSString *text = record[@"syncedLyrics"] ?: record[@"plainLyrics"] ?: @"";
     NSString *wasText = best[@"syncedLyrics"] ?: best[@"plainLyrics"] ?: @"";
-    return [text isKindOfClass:NSString.class] && [text length] > [wasText length];
+    return [text isKindOfClass:NSString.class] && (![wasText isKindOfClass:NSString.class] || text.length > wasText.length);
 }
 
 static NSDictionary *bestOf(id found, NSInteger seconds) {

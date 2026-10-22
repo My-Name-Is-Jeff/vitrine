@@ -320,6 +320,12 @@ int main(int argc, char **argv) {
                   @{@"id": @3, @"duration": @202, @"hasWordSync": @YES, @"syncedLyrics": twoLines, @"lyricsfile": wordFile}];
         SGLrcLibAsk(query, ^(SGLyricsResult *result) { got = result; });
         CHECK(got.wordTimed && got.karaokeLines.count == 1);
+        // With no length to go on, a record whose LRC is null against one whose LRC is empty: the plain text wins.
+        query.seconds = 0;
+        found = @[@{@"id": @4, @"syncedLyrics": NSNull.null, @"plainLyrics": @"x"}, @{@"id": @5, @"syncedLyrics": @"", @"plainLyrics": @"y\nz"}];
+        got = nil;
+        SGLrcLibAsk(query, ^(SGLyricsResult *result) { got = result; });
+        CHECK(got && !got.synced);
 
         for (int i = 1; i < argc; i++) checkLive(@(argv[i]));
         printf("lyrics-sources: all checks passed\n");
