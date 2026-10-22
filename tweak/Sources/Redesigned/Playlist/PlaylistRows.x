@@ -28,7 +28,14 @@
 // Under the text rather than the whole row, as the Music app draws it; the trailing end clears the page margin.
 static const CGFloat kHairline = 0.5, kHairlineGap = 12;
 
-static char kRowKey, kTrackRowKey, kArtKey, kSubtitleKey, kLineKey, kToolbarKey;
+static char kRowKey, kTrackRowKey, kArtKey, kArtHolderKey, kSubtitleKey, kLineKey, kToolbarKey;
+
+@interface SGRRowArtHolder : NSObject
+@property (nonatomic, weak) UIView *view;
+@end
+
+@implementation SGRRowArtHolder
+@end
 
 static UIView *identified(UIView *root, NSString *identifier, const void *cacheKey) {
     return SGRFindByIdentifier(root, identifier, cacheKey);
@@ -59,12 +66,22 @@ static void applyHairline(UIView *row, CGFloat leading) {
 }
 
 // Where the artwork has no Encore.ImageView of its own (Track.Row): the holder the picture is drawn in, a private
-// class of the row kit that is told by its name.
+// class of the row kit that is told by its name. Kept on the row, as the lookups by identifier are.
 static UIView *artHolderIn(UIView *row) {
+    SGRRowArtHolder *box = objc_getAssociatedObject(row, &kArtHolderKey);
+    UIView *cached = box.view;
+    if (cached && [cached isDescendantOfView:row]) return cached;
     __block UIView *found = nil;
     SGForEachView(row, ^(UIView *v) {
         if (!found && [NSStringFromClass(v.class) hasSuffix:@"ImageViewHolder"]) found = v;
     });
+    if (found) {
+        if (!box) {
+            box = [SGRRowArtHolder new];
+            objc_setAssociatedObject(row, &kArtHolderKey, box, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        box.view = found;
+    }
     return found;
 }
 
