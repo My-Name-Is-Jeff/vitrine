@@ -47,6 +47,7 @@ void SGLyricsGetJSON(NSURL *url, NSDictionary *headers, void (^done)(id root)) {
     NSData *body = fetched(url);
     done(body ? [NSJSONSerialization JSONObjectWithData:body options:0 error:nil] : nil);
 }
+void SGLyricsPostJSON(NSURL *url, NSDictionary *headers, id body, void (^done)(id root)) { done(nil); }
 void SGLyricsGetText(NSURL *url, void (^done)(NSString *text)) {
     NSData *body = fetched(url);
     done(body ? [[NSString alloc] initWithData:body encoding:NSUTF8StringEncoding] : nil);
@@ -109,6 +110,10 @@ static void checkPicks(void) {
         @[@"Under Pressure", @"Queen, David Bowie", reply(@[@[@6868363, @"Queen & David Bowie - Under Pressure (Traducción al Español)", @[@"Genius Traducciones al Español"]], @[@152350, @"Under Pressure", @[@"Queen", @"David Bowie"]]]), @152350],
         @[@"EARFQUAKE", @"Tyler, The Creator", reply(@[@[@4420287, @"EARFQUAKE", @[@"Tyler, The Creator"]]]), @4420287],
         @[@"Dynamite", @"BTS", reply(@[@[@5813592, @"Dynamite", @[@"BTS (방탄소년단)"]]]), @5813592],
+        // A local file's tag naming the guest after the lead.
+        @[@"Old Town Road", @"Lil Nas X feat. Billy Ray Cyrus", oldTownRoad, @4133841],
+        // A title with no word of its own matches nothing, not every untitled hit.
+        @[@"(Untitled)", @"Lil Nas X", reply(@[@[@1, @"[Untitled]", @[@"Lil Nas X"]]]), @0],
         @[@"ЗНАК (SIGN)", @"Dora", reply(@[@[@13935027, @"ЗНАК (SIGN)", @[@"Toxi$", @"Дора (Dora)"]]]), @13935027],
     ];
     // A null where Genius sends a boolean is not instrumental, and does not throw.

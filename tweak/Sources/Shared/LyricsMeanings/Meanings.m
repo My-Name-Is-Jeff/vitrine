@@ -2,6 +2,7 @@
 #import "Settings/SGModPage.h"
 #import "Headers/SPTPlayer.h"
 #import "Meanings.h"
+#import "Shared/LyricsSources/LyricsSources.h"
 
 static NSString *const kReferents = @"https://genius.com/api/referents";
 static const NSUInteger kMostPages = 5, kPerPage = 50;
@@ -150,9 +151,9 @@ static NSString *withoutGuests(NSString *title) {
 }
 
 // Spotify joins a track's artists with ", ", which a name can hold too ("Tyler, The Creator"), so the
-// lead artist is any run of the first names.
+// lead artist is any run of the first names; a local file's tag may name the lead before " feat." instead.
 static NSSet<NSString *> *leadNames(NSString *artist) {
-    NSMutableSet<NSString *> *names = [NSMutableSet set];
+    NSMutableSet<NSString *> *names = [NSMutableSet setWithObject:folded(SGLyricsLeadArtist(artist))];
     NSString *run = @"";
     for (NSString *part in [artist componentsSeparatedByString:@", "]) {
         run = run.length ? [run stringByAppendingFormat:@" %@", folded(part)] : folded(part);
@@ -180,6 +181,7 @@ static BOOL byLead(NSDictionary *song, NSSet<NSString *> *leads) {
 NSNumber *SGGeniusSongIn(NSDictionary *response, NSString *title, NSString *artist) {
     if (![response isKindOfClass:NSDictionary.class] || !title.length || !artist.length) return nil;
     NSString *wantTitle = folded(bareTitle(title));
+    if (!wantTitle.length) return nil;
     NSSet<NSString *> *wantVersion = versionOf(withoutGuests(title));
     // Genius files a song's words under the song; a track with none sung would get them anyway.
     if ([wantVersion containsObject:@"instrumental"] || [wantVersion containsObject:@"karaoke"]) return nil;
