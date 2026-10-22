@@ -474,7 +474,9 @@ static void step(SGLyricsWalk *walk) {
     }
     SGLyricsProvider *provider = SGLyricsProviderFor(walk.order[walk.index++]);
     // Not yet known asks: wrongly passing Genius over would keep "no lyrics" for a track Spotify has none for.
-    if (provider.untimed && (merged.karaokeLines.count || merged.texts.count || SGLyricsSpotifyHas(query.trackID) == 1)) {
+    // The source picked for the track is asked whatever Spotify has: the pick stands timed or not.
+    if (provider.untimed && ![provider.key isEqualToString:walk.picked]
+        && (merged.karaokeLines.count || merged.texts.count || SGLyricsSpotifyHas(query.trackID) == 1)) {
         step(walk);
         return;
     }
