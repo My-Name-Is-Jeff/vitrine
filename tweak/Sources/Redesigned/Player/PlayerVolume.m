@@ -25,6 +25,7 @@ static const CGFloat kTrackAbove = 2;
 @implementation SGRVolumeRow {
     MPVolumeView *_volume;
     UIImageView *_quiet, *_loud;
+    BOOL _styled;
 }
 
 static UIImage *trackImage(UIColor *color) {
@@ -46,6 +47,14 @@ static UIImage *thumbImage(void) {
     }];
 }
 
+// MPVolumeView's slider, the one view of it that is a UISlider.
+static UISlider *sliderIn(UIView *view) {
+    for (UIView *sub in view.subviews) {
+        if ([sub isKindOfClass:UISlider.class]) return (UISlider *)sub;
+    }
+    return nil;
+}
+
 static UIImageView *glyph(NSString *symbol) {
     UIImageSymbolConfiguration *configuration = [UIImageSymbolConfiguration configurationWithPointSize:kGlyphSize weight:UIImageSymbolWeightSemibold];
     UIImageView *view = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:symbol withConfiguration:configuration]];
@@ -62,9 +71,6 @@ static UIImageView *glyph(NSString *symbol) {
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
     _volume.showsRouteButton = NO;
 #pragma clang diagnostic pop
-    [_volume setMinimumVolumeSliderImage:trackImage(UIColor.whiteColor) forState:UIControlStateNormal];
-    [_volume setMaximumVolumeSliderImage:trackImage([UIColor colorWithWhite:1 alpha:0.22]) forState:UIControlStateNormal];
-    [_volume setVolumeThumbImage:thumbImage() forState:UIControlStateNormal];
     _quiet = glyph(@"speaker.fill");
     _loud = glyph(@"speaker.wave.3.fill");
     [self addSubview:_quiet];
@@ -73,8 +79,28 @@ static UIImageView *glyph(NSString *symbol) {
     return self;
 }
 
+// iOS 26's thumbless slider is the one the progress bar above and the Music app's volume use: it grows under the finger
+// and drags from anywhere on the track. Older systems keep a drawn track and thumb. MPVolumeView makes its slider when it
+// first lays out, so the style goes on then.
+- (void)styleSlider {
+    UISlider *slider = sliderIn(_volume);
+    if (_styled || !slider) return;
+    _styled = YES;
+    if (@available(iOS 26.0, *)) {
+        slider.sliderStyle = UISliderStyleThumbless;
+        slider.minimumTrackTintColor = UIColor.whiteColor;
+        slider.maximumTrackTintColor = [UIColor colorWithWhite:1 alpha:0.22];
+        return;
+    }
+    [_volume setMinimumVolumeSliderImage:trackImage(UIColor.whiteColor) forState:UIControlStateNormal];
+    [_volume setMaximumVolumeSliderImage:trackImage([UIColor colorWithWhite:1 alpha:0.22]) forState:UIControlStateNormal];
+    [_volume setVolumeThumbImage:thumbImage() forState:UIControlStateNormal];
+}
+
 - (void)layoutSubviews {
     [super layoutSubviews];
+    [_volume layoutIfNeeded];
+    [self styleSlider];
     CGRect bounds = self.bounds;
     CGFloat side = kRowHeight, middle = CGRectGetMidY(bounds), glyphs = middle - kTrackAbove;
     _quiet.frame = CGRectMake(0, glyphs - side / 2, side / 2 + kGlyphSize / 2, side);
