@@ -273,6 +273,19 @@ int main(int argc, char **argv) {
                                             @[@"lines:", @"  stray\nlines:"]]) {
             CHECK(!SGLyricsfileLines([wordFile stringByReplacingOccurrencesOfString:swap[0] withString:swap[1]]));
         }
+        // Nested far past the spec's four levels, or over a megabyte: refused, not followed. The same file
+        // with its extra key nested ten deep still reads.
+        NSString *(^nested)(NSUInteger) = ^NSString *(NSUInteger levels) {
+            NSMutableString *doc = [NSMutableString stringWithString:wordFile];
+            for (NSUInteger level = 0; level < levels; level++) {
+                [doc appendFormat:@"%@k:\n", [@"" stringByPaddingToLength:level withString:@" " startingAtIndex:0]];
+            }
+            [doc appendFormat:@"%@x: 1\n", [@"" stringByPaddingToLength:levels withString:@" " startingAtIndex:0]];
+            return doc;
+        };
+        CHECK(SGLyricsfileLines(nested(10)).count == 1);
+        CHECK(!SGLyricsfileLines(nested(20)) && !SGLyricsfileLines(nested(1000)));
+        CHECK(!SGLyricsfileLines([wordFile stringByAppendingFormat:@"plain: |\n  %@\n", [@"" stringByPaddingToLength:(1 << 20) withString:@"a" startingAtIndex:0]]));
         CHECK(!SGLyricsfileLines(@"[not, yaml") && !SGLyricsfileLines(@"") && !SGLyricsfileLines(nil) && !SGLyricsfileLines((NSString *)@3));
 
         // LRCLIB: a record with words timed answers with them; one whose Lyricsfile cannot be read

@@ -23,7 +23,7 @@
 @interface SGLFReader : NSObject {
 @public
     NSMutableArray<NSString *> *rows;
-    NSUInteger at;
+    NSUInteger at, depth;
     BOOL failed;
 }
 @end
@@ -240,10 +240,19 @@ static NSArray *sequence(SGLFReader *r, NSUInteger indent) {
     return items;
 }
 
+// The spec nests four deep; a reply nested far deeper is refused before it can run the stack out.
+static const NSUInteger kMaxDepth = 16;
+
 static id node(SGLFReader *r, NSUInteger indent) {
     NSString *row = nextRow(r);
     if (!row) return NSNull.null;
-    return isDash(row, indent) ? sequence(r, indent) : mapping(r, indent);
+    if (++r->depth > kMaxDepth) {
+        r->failed = YES;
+        return nil;
+    }
+    id value = isDash(row, indent) ? sequence(r, indent) : mapping(r, indent);
+    r->depth--;
+    return value;
 }
 
 // The document as dictionaries, arrays and strings; nil when it is not YAML this reads.
@@ -260,6 +269,9 @@ static id parseYAML(NSString *yaml) {
 }
 
 #pragma mark - the lines
+
+// A whole song is tens of kilobytes; anything past this is no Lyricsfile.
+static const NSUInteger kMaxLength = 1 << 20;
 
 // A time in milliseconds: digits only, none negative. -1 for anything else.
 static NSInteger msOf(id value) {
@@ -323,7 +335,7 @@ static SGKaraokeLine *wordLine(NSArray *rawWords, NSInteger start, NSInteger end
 }
 
 NSArray<SGKaraokeLine *> *SGLyricsfileLines(NSString *yaml) {
-    if (![yaml isKindOfClass:NSString.class]) return nil;
+    if (![yaml isKindOfClass:NSString.class] || yaml.length > kMaxLength) return nil;
     NSDictionary *root = parseYAML(yaml);
     if (![root isKindOfClass:NSDictionary.class] || ![root[@"version"] isEqual:@"1.0"]) return nil;
     NSArray *rawLines = root[@"lines"];
