@@ -51,6 +51,9 @@ static const double kFloatMinMs = 700, kFloatLeadMs = 80;   // a short word stil
 // word and fades over kGlowFadeMs after it.
 static const double kGlowFromMs = 900, kGlowFullMs = 2400, kGlowFadeMs = 450;
 static const CGFloat kGlowRadius = 9, kGlowOpacity = 0.85;
+// The room the sweep's mask leaves around the lit part of a word for its glow: past the widest shadow's
+// visible tail, so the glow is cut nowhere but at the sweep's feathered edge (issue #68).
+static const CGFloat kGlowReach = kGlowRadius * 4;
 // How strongly the glow and the wave below are drawn, the Lyrics page's (LyricsLook.h), 1 being as here.
 static CGFloat sgr_glowScale = 1, sgr_waveScale = 1;
 // A word held long enough to glow lifts its letters one after another as the sweep reaches each, a wave
@@ -226,7 +229,7 @@ static UIView *lettersOf(NSArray<NSString *> *letters, NSArray<NSNumber *> *xs, 
     _lit.hidden = YES;
     [self addSubview:_lit];
 
-    CGFloat width = self.bounds.size.width + kFillEdge;
+    CGFloat width = self.bounds.size.width + 2 * kGlowReach + kFillEdge;
     _fill = [CAGradientLayer layer];
     _fill.colors = @[(id)UIColor.whiteColor.CGColor, (id)UIColor.whiteColor.CGColor, (id)UIColor.clearColor.CGColor];
     _fill.locations = @[@0, @((width - kFillEdge) / width), @1];
@@ -245,16 +248,19 @@ static UIView *lettersOf(NSArray<NSString *> *letters, NSArray<NSNumber *> *xs, 
 
 // The cursor is in line units and the feathered edge is centered on it, so the edge runs on through
 // the space into the next word instead of starting over at each one. Right to left, the mask is the
-// same one turned around: white from the word's right edge, the feather `local` in from it.
+// same one turned around: white from the word's right edge, the feather `local` in from it. The white
+// runs kGlowReach past the word on each side, and the edge follows the cursor that far past it, so a
+// word's glow is cut only where the sweep has not reached yet.
 - (void)fillTo:(CGFloat)cursor {
     CGFloat width = self.bounds.size.width, height = self.bounds.size.height;
-    CGFloat local = MAX(-kFillEdge / 2, MIN(width + kFillEdge / 2, cursor - _offset));
+    CGFloat local = MAX(-kFillEdge / 2, MIN(width + kGlowReach + kFillEdge / 2, cursor - _offset));
     if (local == _filled) return;
     _filled = local;
-    CGFloat left = _rightToLeft ? width - local - kFillEdge / 2 : local - kFillEdge / 2 - width;
+    CGFloat lit = width + 2 * kGlowReach;
+    CGFloat left = _rightToLeft ? width - local - kFillEdge / 2 : local - kFillEdge / 2 - lit;
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
-    _fill.frame = CGRectMake(left, -height / 2, width + kFillEdge, height * 2);
+    _fill.frame = CGRectMake(left, -kGlowReach, lit + kFillEdge, height + 2 * kGlowReach);
     [CATransaction commit];
 }
 
@@ -276,7 +282,8 @@ static double heldStrength(double held) {
 }
 
 // A held word glows, the more the longer it is held: white light around the lit part of it, since the
-// sweep's mask cuts the shadow too. Most words are too short to glow, and theirs is never drawn.
+// sweep's mask cuts the shadow too, kGlowReach out from the lit part. Most words are too short to glow,
+// and theirs is never drawn.
 - (void)glowAt:(double)ms {
     double held = _word.end - _word.start;
     CGFloat glow = 0;
