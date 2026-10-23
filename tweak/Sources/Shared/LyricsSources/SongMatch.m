@@ -72,14 +72,27 @@ static NSSet<NSString *> *leadNames(NSString *artist) {
     return names;
 }
 
+// A catalog writes several artists as one name, joined by punctuation ("A & B", "A/B", "A; B", "A, B") or a
+// word ("A and B", "A x B"), in either order; LRCLIB has every one of these. Lowercase " x " only: " X " ends
+// Lil Nas X.
+static NSArray<NSString *> *namesJoinedIn(NSString *name) {
+    NSMutableString *split = [name mutableCopy];
+    for (NSString *joiner in @[@"&", @"/", @";", @"+", @"•", @",", @" and ", @" with ", @" vs ", @" vs. "]) {
+        [split replaceOccurrencesOfString:joiner withString:@"\n" options:NSCaseInsensitiveSearch range:NSMakeRange(0, split.length)];
+    }
+    [split replaceOccurrencesOfString:@" x " withString:@"\n" options:0 range:NSMakeRange(0, split.length)];
+    return [split componentsSeparatedByString:@"\n"];
+}
+
 // Whether one of the song's own artists is the track's lead, by either name of one written twice over
-// ("BTS (방탄소년단)", "Дора (Dora)") or by the name before its " feat."; a featured singer or a translation
-// page's "Genius English Translations" never is.
+// ("BTS (방탄소년단)", "Дора (Dora)"), by the name before its " feat.", or by one of the names joined in it;
+// a featured singer or a translation page's "Genius English Translations" never is.
 static BOOL byLead(NSArray<NSString *> *songArtists, NSSet<NSString *> *leads) {
     for (NSString *name in songArtists) {
         if (![name isKindOfClass:NSString.class]) continue;
         NSArray<NSString *> *parts = [name componentsSeparatedByCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"()"]];
-        for (NSString *part in [parts arrayByAddingObjectsFromArray:@[name, SGLyricsLeadArtist(name)]]) {
+        parts = [parts arrayByAddingObjectsFromArray:@[name, SGLyricsLeadArtist(name)]];
+        for (NSString *part in [parts arrayByAddingObjectsFromArray:namesJoinedIn(name)]) {
             if ([leads containsObject:SGLyricsFoldedText(part)]) return YES;
         }
     }

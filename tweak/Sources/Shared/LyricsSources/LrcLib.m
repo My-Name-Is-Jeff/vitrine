@@ -143,7 +143,7 @@ static BOOL betterRecord(NSDictionary *record, NSDictionary *best, NSInteger sec
 
 // The search ranks by its own lights, and its first hit is often another song of the artist's or the
 // song by someone else, so a record has to be the track (SongMatch.m) before its timing counts. The
-// artists are written as one name, "A, B" for several.
+// artists are written as one name, joined however the uploader's tags had them.
 static NSArray<NSDictionary *> *matching(id found, SGLyricsQuery *query) {
     NSMutableArray<NSDictionary *> *records = [NSMutableArray array];
     for (NSDictionary *record in [found isKindOfClass:NSArray.class] ? found : @[]) {
@@ -151,7 +151,7 @@ static NSArray<NSDictionary *> *matching(id found, SGLyricsQuery *query) {
         NSInteger length = (NSInteger)[record[@"duration"] doubleValue];
         if (query.seconds > 0 && length > 0 && labs(length - query.seconds) > kLengthSlack) continue;
         NSString *artists = [record[@"artistName"] isKindOfClass:NSString.class] ? record[@"artistName"] : @"";
-        if (!SGLyricsSongRank(query.title, query.artist, record[@"trackName"], [artists componentsSeparatedByString:@", "])) continue;
+        if (!SGLyricsSongRank(query.title, query.artist, record[@"trackName"], @[artists])) continue;
         [records addObject:record];
     }
     return records;

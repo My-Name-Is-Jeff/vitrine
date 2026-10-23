@@ -403,6 +403,12 @@ int main(int argc, char **argv) {
         found = @[@{@"id": @8, @"trackName": @"a - Live", @"artistName": @"b, x", @"duration": @200, @"hasWordSync": @YES, @"syncedLyrics": twoLines, @"lyricsfile": wordFile}];
         got = lrclibAnswer(query, nil);
         CHECK(got.wordTimed && got.karaokeLines.count == 1);
+        // The artists joined by a word or by punctuation, in either order, as LRCLIB's records write them.
+        for (NSString *joined in @[@"b and x", @"B And X", @"x; b", @"B/X/B/X", @"b x x", @"x • b", @"b vs. x"]) {
+            found = @[@{@"id": @12, @"trackName": @"a", @"artistName": joined, @"duration": @200, @"syncedLyrics": twoLines}];
+            got = lrclibAnswer(query, nil);
+            CHECK(got.synced && got.karaokeLines.count == 2);
+        }
         // A record's words count once its Lyricsfile reads: one whose file cannot be read is weighed on its LRC,
         // so the words of a record further off win, and with no file that reads the closer LRC does.
         NSDictionary *unreadable = @{@"id": @9, @"trackName": @"a", @"artistName": @"b", @"duration": @202, @"hasWordSync": @YES, @"syncedLyrics": twoLines, @"lyricsfile": @"version: '9'"};
