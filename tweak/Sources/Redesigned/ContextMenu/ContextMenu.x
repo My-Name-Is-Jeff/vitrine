@@ -654,26 +654,7 @@ static void raiseHost(UIWindow *window) {
         SGLog(@"system menu: Spotify's rows asked for before the sheet has them");
         [session->_whenRead addObject:^{
             SGRMenuSession *read = weakSelf;
-            NSArray<UIMenuElement *> *elements = read ? (read->_groups ? [read rowElements] : [read unavailable]) : @[];
-            completion(elements);
-            // UIKit can leave its loading row up although the rows were handed to it: the menu it shows is built
-            // again after this one, and its deferred element is never asked (the songs liked by one artist, device
-            // 2026-10-23). The visible menu is then given the rows in place of it, tried as the menu comes on screen.
-            for (NSNumber *after in @[@0.15, @0.45, @0.9]) {
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(after.doubleValue * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                    SGRMenuSession *later = weakSelf;
-                    if (!later || later.ended) return;
-                    [later.anchor.contextMenuInteraction updateVisibleMenuWithBlock:^UIMenu *(UIMenu *visible) {
-                        NSUInteger at = [visible.children indexOfObjectPassingTest:^BOOL(UIMenuElement *child, NSUInteger index, BOOL *stop) {
-                            return [child isKindOfClass:UIDeferredMenuElement.class];
-                        }];
-                        if (at == NSNotFound) return visible;
-                        NSMutableArray<UIMenuElement *> *children = [visible.children mutableCopy];
-                        [children replaceObjectsInRange:NSMakeRange(at, 1) withObjectsFromArray:elements];
-                        return [visible menuByReplacingChildren:children];
-                    }];
-                });
-            }
+            completion(read ? (read->_groups ? [read rowElements] : [read unavailable]) : @[]);
         }];
     }];
 }
