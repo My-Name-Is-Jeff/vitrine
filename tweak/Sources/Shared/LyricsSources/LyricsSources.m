@@ -241,7 +241,7 @@ BOOL SGLyricsEnabled(void) {
 // request often lands a beat before the player moves on to its track, and comparing then left the
 // query nameless. A track the player has not reported starts with nothing, and the first source
 // that matches by id fills the rest in.
-static SGLyricsQuery *queryFor(NSString *trackID) {
+SGLyricsQuery *SGLyricsQueryFor(NSString *trackID) {
     SGLyricsQuery *query = [SGLyricsQuery new];
     query.trackID = trackID;
     // A local file is named by its own key: its tags, and the names the user gave it over them.
@@ -555,7 +555,7 @@ static void startWalk(NSString *trackID, SGLyricsQuery *query) {
 // Starts the walk as soon as the player has named the track, or once it has waited long enough
 // that it is not going to: a track opened for something other than what is playing is never named.
 static void whenNamed(NSString *trackID, NSTimeInterval waited) {
-    SGLyricsQuery *query = queryFor(trackID);
+    SGLyricsQuery *query = SGLyricsQueryFor(trackID);
     if (named(query) || waited >= kNameWait) {
         if (!named(query)) SGLog(@"lyrics: the player never named %@ in %.1fs", trackID, waited);
         startWalk(trackID, query);
@@ -703,10 +703,6 @@ UIViewController *SGLyricsSourcesPage(void) {
 }
 
 #pragma mark - a source picked for a track (LyricsPick.m)
-
-SGLyricsQuery *SGLyricsQueryFor(NSString *trackID) {
-    return queryFor(trackID);
-}
 
 NSUInteger SGLyricsFailures(void) {
     return atomic_load(&sg_failures);
