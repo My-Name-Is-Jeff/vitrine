@@ -113,7 +113,7 @@ static UIColor *footColor(CGImageRef poster) {
     enum { kWide = 16 };
     size_t height = CGImageGetHeight(poster), rows = MAX(1, (size_t)(height * kFootRows));
     CGImageRef strip = CGImageCreateWithImageInRect(poster, CGRectMake(0, height - rows, CGImageGetWidth(poster), rows));
-    uint8_t pixels[kWide * 4];
+    uint8_t pixels[kWide * 4] = {0};
     CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
     CGContextRef context = CGBitmapContextCreate(pixels, kWide, 1, 8, kWide * 4, space, (CGBitmapInfo)kCGImageAlphaNoneSkipLast);
     CGColorSpaceRelease(space);
