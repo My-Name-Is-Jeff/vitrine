@@ -19,7 +19,7 @@ xcrun -sdk iphonesimulator clang -target arm64-apple-ios17.0-simulator -fobjc-ar
     "$SRC"/Redesigned/Kit/SGRTokens.m "$SRC"/Redesigned/Kit/SGRGlass.m \
     "$SRC"/Settings/SGPage.m "$SRC"/Settings/SGPageStyle.m "$SRC"/Settings/SGModPage.m "$SRC"/Settings/SGGlowSwitch.m \
     "$SRC"/Core/SGLog.m "$SRC"/Core/SGPrefs.m "$SRC"/Core/SGGlass.m "$SRC"/Core/SGViewTree.m "$SRC"/Core/SGFlagForce.m "$SRC"/Core/SGUIMode.m \
-    -framework UIKit -framework QuartzCore -framework CoreGraphics -framework CoreText -framework Foundation -framework Symbols \
+    -framework UIKit -framework QuartzCore -framework CoreGraphics -framework CoreText -framework Foundation -framework Symbols -framework NaturalLanguage \
     -o "$APP/LyricsPageHarness"
 
 cat > "$APP/Info.plist" <<PLIST
