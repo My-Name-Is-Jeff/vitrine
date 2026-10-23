@@ -89,6 +89,14 @@ static NSMutableDictionary *editedEntry(NSDictionary *entry, NSDictionary *edite
     return now;
 }
 
+// Takes a tab of Spotify's off the split list.
+static void hideFromSplit(NSString *ident) {
+    if (![splitStockIDs() containsObject:ident]) return;
+    NSMutableArray<NSDictionary *> *split = [NSMutableArray array];
+    for (NSDictionary *entry in SGRNavbarSplit()) if (entry[SGRNavbarURI] || ![entry[SGRNavbarID] isEqual:ident]) [split addObject:entry];
+    SGRSetNavbarSplit(split);
+}
+
 // A tab of Spotify's moved over to the split list is shown there, so it is not left hidden on the bar's list: the
 // editor would have it both hidden and apart.
 static void showStockTab(NSString *ident) {
@@ -800,6 +808,9 @@ typedef NS_ENUM(NSInteger, SGRNavbarSection) {
 - (void)toggleRow:(NSInteger)row {
     NSMutableDictionary *entry = _entries[(NSUInteger)row];
     entry[SGRNavbarHidden] = [entry[SGRNavbarHidden] boolValue] ? nil : @YES;
+    // A Spotify tab hidden here while it stands apart leaves the split list too: hidden is hidden everywhere, and the
+    // editor would have it both hidden and apart while the bar still showed it on the right.
+    if (entry[SGRNavbarHidden]) hideFromSplit(entry[SGRNavbarID]);
     [self save];
     [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForRow:row inSection:SGRNavbarSectionTabs]] withRowAnimation:UITableViewRowAnimationNone];
 }

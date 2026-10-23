@@ -55,8 +55,14 @@ void SGRMigrateNavbarSplit(void) {
             [apart addObject:@{SGRNavbarID: ident, SGRNavbarTitle: entry[SGRNavbarTitle] ?: ident}];
         }
     }
-    // Spotify's tabs the bar's list never named stood where Spotify put them.
-    for (NSString *ident in split) [apart addObject:@{SGRNavbarID: ident, SGRNavbarTitle: ident}];
+    // Spotify's tabs the bar's list never named stood where Spotify put them: in Spotify's order, not the old list's,
+    // which was saved from a set and so in none.
+    NSArray<NSString *> *stock = SGRNavbarStock();
+    NSArray<NSString *> *rest = [split.array sortedArrayWithOptions:NSSortStable usingComparator:^NSComparisonResult(NSString *a, NSString *b) {
+        NSUInteger ia = [stock indexOfObject:a], ib = [stock indexOfObject:b];
+        return ia < ib ? NSOrderedAscending : ia > ib ? NSOrderedDescending : NSOrderedSame;
+    }];
+    for (NSString *ident in rest) [apart addObject:@{SGRNavbarID: ident, SGRNavbarTitle: ident}];
     SGRSetNavbarLayout(layout);
     SGRSetNavbarSplit(apart);
     [store removeObjectForKey:kNavbarSplitWas];
