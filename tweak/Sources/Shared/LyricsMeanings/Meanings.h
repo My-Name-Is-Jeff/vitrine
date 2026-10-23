@@ -36,12 +36,3 @@ SGModRow *SGLyricsMeaningsRow(void);
 // per track; the matching is done again for each set of lines.
 void SGLyricsMeaningsFor(NSString *trackID, NSArray<SGKaraokeLine *> *lines,
                          void (^done)(NSDictionary<NSNumber *, NSArray<SGLyricsMeaning *> *> *byLine));
-
-// Genius's search, which the lyrics source asks too (Shared/LyricsSources/Genius.m): its address, what
-// it is asked for a track, and the song in its reply that is the track, as SGLyricsSongRank
-// (Shared/LyricsSources/SongMatch.m) tells: of several, the same version wins, then the plain song.
-// nil when none is, or the track is an instrumental or karaoke version, since Genius files the words
-// under the song.
-#define SGGeniusSearchURL @"https://genius.com/api/search/song"
-NSDictionary<NSString *, NSString *> *SGGeniusSearchQuery(NSString *title, NSString *artist);
-NSNumber *SGGeniusSongIn(NSDictionary *response, NSString *title, NSString *artist);

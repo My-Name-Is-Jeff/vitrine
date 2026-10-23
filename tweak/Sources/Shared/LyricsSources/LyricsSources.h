@@ -208,6 +208,13 @@ NSString *SGLyricsFoldedText(NSString *text);
 NSString *SGLyricsBareTitle(NSString *title);
 NSSet<NSString *> *SGLyricsTitleVersion(NSString *title);
 NSInteger SGLyricsSongRank(NSString *title, NSString *artist, NSString *songTitle, NSArray<NSString *> *songArtists);
+// Genius's search, which the lyrics source (Genius.m) and the line meanings (LyricsMeanings/Meanings.m)
+// both ask: its address, what it is asked for a track, and the song in its reply that is the track, as
+// SGLyricsSongRank tells: of several, the same version wins, then the plain song. nil when none is, or
+// the track is an instrumental or karaoke version, since Genius files the words under the song.
+#define SGGeniusSearchURL @"https://genius.com/api/search/song"
+NSDictionary<NSString *, NSString *> *SGGeniusSearchQuery(NSString *title, NSString *artist);
+NSNumber *SGGeniusSongIn(NSDictionary *response, NSString *title, NSString *artist);
 
 // SpicyLyrics.m. Its key in the order; whether the user's own API key is in the Keychain; what keeps
 // it from answering, for its row on the sources page ("Needs a key", why the key was refused), nil

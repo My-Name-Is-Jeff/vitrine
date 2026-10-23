@@ -90,41 +90,6 @@ static NSString *stringIn(id value) {
     return [value isKindOfClass:NSString.class] ? value : nil;
 }
 
-NSDictionary<NSString *, NSString *> *SGGeniusSearchQuery(NSString *title, NSString *artist) {
-    return @{@"q": [NSString stringWithFormat:@"%@ %@", SGLyricsBareTitle(title), artist], @"per_page": @"10"};
-}
-
-NSNumber *SGGeniusSongIn(NSDictionary *response, NSString *title, NSString *artist) {
-    if (![response isKindOfClass:NSDictionary.class] || !title.length || !artist.length) return nil;
-    // Genius files a song's words under the song; a track with none sung would get them anyway.
-    NSSet<NSString *> *version = SGLyricsTitleVersion(title);
-    if ([version containsObject:@"instrumental"] || [version containsObject:@"karaoke"]) return nil;
-    // Best first: the same version, then the plain song, then any other version of it.
-    NSNumber *best = nil;
-    NSInteger bestRank = 0;
-    id sections = response[@"sections"];
-    for (NSDictionary *section in [sections isKindOfClass:NSArray.class] ? sections : @[]) {
-        id hits = [section isKindOfClass:NSDictionary.class] ? section[@"hits"] : nil;
-        for (NSDictionary *hit in [hits isKindOfClass:NSArray.class] ? hits : @[]) {
-            NSDictionary *song = [hit isKindOfClass:NSDictionary.class] ? hit[@"result"] : nil;
-            if (![song isKindOfClass:NSDictionary.class] || ![song[@"id"] isKindOfClass:NSNumber.class]) continue;
-            if ([song[@"instrumental"] isEqual:@YES]) continue;
-            NSMutableArray<NSString *> *names = [NSMutableArray array];
-            id primaries = song[@"primary_artists"];
-            for (NSDictionary *primary in [primaries isKindOfClass:NSArray.class] ? primaries : @[]) {
-                NSString *name = [primary isKindOfClass:NSDictionary.class] ? stringIn(primary[@"name"]) : nil;
-                if (name) [names addObject:name];
-            }
-            NSInteger rank = SGLyricsSongRank(title, artist, stringIn(song[@"title"]), names);
-            if (rank > bestRank) {
-                best = song[@"id"];
-                bestRank = rank;
-            }
-        }
-    }
-    return best;
-}
-
 // By the annotation, not the referent: a referent the artist spoke to is "verified" as a whole, the
 // editors' annotations under it too.
 static SGLyricsMeaningAuthor authorOf(NSDictionary *annotation) {

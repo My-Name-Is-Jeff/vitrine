@@ -2,7 +2,7 @@
 
 `./build.sh` checks, on the Mac as a Mac Catalyst binary, with no simulator and no network:
 
-- the song Genius's search reply gives a track (`SGGeniusSongIn` in `Shared/LyricsMeanings/Meanings.m`),
+- the song Genius's search reply gives a track (`SGGeniusSongIn` in `Shared/LyricsSources/SongMatch.m`),
   on replies carrying the titles and artists genius.com really answered for these tracks: a song of the
   same name by someone else is passed over (Yesterday by a HearonTrackz featuring Queen Key is not
   Queen's), a cover gets the singer's own page and nothing when Genius has none, a remix gets the remix

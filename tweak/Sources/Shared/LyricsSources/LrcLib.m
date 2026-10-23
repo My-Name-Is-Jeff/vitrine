@@ -66,8 +66,9 @@ static NSArray<SGKaraokeLine *> *linesFromLRC(NSString *lrc) {
 }
 
 // Without word sync a record's Lyricsfile only repeats its LRC's line times, so it is not read.
+// Whether a record has words to read: it says it times them, and it is not an instrumental.
 static BOOL timesWords(NSDictionary *record) {
-    return [record isKindOfClass:NSDictionary.class] && [record[@"hasWordSync"] isEqual:@YES];
+    return [record isKindOfClass:NSDictionary.class] && [record[@"hasWordSync"] isEqual:@YES] && ![record[@"instrumental"] boolValue];
 }
 
 static SGLyricsResult *syncedResult(NSArray<SGKaraokeLine *> *lines) {
@@ -171,7 +172,7 @@ static NSDictionary *bestOf(NSArray<NSDictionary *> *records, NSInteger seconds)
 // another queue: a long one takes a good part of a second to read, and the main queue would stall for all of it.
 static void resultFor(NSArray<NSDictionary *> *records, NSInteger seconds, void (^done)(SGLyricsResult *result)) {
     NSDictionary *best = bestOf(records, seconds);
-    if (!timesWords(best) || [best[@"instrumental"] boolValue]) {
+    if (!timesWords(best)) {
         done(resultFrom(best, nil));
         return;
     }
@@ -179,7 +180,7 @@ static void resultFor(NSArray<NSDictionary *> *records, NSInteger seconds, void 
         NSMutableArray<NSDictionary *> *left = [records mutableCopy];
         NSDictionary *top = best;
         NSArray<SGKaraokeLine *> *worded = nil;
-        while (timesWords(top) && ![top[@"instrumental"] boolValue]) {
+        while (timesWords(top)) {
             worded = SGLyricsfileLines(top[@"lyricsfile"]);
             if (worded) break;
             SGLog(@"lrclib: record %@ times words in a Lyricsfile this cannot read", top[@"id"]);
@@ -188,8 +189,7 @@ static void resultFor(NSArray<NSDictionary *> *records, NSInteger seconds, void 
             left[[left indexOfObjectIdenticalTo:top]] = onLines;
             top = bestOf(left, seconds);
         }
-        NSDictionary *chosen = top;
-        dispatch_async(dispatch_get_main_queue(), ^{ done(resultFrom(chosen, worded)); });
+        dispatch_async(dispatch_get_main_queue(), ^{ done(resultFrom(top, worded)); });
     });
 }
 

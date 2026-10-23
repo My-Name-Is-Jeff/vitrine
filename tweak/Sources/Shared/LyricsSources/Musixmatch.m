@@ -194,17 +194,7 @@ static SGLyricsResult *fromSubtitles(id body) {
 
 static SGLyricsResult *fromPlain(id body) {
     if (![body isKindOfClass:NSString.class] || ![body length]) return nil;
-    NSMutableArray<NSNumber *> *starts = [NSMutableArray array];
-    NSMutableArray<NSString *> *texts = [NSMutableArray array];
-    for (NSString *line in [body componentsSeparatedByString:@"\n"]) {
-        [starts addObject:@0];
-        [texts addObject:line.length ? line : @"♪"];
-    }
-    SGLyricsResult *lyrics = [SGLyricsResult new];
-    lyrics.starts = starts;
-    lyrics.texts = texts;
-    lyrics.karaokeLines = SGKaraokeStaticLines(texts);
-    return lyrics;
+    return SGLyricsPlainResult([body componentsSeparatedByString:@"\n"]);
 }
 
 // macro.subtitles.get runs the matcher and every lookup in one call; the best shape it has wins.

@@ -1,6 +1,6 @@
 // Genius, under every other source: the words as its users transcribed them, with no timing at all, for
-// a track no source has lyrics for. The song is found by the same search the line meanings use
-// (Shared/LyricsMeanings/Meanings.m).
+// a track no source has lyrics for. The song is found by the search the line meanings share
+// (SongMatch.m).
 //
 // Genius's API gives a song's details and not its words; /api/songs/:id/lyrics wants a signed-in user.
 // The words are read from the embed it offers other sites (songs/:id/embed.js, about 15 KB against the
@@ -10,18 +10,20 @@
 // own gets through.
 #import "Core/SGCore.h"
 #import "LyricsSources.h"
-#import "Shared/LyricsMeanings/Meanings.h"
 
 // The string the script hands JSON.parse, its JavaScript escapes undone: a JSON string.
 static NSString *scriptString(NSString *js) {
     NSRange open = [js rangeOfString:@"JSON.parse('"];
     if (open.location == NSNotFound) return nil;
     NSMutableString *json = [NSMutableString string];
-    for (NSUInteger i = NSMaxRange(open); i < js.length; i++) {
+    NSUInteger from = NSMaxRange(open);
+    for (NSUInteger i = from; i < js.length; i++) {
         unichar c = [js characterAtIndex:i];
+        if (c != '\'' && c != '\\') continue;
+        [json appendString:[js substringWithRange:NSMakeRange(from, i - from)]];
         if (c == '\'') return json;
-        if (c == '\\' && ++i < js.length) c = [js characterAtIndex:i];
-        [json appendFormat:@"%C", c];
+        if (++i < js.length) [json appendFormat:@"%C", [js characterAtIndex:i]];
+        from = i + 1;
     }
     return nil;
 }

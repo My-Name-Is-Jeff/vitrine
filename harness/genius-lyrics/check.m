@@ -1,12 +1,11 @@
 // Checks the Genius lyrics source without the phone: the search's pick of a song for a track
-// (SGGeniusSongIn, Meanings.m) on replies shaped like Genius's, with the titles and artists its search
+// (SGGeniusSongIn, SongMatch.m) on replies shaped like Genius's, with the titles and artists its search
 // really gave for these tracks, and the lines read out of a made-up embed script (Genius.m). With
 // `live`, the same tracks are searched on genius.com, the embed of each match is read, and the whole ask
 // runs once; only line counts are printed, since the words are real lyrics. Exits non-zero on the first
 // wrong answer.
 #import <UIKit/UIKit.h>
 #import "Shared/LyricsSources/LyricsSources.h"
-#import "Shared/LyricsMeanings/Meanings.h"
 #import "Settings/SGModPage.h"
 
 #define CHECK(cond) do { if (!(cond)) { fprintf(stderr, "FAILED line %d: %s\n", __LINE__, #cond); exit(1); } } while (0)

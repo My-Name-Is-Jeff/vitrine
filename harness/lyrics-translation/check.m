@@ -11,6 +11,7 @@
 @implementation SGLyricsResult
 @end
 void SGLyricsNoteReply(NSURLResponse *response, NSError *error) {}
+SGLyricsResult *SGLyricsPlainResult(NSArray<NSString *> *rows) { return nil; }
 NSString *SGLyricsTranslationLanguage(void) { return nil; }
 SGModRow *SGStatActionRow(NSString *t, NSString *s, NSString *(^v)(void), void (^a)(void)) { return nil; }
 SGModRow *SGOptionRow(NSString *t, NSString *s, NSString *k) { return nil; }
