@@ -1,6 +1,12 @@
 // A source picked for one track (issue #67). The walk stops at the first source with timed lyrics, so a source
 // lower in the order that has the song better timed is never asked; the redesigned player's ⋯ asks them all for
 // the track playing, lists the ones with lines, and keeps the one picked as the track's lyrics.
+//
+// A pick keeps the source's answer as the track's, marked picked, and records what the track showed before it.
+// A later walk asks the pick first: lines keep it, nothing drops it, a failed request leaves it and keeps the
+// walk's answer unmarked. A pick made while a walk runs stands, and the walk's answer is recorded as the
+// order's only when the walk ran the order as it is. Automatic puts the record back, or with the record gone
+// has the lyrics asked for again as on a first play.
 #import "Core/SGCore.h"
 #import "LyricsSources.h"
 #import "Shared/Lyrics/Lyrics.h"
@@ -166,14 +172,17 @@ void SGLyricsChooseAutomatic(NSString *trackID) {
     SGLyricsAutomatic *automatic = sg_automatic[trackID];
     [sg_chosen removeObjectForKey:trackID];
     [sg_automatic removeObjectForKey:trackID];
-    if (!automatic.kept) {
-        // What the order chose is no longer kept, or was never learned: the walk asks the order again.
-        SGLog(@"lyrics: pick dropped for %@, asking the order again", trackID);
-        SGLyricsRestoreKept(trackID, nil);
-        SGLyricsFetch(trackID, ^(SGLyricsResult *lyrics) { show(trackID, lyrics.provider, lyrics.karaokeLines); });
+    // The order's answer when it was learned, else nothing, so the next request walks the order again.
+    SGLyricsRestoreKept(trackID, automatic.kept);
+    if (!automatic.lines) {
+        // What the track showed is gone with its record, or was nothing while its walk ran: the lyrics are
+        // asked for as on a first play, the order's answer weighed against Spotify's own where that is done.
+        SGLog(@"lyrics: pick dropped for %@, asking again", trackID);
+        SGKaraokeAskAgain(trackID);
+        // The lyrics page drops the pick's lines on this and takes the answer as it comes.
+        [NSNotificationCenter.defaultCenter postNotificationName:SGLyricsSourceChosenNotification object:trackID];
         return;
     }
     SGLog(@"lyrics: pick dropped for %@, back to %@, %lu lines", trackID, automatic.credit, (unsigned long)automatic.lines.count);
-    SGLyricsRestoreKept(trackID, automatic.kept);
     show(trackID, automatic.credit, automatic.lines);
 }

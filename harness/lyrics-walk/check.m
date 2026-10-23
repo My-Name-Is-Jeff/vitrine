@@ -190,6 +190,44 @@ int main(int argc, char **argv) {
         CHECK([got.provider isEqualToString:@"Musixmatch"] && !got.picked && !SGLyricsChosenSource(@"t1"));
         sg_answers[@"lrclib"] = lines(YES);
 
+        // A pick made while the walk runs stands, with the walk begun on an earlier pick. That walk asked the
+        // earlier pick first, so its answer is not what the order would choose: Automatic puts back what the
+        // track showed before any pick, and the next request walks the order again.
+        NSArray<SGKaraokeLine *> *spotify = SGKaraokeStaticLines(@[@"s"]);
+        sg_shown[@"t2"] = spotify;
+        offers(@"t2");
+        SGLyricsChooseSource(@"t2", @"lrclib");
+        CHECK(![sg_shown[@"t2"] isEqualToArray:spotify]);
+        walkOthers(NO);
+        sg_held = @"lrclib";
+        __block SGLyricsResult *late = nil;
+        SGLyricsFetch(@"t2", ^(SGLyricsResult *result) { late = result; });
+        pump(^BOOL { return sg_release != nil; });
+        SGLyricsChooseSource(@"t2", @"netease");
+        sg_held = nil;
+        sg_release();
+        sg_release = nil;
+        pump(^BOOL { return late != nil; });
+        CHECK([late.provider isEqualToString:@"NetEase"] && late.picked && [SGLyricsChosenSource(@"t2") isEqualToString:@"netease"]);
+        SGLyricsChooseAutomatic(@"t2");
+        CHECK(!SGLyricsChosenSource(@"t2") && [sg_shown[@"t2"] isEqualToArray:spotify] && [SGLyricsCreditFor(@"t2") isEqualToString:@"Spotify"]);
+        [sg_asked removeAllObjects];
+        got = fetch(@"t2");
+        CHECK([sg_asked isEqualToArray:@[@"musixmatch:t2"]] && [got.provider isEqualToString:@"Musixmatch"] && !got.picked);
+
+        // Automatic once what it puts back is forgotten, 40 picks later: the track is asked for again as on a
+        // first play, and the lines it shows are never dropped for none.
+        offers(@"t3");
+        SGLyricsChooseSource(@"t3", @"lrclib");
+        walkOthers(YES);
+        CHECK([SGLyricsChosenSource(@"t3") isEqualToString:@"lrclib"]);
+        [sg_answers removeAllObjects];
+        SGLyricsChooseAutomatic(@"t3");
+        pump(^BOOL { return sg_askedAgain.count > 0; });
+        [NSRunLoop.mainRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.2]];
+        CHECK(!SGLyricsChosenSource(@"t3") && [sg_askedAgain isEqualToArray:@[@"t3"]] && !sg_shown[@"t3"]);
+        CHECK(!fetch(@"t3"));
+
         printf("lyrics-walk: all checks passed\n");
     }
     return 0;

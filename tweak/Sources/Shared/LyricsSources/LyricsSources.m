@@ -414,8 +414,9 @@ static void finish(SGLyricsWalk *walk) {
         SGLyricsKeepChosen(trackID, lyrics);
     } else if ([picked isKindOfClass:SGLyricsResult.class]) {
         // A source was picked from the player's ⋯ while the walk ran: the pick stands, and the walk's answer
-        // is what Automatic puts back.
-        SGLyricsNoteOrderChoice(trackID, lyrics);
+        // is what Automatic puts back. Not when the walk began with a pick of its own: that one was asked
+        // first and may have answered, so the walk never learned what the order would choose.
+        if (!walk.picked) SGLyricsNoteOrderChoice(trackID, lyrics);
         lyrics = picked;
     } else if (lyrics || (everyoneAsked && !failed) || merged.instrumental) {
         // With a pick whose request failed, the walk's answer is kept, but not as the pick's: it weighs

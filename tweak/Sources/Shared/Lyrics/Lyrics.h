@@ -147,6 +147,9 @@ void SGKaraokeRequestLyrics(NSString *trackID);
 // Asks Spotify's JSON lyrics for the track once, and keeps its lines only if they are more finely
 // timed than the ones kept: the lyrics view was left with plain text, and Spotify may have it timed.
 void SGKaraokeAskSpotifyForTiming(NSString *trackID);
+// Forgets the track's lines and, for the track playing, asks for them again as on a first play: the sources'
+// order walked, then Spotify's own weighed against the answer. Main queue.
+void SGKaraokeAskAgain(NSString *trackID);
 // Whether EeveeSpotify is injected alongside the mod.
 BOOL SGEeveeSpotifyInjected(void);
 // EeveeSpotify is injected and answers Spotify's lyrics, by its own settings (lyricsSource, and

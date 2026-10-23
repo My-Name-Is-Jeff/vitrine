@@ -295,6 +295,18 @@ static BOOL requestFromSpotify(NSString *trackID) {
     return YES;
 }
 
+// Main queue only. The track's lines are forgotten, but for a look still out, and the track playing is asked
+// for again as on a first play.
+void SGKaraokeAskAgain(NSString *trackID) {
+    if (!trackID || [sg_looking containsObject:trackID]) return;
+    [sg_lyrics removeObjectForKey:trackID];
+    [sg_requested removeObject:trackID];
+    [sg_asking removeObject:trackID];
+    [sg_losses removeObjectForKey:trackID];
+    if ([trackID isEqualToString:SGKaraokePlayingTrack()]) SGKaraokeRequestLyrics(trackID);
+    announce(trackID);
+}
+
 void SGKaraokeAskSpotifyForTiming(NSString *trackID) {
     dispatch_async(dispatch_get_main_queue(), ^{
         if (!trackID || [sg_requested containsObject:trackID]) return;
