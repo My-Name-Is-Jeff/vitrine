@@ -133,10 +133,15 @@ SGModRow *SGSavedTranslationsRow(void) {
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Delete saved translations?"
             message:@"Songs translated before are translated again the next time you ask." preferredStyle:UIAlertControllerStyleAlert];
         [alert addAction:[UIAlertAction actionWithTitle:@"Delete" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
-            [NSFileManager.defaultManager removeItemAtURL:folder() error:nil];
             SGLyricsForgetAITranslation(nil, nil);
-            SGLog(@"translation: saved translations deleted");
-            [NSNotificationCenter.defaultCenter postNotificationName:SGLyricsTranslationsDidChangeNotification object:nil];
+            // After any write still queued, so it cannot bring a song's file back.
+            dispatch_async(writes(), ^{
+                [NSFileManager.defaultManager removeItemAtURL:folder() error:nil];
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    SGLog(@"translation: saved translations deleted");
+                    [NSNotificationCenter.defaultCenter postNotificationName:SGLyricsTranslationsDidChangeNotification object:nil];
+                });
+            });
         }]];
         [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
         [SGTopController() presentViewController:alert animated:YES completion:nil];
