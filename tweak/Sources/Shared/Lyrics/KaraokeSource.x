@@ -281,9 +281,11 @@ static BOOL requestFromSpotify(NSString *trackID) {
                 [sg_asking removeObject:trackID];
                 [sg_losses removeObjectForKey:trackID];
                 // Asked after the chain found plain text only: Spotify's replace it only when they are timed,
-                // and never a source picked for the track from the player's ⋯.
+                // and never a source picked for the track from the player's ⋯ that answered.
                 NSArray<SGKaraokeLine *> *kept = sg_lyrics[trackID];
-                if (lines && !SGLyricsChosenSource(trackID) && !(kept && SGKaraokeLinesTiming(kept) <= SGKaraokeLinesTiming(lines))) {
+                id answer = SGLyricsKeptAnswer(trackID);
+                BOOL picked = [answer isKindOfClass:SGLyricsResult.class] && [(SGLyricsResult *)answer picked];
+                if (lines && !picked && !(kept && SGKaraokeLinesTiming(kept) <= SGKaraokeLinesTiming(lines))) {
                     keep(trackID, lines);
                     SGLyricsSetCredit(trackID, @"Spotify");
                     return;
