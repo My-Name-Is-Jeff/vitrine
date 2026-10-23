@@ -290,8 +290,11 @@ static const NSUInteger kMaxLength = 1 << 18;
 // A time in milliseconds: ASCII digits only, none negative, and at most nine of them (over a hundred
 // hours), so the sums below cannot overflow. -1 for anything else.
 static NSInteger msOf(id value) {
+    static NSCharacterSet *notDigits;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ notDigits = [NSCharacterSet characterSetWithCharactersInString:@"0123456789"].invertedSet; });
     if (![value isKindOfClass:NSString.class] || ![value length] || [value length] > 9) return -1;
-    if ([value rangeOfCharacterFromSet:[NSCharacterSet characterSetWithCharactersInString:@"0123456789"].invertedSet].location != NSNotFound) return -1;
+    if ([value rangeOfCharacterFromSet:notDigits].location != NSNotFound) return -1;
     return [value integerValue];
 }
 
