@@ -445,9 +445,7 @@ static BOOL settled(SGLyricsWalk *walk) {
     SGLyricsResult *merged = walk.merged;
     if (!(merged.synced && merged.texts.count && merged.karaokeLines.count)) return NO;
     if (!SGFlag(SGKeyLyricsPreferWordTiming, NO)) return YES;
-    if (SGKaraokeLinesTiming(merged.karaokeLines) == SGKaraokeTimingWords) return YES;
-    if (walk.index < walk.order.count) SGLog(@"lyrics: %@ line timed by %@, asking on for words timed", walk.query.trackID, merged.provider);
-    return NO;
+    return SGKaraokeLinesTiming(merged.karaokeLines) == SGKaraokeTimingWords;
 }
 
 static void step(SGLyricsWalk *walk) {
@@ -513,6 +511,9 @@ static void step(SGLyricsWalk *walk) {
             merged.karaokeLines = fresh.karaokeLines;
             merged.wordTimed = fresh.wordTimed;
             merged.provider = fresh.provider ?: provider.name;
+            if (SGFlag(SGKeyLyricsPreferWordTiming, NO) && SGKaraokeLinesTiming(fresh.karaokeLines) == SGKaraokeTimingLine && walk.index < walk.order.count) {
+                SGLog(@"lyrics: %@ line timed by %@, asking on for words timed", query.trackID, merged.provider);
+            }
         }
         if (betterTexts(merged, fresh)) {
             merged.starts = fresh.starts;
