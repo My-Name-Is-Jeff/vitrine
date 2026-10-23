@@ -1922,10 +1922,13 @@ static BOOL anyUntranslated(NSArray<SGKaraokeLine *> *lines) {
 // what the song has: a switch for each, reading what tapping it will do.
 - (void)offerExtras {
     NSString *language = SGLyricsTranslationTarget();
-    BOOL ai = SGAITranslatorReady(), onDevice = SGOnDeviceTranslation.translationAvailable;
-    BOOL intelligence = [SGOnDeviceTranslation appleIntelligenceAvailable:language];
-    // A translator is offered only for a song in another language than the one it would translate into.
-    BOOL translatable = (_foreign || SGHidden(SGKeyLyricsTranslateEverySong)) && _untranslated && (ai || onDevice || intelligence);
+    // A translator is offered only for a song in another language than the one it would translate into,
+    // and the translators are asked after (an AI translator's key is a Keychain read).
+    BOOL wanted = _lines && !_sample && (_foreign || SGHidden(SGKeyLyricsTranslateEverySong)) && _untranslated;
+    BOOL onDevice = wanted && SGOnDeviceTranslation.translationAvailable;
+    BOOL intelligence = wanted && [SGOnDeviceTranslation appleIntelligenceAvailable:language];
+    BOOL ai = wanted && SGAITranslatorReady();
+    BOOL translatable = ai || onDevice || intelligence;
     BOOL offered = _lines && !_sample && (_hasSpoken || _hasTranslation || translatable);
     if (!offered) {
         _extrasBox.hidden = YES;

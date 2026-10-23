@@ -100,17 +100,21 @@ SGTranslationSource *SGLyricsSaveTranslation(NSString *track, NSString *language
     return [SGTranslationSource by:source.by model:source.model made:now];
 }
 
-void SGLyricsDeleteSavedTranslation(NSString *track, NSString *language) {
-    if (!track.length || !language.length) return;
-    SGLyricsForgetAITranslation(track, language);
-    // After any write still queued, so it cannot bring the file back.
+// After any write still queued, so it cannot bring a file back.
+static void deleteQueued(NSURL *url, NSString *what) {
     dispatch_async(writes(), ^{
-        [NSFileManager.defaultManager removeItemAtURL:fileFor(track, language) error:nil];
+        [NSFileManager.defaultManager removeItemAtURL:url error:nil];
         dispatch_async(dispatch_get_main_queue(), ^{
-            SGLog(@"translation: %@ in %@ deleted", track, language);
+            SGLog(@"translation: %@ deleted", what);
             [NSNotificationCenter.defaultCenter postNotificationName:SGLyricsTranslationsDidChangeNotification object:nil];
         });
     });
+}
+
+void SGLyricsDeleteSavedTranslation(NSString *track, NSString *language) {
+    if (!track.length || !language.length) return;
+    SGLyricsForgetAITranslation(track, language);
+    deleteQueued(fileFor(track, language), [NSString stringWithFormat:@"%@ in %@", track, language]);
 }
 
 static NSString *summary(void) {
@@ -134,14 +138,7 @@ SGModRow *SGSavedTranslationsRow(void) {
             message:@"Songs translated before are translated again the next time you ask." preferredStyle:UIAlertControllerStyleAlert];
         [alert addAction:[UIAlertAction actionWithTitle:@"Delete" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
             SGLyricsForgetAITranslation(nil, nil);
-            // After any write still queued, so it cannot bring a song's file back.
-            dispatch_async(writes(), ^{
-                [NSFileManager.defaultManager removeItemAtURL:folder() error:nil];
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    SGLog(@"translation: saved translations deleted");
-                    [NSNotificationCenter.defaultCenter postNotificationName:SGLyricsTranslationsDidChangeNotification object:nil];
-                });
-            });
+            deleteQueued(folder(), @"saved translations");
         }]];
         [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
         [SGTopController() presentViewController:alert animated:YES completion:nil];
