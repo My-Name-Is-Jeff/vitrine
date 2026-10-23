@@ -50,6 +50,9 @@
 @property (nonatomic, copy) NSString *title, *artist, *album;
 @property (nonatomic) NSInteger seconds;
 @property (nonatomic) BOOL instrumental;
+// The source picked for the track from the player's ⋯ answered with this (SGLyricsKeepChosen), so it stands
+// over Spotify's own lines however either is timed. The walk's own answer never is, a pick standing or not.
+@property (nonatomic) BOOL picked;
 @end
 
 // What is known about the track when a source is asked. Only trackID is always there; the rest is

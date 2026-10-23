@@ -168,8 +168,9 @@ static NSData *decide(NSString *track, SGLyricsResult *chain, NSData *spotifyBod
     NSArray<SGKaraokeLine *> *spotifyLines = spotifyBody ? SGKaraokeLinesFromBody(spotifyBody) : nil;
     if (!spotifyLines.count) spotifyLines = nil;
     SGKaraokeTiming spotifyTiming = SGKaraokeLinesTiming(spotifyLines);
-    // A source picked for the track from the player's ⋯ stands over Spotify's own, however either is timed.
-    BOOL picked = SGLyricsChosenSource(track) != nil;
+    // A source picked for the track from the player's ⋯ stands over Spotify's own, however either is timed. Read
+    // off the answer, not the pick: a walk run while the pick's request failed answers with another source's.
+    BOOL picked = chain.picked;
     BOOL replace = chain.texts.count && (picked || chain.synced || spotifyTiming == SGKaraokeTimingNone);
     NSData *page = replace ? pageBody(chain, colours) : nil;
 

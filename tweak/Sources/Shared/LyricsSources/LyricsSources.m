@@ -418,6 +418,8 @@ static void finish(SGLyricsWalk *walk) {
         SGLyricsNoteOrderChoice(trackID, lyrics);
         lyrics = picked;
     } else if (lyrics || (everyoneAsked && !failed) || merged.instrumental) {
+        // With a pick whose request failed, the walk's answer is kept, but not as the pick's: it weighs
+        // against Spotify's own lines as any walk's does, and the next walk asks the pick first again.
         if (sg_kept.count >= kKeptTracks) [sg_kept removeAllObjects];
         sg_kept[trackID] = lyrics ?: NSNull.null;
         if (!lyrics) {
@@ -722,6 +724,7 @@ void SGLyricsKeepChosen(NSString *trackID, SGLyricsResult *result) {
         result.synced = SGKaraokeLinesTiming(result.karaokeLines) != SGKaraokeTimingNone;
     }
     noteCredit(result);
+    result.picked = YES;
     if (sg_kept.count >= kKeptTracks) [sg_kept removeAllObjects];
     sg_kept[trackID] = result;
     @synchronized (sg_missing) { [sg_missing removeObject:trackID]; }
