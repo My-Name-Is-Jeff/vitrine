@@ -295,6 +295,13 @@ static NSInteger msOf(id value) {
     return [value integerValue];
 }
 
+// Whether a line or word has an end of its own. end_ms is optional, and a writer that dumps its every field
+// spells a missing one as YAML's null (`end_ms: null`, `~`, or nothing), which is no end rather than a bad one.
+static BOOL endGiven(NSDictionary *raw) {
+    id end = raw[@"end_ms"];
+    return end && end != NSNull.null && ![@[@"null", @"Null", @"NULL", @"~"] containsObject:end];
+}
+
 // Where a line without an end of its own, or of its last word, is taken to stop.
 static const NSInteger kTailMs = 1000;
 
@@ -304,16 +311,16 @@ static SGKaraokeLine *wordLine(NSArray *rawWords, NSInteger start, NSInteger end
     NSInteger lineEnd = end;
     if (lineEnd < 0) {
         NSDictionary *last = rawWords.lastObject;
-        lineEnd = msOf(last[@"end_ms"]) >= 0 ? msOf(last[@"end_ms"]) : msOf(last[@"start_ms"]) + kTailMs;
+        lineEnd = endGiven(last) ? msOf(last[@"end_ms"]) : msOf(last[@"start_ms"]) + kTailMs;
     }
     NSCharacterSet *space = NSCharacterSet.whitespaceAndNewlineCharacterSet;
     NSMutableArray<SGKaraokePiece *> *pieces = [NSMutableArray array];
     for (NSUInteger i = 0; i < rawWords.count; i++) {
         NSDictionary *raw = rawWords[i];
         NSString *said = raw[@"text"];
-        NSInteger wordStart = msOf(raw[@"start_ms"]), wordEnd = msOf(raw[@"end_ms"]);
+        NSInteger wordStart = msOf(raw[@"start_ms"]), wordEnd = endGiven(raw) ? msOf(raw[@"end_ms"]) : -1;
         if (![said isKindOfClass:NSString.class] || wordStart < 0) return nil;
-        if (raw[@"end_ms"] && wordEnd < wordStart) return nil;
+        if (endGiven(raw) && wordEnd < wordStart) return nil;
         if (wordEnd < 0) wordEnd = i + 1 < rawWords.count ? msOf(rawWords[i + 1][@"start_ms"]) : lineEnd;
         SGKaraokePiece *piece = [SGKaraokePiece new];
         piece.text = [said stringByTrimmingCharactersInSet:space];
@@ -338,8 +345,8 @@ NSArray<SGKaraokeLine *> *SGLyricsfileLines(NSString *yaml) {
         if (![raw isKindOfClass:NSDictionary.class]) return nil;
         NSString *text = raw[@"text"];
         NSArray *words = raw[@"words"];
-        NSInteger start = msOf(raw[@"start_ms"]), end = msOf(raw[@"end_ms"]);
-        if (![text isKindOfClass:NSString.class] || start < 0 || (raw[@"end_ms"] && end < start)) return nil;
+        NSInteger start = msOf(raw[@"start_ms"]), end = endGiven(raw) ? msOf(raw[@"end_ms"]) : -1;
+        if (![text isKindOfClass:NSString.class] || start < 0 || (endGiven(raw) && end < start)) return nil;
         if (words && ![words isKindOfClass:NSArray.class]) {
             if (words != (id)NSNull.null) return nil;
             words = nil;

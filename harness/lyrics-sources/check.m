@@ -333,6 +333,12 @@ int main(int argc, char **argv) {
                                             @[@"- text: a", @"- text: \"\\u1\U0001F600\""]]) {
             CHECK(!SGLyricsfileLines([wordFile stringByReplacingOccurrencesOfString:swap[0] withString:swap[1]]));
         }
+        // An end written as YAML's null, on a line or a word, is no end: the line stops a second past its last word.
+        for (NSString *null in @[@"null", @"~", @""]) {
+            lf = SGLyricsfileLines([wordFile stringByReplacingOccurrencesOfString:@"    start_ms: 10\n"
+                                        withString:[NSString stringWithFormat:@"    start_ms: 10\n    end_ms: %@\n  end_ms: %@\n", null, null]]);
+            CHECK(lf.count == 1 && lf[0].words.count == 1 && lf[0].end == 1010);
+        }
         // YAML's other escapes, a block whose header gives its indent, and lines listed out of time order.
         lf = SGLyricsfileLines([wordFile stringByAppendingString:@"- text: \"b\\Lc\\N\"\n  start_ms: 5\n  words:\n  - text: \"b\\Lc\"\n    start_ms: 5\nplain: |2\n     a\n    b\n"]);
         CHECK(lf.count == 2 && lf[0].start == 5 && [lf[0].words[0].text isEqualToString:@"b\u2028c"]);
