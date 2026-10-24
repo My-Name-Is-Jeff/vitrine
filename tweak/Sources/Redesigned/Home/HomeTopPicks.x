@@ -48,6 +48,8 @@ static _Thread_local CGFloat sg_containerWidth;
 // large one is than it. 0 until a card is made.
 static _Thread_local CGFloat sg_cardWidth, sg_cardGrow;
 static NSInteger sg_topIndex = NSIntegerMax;
+// Show Top picks heading (SGRKeyHomeTopPicksHeading), read at launch: the heading and its band stay Spotify's.
+static BOOL sg_showHeading;
 
 // The layout a wrapped provider belongs to, set once the layout is made.
 @interface SGRLayoutBox : NSObject
@@ -60,7 +62,7 @@ static CGFloat targetWidth(void) {
     return round(sg_containerWidth * kCardShare);
 }
 
-// The large shelf's heading goes, and the band it took with it. Its section's header is a boundary item (kind
+// The large shelf's heading goes, and the band it took with it, unless Show Top picks heading keeps both. Its section's header is a boundary item (kind
 // UICollectionElementKindSectionHeader, 39pt tall over the cards on 9.1.90, extending the section); it is made
 // again not extending the section, so it takes no room and lies over the cards' top instead, where it stays in the
 // shelf's visible rect, and so alive with the Show all the header's menu offers, transparent and without touches
@@ -99,7 +101,7 @@ static UICollectionViewCompositionalLayoutSectionProvider wrapped(UICollectionVi
         sg_containerWidth = environment.container.effectiveContentSize.width;
         sg_cardWidth = sg_cardGrow = 0;
         NSCollectionLayoutSection *made = provider(section, environment);
-        if (sg_enlarging && made) headingAside(made, layout);
+        if (sg_enlarging && made && !sg_showHeading) headingAside(made, layout);
         if (layout && sg_cardGrow > 0) objc_setAssociatedObject(layout, &kGrowKey, @(sg_cardGrow), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         sg_enlarging = was;
         sg_cardWidth = wasWidth;
@@ -510,8 +512,9 @@ static void dropLarge(UICollectionView *shelf) {
     UICollectionView *shelf = (UICollectionView *)self;
     BOOL large = objc_getAssociatedObject(shelf.collectionViewLayout, &kLargeKey) != nil;
     BOOL held = objc_getAssociatedObject(shelf, &kHeldKey) != nil;
-    // Every shelf and the page's list are this class: only the large one, or one that was, has work here.
-    if (large || held) {
+    // Every shelf and the page's list are this class: only the large one, or one that was, has work here. With
+    // the heading shown, it is never touched.
+    if (!sg_showHeading && (large || held)) {
         UIView *heading = SGRFindByIdentifier(shelf, @"Components.UI.SectionHeadingHome", &kHeadingKey);
         if (heading && heading.alpha != (large ? 0 : 1)) {
             heading.alpha = large ? 0 : 1;
@@ -760,5 +763,6 @@ SGModRow *SGRHomeTopPicksRow(void) {
 
 %ctor {
     if (!SGRedesignedUI() || !SGRHomeLook() || !SGEnabled(SGRKeyHomeTopPicks)) return;
+    sg_showHeading = SGHidden(SGRKeyHomeTopPicksHeading);
     %init;
 }

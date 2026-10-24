@@ -33,6 +33,9 @@ BOOL SGRHomeLook(void);
 #define SGRKeyHomeTopPicksFrom @"spotifyglass.redesign.home.topPicksFrom"
 // The footer of a large card in its cover's color. On until switched off; off, the footer is the plain surface.
 #define SGRKeyHomeTopPicksColour @"spotifyglass.redesign.home.topPicksColour"
+// Top picks keeps Spotify's heading over its cards (drawn at the size of the other shelves' headings, HomeHeadings.x)
+// when set; unset, the heading and the band it takes go. Read at launch.
+#define SGRKeyHomeTopPicksHeading @"spotifyglass.redesign.home.topPicksHeading"
 // Parts of Home hidden when set (HomeSections.x): the shortcuts grid and the DJ.
 #define SGRKeyHomeHideShortcuts @"spotifyglass.redesign.home.hide.shortcuts"
 #define SGRKeyHomeHideDJ @"spotifyglass.redesign.home.hide.dj"
