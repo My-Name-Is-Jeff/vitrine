@@ -77,6 +77,10 @@ static BOOL colorAccentLike(UIColor *color) {
     return color && [color getRed:&r green:&g blue:&b alpha:&a] && a > 0.5 && accentLike(r, g, b);
 }
 
+BOOL SGRPlayerAccentLike(UIColor *color) {
+    return colorAccentLike(color);
+}
+
 static BOOL cgAccentLike(CGColorRef color) {
     if (!color || CGColorGetNumberOfComponents(color) != 4) return NO;
     const CGFloat *c = CGColorGetComponents(color);

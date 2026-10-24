@@ -7,6 +7,12 @@
 // transform survives the stack view laying them out again, and moving the holder keeps its touches
 // inside its own bounds. The device name goes transparent, since the glyph alone sits in the middle, and
 // Connect's holder takes touches only in a square over the glyph (SGRPlayerCoverConnect).
+// Both draw the Music app's glyphs, AirPlay audio and a bulleted list (issue #109): a stand-in inside each of
+// Spotify's glyph views, so it is hidden, faded and pulsed with Spotify's own, while Spotify's drawing goes
+// clear at its source. Connect's glyph is an image Spotify draws the color into: each new one is read once for
+// that color, so a device in use still lights it in the accent (or the cover's, PlayerCoverAccent.x), and is
+// swapped for a clear image of its size. The queue's is an SPTEncoreIconView: its foreground colors are kept
+// for the stand-in and Spotify's drawn clear.
 // Spotify has no lyrics control down here, so that one is the Kit's glyph button, and it turns the
 // lyrics in the player on and off (PlayerLyrics.x): filled while they are up, dimmed and dead for a
 // track that has none.
@@ -19,10 +25,11 @@
 // ElementView > ConnectButtonOutputSwitcherViewHolder id=Components.ConnectButtonOutputSwitcher 153x36
 // (a 19x19 UIImageView glyph and a MarqueeLabel with the device name), a spacer, a hidden media trimmer,
 // ElementView > EncoreButton id=ShareButtonNowPlayingView 44x44, ElementView > Queue control
-// id=QueueButtonNowPlaying 47x32.
+// id=QueueButtonNowPlaying 47x32 (an 18x18 SPTEncoreIconView id=Encore.IconView glyph, out/rep/ptree.txt:1228-1279).
 #import <substrate.h>
 #import "Core/SGCore.h"
 #import "Redesigned/Kit/SGRKit.h"
+#import "Headers/SPTEncoreIconView.h"
 #import "Player.h"
 
 static const CGFloat kLyricsGlyphSize = 20;
@@ -45,7 +52,10 @@ static const CGFloat kVolumeMargin = 24;
 // And the controls go up this much over it, so the gaps above and below the volume row match.
 static const CGFloat kVolumeLift = 10;
 
-static char kConnectKey, kShareKey, kTrimmerKey, kSharedByKey, kQueueKey, kLyricsGlyphKey, kReachKey, kRowKey;
+// "airplayaudio" is the name iOS 16 knows; iOS 18 calls it airplay.audio and keeps this one as its alias.
+static NSString *const kConnectSymbol = @"airplayaudio", *const kQueueSymbol = @"list.bullet";
+
+static char kConnectKey, kShareKey, kTrimmerKey, kSharedByKey, kQueueKey, kQueueIconKey, kLyricsGlyphKey, kReachKey, kRowKey;
 static __weak SGRGlyphButton *sg_lyricsGlyph;
 
 // The view the footer's stack view arranges around `view`.
@@ -106,12 +116,146 @@ SGRGlyphButton *SGRPlayerLyricsGlyphIn(UIView *host) {
     return glyph;
 }
 
+#pragma mark - the Music app's glyphs
+
+static char kStandInKey, kInkKey, kClearKey, kQueueActiveColorKey;
+
+// The Kit's glyph centered inside `drawn`: it takes `drawn`'s hidden, alpha and animations with it.
+static SGRGlyphView *standIn(UIView *drawn, NSString *symbol) {
+    if (!drawn) return nil;
+    SGRGlyphView *glyph = objc_getAssociatedObject(drawn, &kStandInKey);
+    if (!glyph) {
+        glyph = [[SGRGlyphView alloc] initWithSymbol:symbol pointSize:kLyricsGlyphSize weight:UIImageSymbolWeightRegular];
+        glyph.userInteractionEnabled = NO;
+        glyph.isAccessibilityElement = NO;
+        objc_setAssociatedObject(drawn, &kStandInKey, glyph, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    if (glyph.superview != drawn) [drawn addSubview:glyph];
+    CGPoint middle = CGPointMake(CGRectGetMidX(drawn.bounds), CGRectGetMidY(drawn.bounds));
+    if (!CGPointEqualToPoint(glyph.center, middle)) glyph.center = middle;
+    return glyph;
+}
+
+// The color Spotify drew its glyph in: the average of its opaque pixels, read once at 16 by 16 and kept on the image,
+// so an image Spotify hands over again costs a lookup. One drawn from the tint answers the tint.
+static UIColor *inkOf(UIImageView *view, UIImage *image) {
+    if (image.isSymbolImage || image.renderingMode == UIImageRenderingModeAlwaysTemplate) return view.tintColor;
+    UIColor *known = objc_getAssociatedObject(image, &kInkKey);
+    if (known) return known;
+    enum { kSide = 16 };
+    uint8_t pixels[kSide * kSide * 4] = {0};
+    CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
+    CGContextRef context = CGBitmapContextCreate(pixels, kSide, kSide, 8, kSide * 4, space, (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
+    CGColorSpaceRelease(space);
+    if (!context) return SGRPrimary();
+    CGContextDrawImage(context, CGRectMake(0, 0, kSide, kSide), image.CGImage);
+    CGContextRelease(context);
+    double r = 0, g = 0, b = 0, n = 0;
+    for (int i = 0; i < kSide * kSide; i++) {
+        uint8_t alpha = pixels[i * 4 + 3];
+        if (alpha < 128) continue;
+        r += pixels[i * 4] / (double)alpha;
+        g += pixels[i * 4 + 1] / (double)alpha;
+        b += pixels[i * 4 + 2] / (double)alpha;
+        n++;
+    }
+    UIColor *ink = n >= 4 ? [UIColor colorWithRed:r / n green:g / n blue:b / n alpha:1] : SGRPrimary();
+    objc_setAssociatedObject(image, &kInkKey, ink, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return ink;
+}
+
+// A lit glyph as a bitmap in its color, the way Spotify draws its own: Follow the cover finds lit controls by their
+// pixels, and a symbol image has none to read. The symbol's alignment insets are kept, so it sits where it did.
+static UIImage *litImage(UIImage *symbol, UIColor *color) {
+    UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat preferredFormat];
+    format.scale = symbol.scale;
+    UIImage *tinted = [symbol imageWithTintColor:color renderingMode:UIImageRenderingModeAlwaysOriginal];
+    UIImage *bitmap = [[[UIGraphicsImageRenderer alloc] initWithSize:symbol.size format:format] imageWithActions:^(UIGraphicsImageRendererContext *context) {
+        [tinted drawAtPoint:CGPointZero];
+    }];
+    return [bitmap imageWithAlignmentRectInsets:symbol.alignmentRectInsets];
+}
+
+// Spotify's new Connect glyph: its color onto the stand-in, drawn into the stand-in's image so Follow the cover
+// repaints it the way it did Spotify's, and a clear image of the same size in its place, so nothing moves.
+static void takeConnectImage(UIImageView *drawn) {
+    UIImage *image = drawn.image;
+    UIImage *clear = objc_getAssociatedObject(drawn, &kClearKey);
+    if (!image.CGImage || image == clear) return;
+    SGRGlyphView *glyph = objc_getAssociatedObject(drawn, &kStandInKey);
+    UIImage *symbol = [UIImage systemImageNamed:kConnectSymbol withConfiguration:glyph.preferredSymbolConfiguration];
+    UIColor *ink = inkOf(drawn, image);
+    BOOL lit = SGRPlayerAccentLike(ink);
+    glyph.image = lit ? litImage(symbol, ink) : [symbol imageWithTintColor:SGRSecondary() renderingMode:UIImageRenderingModeAlwaysOriginal];
+    // Spotify hands the new image over with no layout pass, so Follow the cover is told here, or a lit glyph keeps the accent.
+    if (lit) SGRPlayerPaintCover(glyph);
+    if (!clear || !CGSizeEqualToSize(clear.size, image.size) || clear.scale != image.scale) {
+        UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat preferredFormat];
+        format.scale = image.scale;
+        clear = [[[UIGraphicsImageRenderer alloc] initWithSize:image.size format:format] imageWithActions:^(UIGraphicsImageRendererContext *context) {}];
+        objc_setAssociatedObject(drawn, &kClearKey, clear, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    drawn.image = clear;
+}
+
+// Spotify draws a new glyph when the device changes, with no layout pass of the footer to tell it, so its setImage:
+// tells the stand-in; the clear image set back in reports too, and stops there.
+static void standInForConnect(UIImageView *drawn) {
+    BOOL made = objc_getAssociatedObject(drawn, &kStandInKey) != nil;
+    if (!standIn(drawn, kConnectSymbol) || made) return;
+    takeConnectImage(drawn);
+    SGRObserveImage(drawn, ^(UIImageView *view) { takeConnectImage(view); });
+}
+
+// The queue's state as Spotify sets it, for the stand-in; Spotify's own glyph is drawn in clear.
+static void tintQueueStandIn(SPTEncoreIconView *icon) {
+    SGRGlyphView *glyph = objc_getAssociatedObject(icon, &kStandInKey);
+    // Lit by Spotify's own state, not by a color a cover could make look gray. Lit, it is drawn in the color, as Connect
+    // is, so Follow the cover finds it by its pixels and repaints it.
+    UIColor *active = objc_getAssociatedObject(icon, &kQueueActiveColorKey);
+    UIImage *symbol = [UIImage systemImageNamed:kQueueSymbol withConfiguration:glyph.preferredSymbolConfiguration];
+    BOOL lit = icon.isActive && active;
+    glyph.image = lit ? litImage(symbol, active) : symbol;
+    glyph.tintColor = SGRSecondary();
+    if (lit) SGRPlayerPaintCover(glyph);
+}
+
+static void standInForQueue(SPTEncoreIconView *icon) {
+    if (![icon isKindOfClass:%c(SPTEncoreIconView)]) return;
+    BOOL made = objc_getAssociatedObject(icon, &kStandInKey) != nil;
+    if (!standIn(icon, kQueueSymbol) || made) return;
+    UIColor *color = icon.foregroundColor, *active = icon.activeForegroundColor;
+    // Through the setters below, which now keep each color and hand Spotify's drawing clear.
+    if (color) icon.foregroundColor = color;
+    if (active) icon.activeForegroundColor = active;
+    tintQueueStandIn(icon);
+}
+
+%hook SPTEncoreIconView
+- (void)setForegroundColor:(UIColor *)color {
+    BOOL ours = objc_getAssociatedObject(self, &kStandInKey) != nil;
+    %orig(ours ? UIColor.clearColor : color);
+    if (ours) tintQueueStandIn(self);
+}
+- (void)setActiveForegroundColor:(UIColor *)color {
+    BOOL ours = objc_getAssociatedObject(self, &kStandInKey) != nil;
+    if (ours) objc_setAssociatedObject(self, &kQueueActiveColorKey, color, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    %orig(ours ? UIColor.clearColor : color);
+    if (ours) tintQueueStandIn(self);
+}
+- (void)setIsActive:(BOOL)active {
+    %orig;
+    if (objc_getAssociatedObject(self, &kStandInKey)) tintQueueStandIn(self);
+}
+%end
+
 #pragma mark - the row
 
 static UIView *connectGlyphIn(UIView *holder) {
     __block UIView *glyph = nil;
     SGForEachView(holder, ^(UIView *view) {
-        if (!glyph && [view isKindOfClass:UIImageView.class] && view.bounds.size.width > 0 && view.bounds.size.width <= kGlyphMaxWidth) glyph = view;
+        if (!glyph && [view isKindOfClass:UIImageView.class] && ![view isKindOfClass:SGRGlyphView.class]
+            && view.bounds.size.width > 0 && view.bounds.size.width <= kGlyphMaxWidth) glyph = view;
     });
     return glyph;
 }
@@ -168,6 +312,7 @@ UIView *SGRPlayerConnectGlyphIn(UIView *host, UIView *connect) {
     SGForEachView(connect, ^(UIView *view) {
         if ([view isKindOfClass:UILabel.class] || [NSStringFromClass(view.class) containsString:@"MarqueeLabel"]) SGRPlayerVanish(view);
     });
+    if (glyph) standInForConnect((UIImageView *)glyph);
     return glyph;
 }
 
@@ -301,6 +446,7 @@ void SGRPlayerLowerRow(UIView *row) {
     CGFloat connectFrom = glyph ? moveTo(arrangedAround(connect, host), glyph, CGPointMake(CGRectGetMidX(glyph.bounds), CGRectGetMidY(glyph.bounds)), host, round(width * kMiddle)) : -1;
 
     UIView *queue = SGRFindByIdentifier(host, @"QueueButtonNowPlaying", &kQueueKey);
+    standInForQueue((SPTEncoreIconView *)SGRFindByIdentifier(queue, @"Encore.IconView", &kQueueIconKey));
     CGFloat queueFrom = moveTo(arrangedAround(queue, host), queue, CGPointMake(CGRectGetMidX(queue.bounds), CGRectGetMidY(queue.bounds)), host, round(width * (rtl ? kLeading : kTrailing)));
 
     SGRPlayerLowerRow(host);
@@ -317,5 +463,5 @@ void SGRPlayerLowerRow(UIView *row) {
 %ctor {
     if (!SGRedesignedUI()) return;
     %init;
-    SGRequireClasses(@[@"_TtC20NowPlaying_ModesImpl18FooterElementsUnit"]);
+    SGRequireClasses(@[@"_TtC20NowPlaying_ModesImpl18FooterElementsUnit", @"SPTEncoreIconView"]);
 }
