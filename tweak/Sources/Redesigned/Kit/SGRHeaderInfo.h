@@ -22,7 +22,7 @@ extern const CGFloat SGRHeaderInfoTitleRise;  // 56, of the content over the pic
 
 // Full bleed covers (issue #98): the album's and the playlist's cover across the top of the page. Off, the cover
 // is the square Spotify lays out above the title, and only an album's animated cover still runs full bleed. On
-// until switched off (Appearance), read at launch.
+// until switched off (Appearance), read once, by the first album or playlist header.
 #define SGRKeyFullBleedCovers @"spotifyglass.redesign.fullBleedCovers"
 BOOL SGRFullBleedCovers(void);
 

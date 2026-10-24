@@ -221,6 +221,12 @@ static void *kReadyContext = &kReadyContext;
 - (void)setSquare:(CGRect)square {
     if (CGRectEqualToRect(_square, square)) return;
     _square = square;
+    // A path, so the shadow is drawn from it rather than from an offscreen pass over the layer every frame.
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    _shadow.frame = square;
+    _shadow.shadowPath = [UIBezierPath bezierPathWithRoundedRect:_shadow.bounds cornerRadius:kSquareRadius].CGPath;
+    [CATransaction commit];
     [self setNeedsLayout];
 }
 
@@ -229,7 +235,6 @@ static void *kReadyContext = &kReadyContext;
     CGRect bounds = self.bounds;
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
-    UIView *holder = _extension ?: _picture;
     if (SGRFullBleedCovers()) {
         if (_extension) {
             _extension.frame = bounds;
@@ -238,16 +243,14 @@ static void *kReadyContext = &kReadyContext;
         }
     } else {
         // Stays square under an animated cover too: the clip covers the whole hero, so nothing moves under its fade.
+        UIView *holder = _extension ?: _picture;
         holder.frame = _square;
         holder.layer.cornerRadius = kSquareRadius;
         holder.layer.cornerCurve = kCACornerCurveContinuous;
         holder.clipsToBounds = YES;
         if (_extension) _picture.frame = _extension.bounds;
         BOOL bleeds = _motion.opacity == 1;
-        // A path, so the shadow is drawn from it rather than from an offscreen pass over the layer every frame.
-        _shadow.frame = _square;
-        _shadow.shadowPath = [UIBezierPath bezierPathWithRoundedRect:_shadow.bounds cornerRadius:kSquareRadius].CGPath;
-        _shadow.hidden = bleeds || _shadow.shadowOpacity == 0 || CGRectIsEmpty(_square);
+        _shadow.hidden = bleeds;
         _scrim.hidden = !bleeds;
         _dissolve.hidden = !bleeds;
     }
@@ -300,6 +303,8 @@ static void *kReadyContext = &kReadyContext;
     [_motion removeObserver:self forKeyPath:@"readyForDisplay" context:kReadyContext];
     [_motion removeFromSuperlayer];
     _motion = nil;
+    // A square cover's gradients and shadow follow whether a clip covers it.
+    if (!SGRFullBleedCovers()) [self setNeedsLayout];
 }
 
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
@@ -319,12 +324,9 @@ static void *kReadyContext = &kReadyContext;
     [CATransaction setDisableActions:YES];
     layer.opacity = 1;
     // A square cover's hero has no gradients until the clip fills it; they come in with it.
-    NSArray<CALayer *> *fading = @[layer];
-    if (!SGRFullBleedCovers()) {
-        fading = @[layer, _scrim, _dissolve];
-        _scrim.hidden = NO;
-        _dissolve.hidden = NO;
-    }
+    NSArray<CALayer *> *fading = SGRFullBleedCovers() ? @[layer] : @[layer, _scrim, _dissolve];
+    _scrim.hidden = NO;
+    _dissolve.hidden = NO;
     if (self.window) {
         CABasicAnimation *fade = [CABasicAnimation animationWithKeyPath:@"opacity"];
         fade.fromValue = @0;
@@ -364,10 +366,13 @@ static void *kReadyContext = &kReadyContext;
         if (!found && v.layer.shadowOpacity > 0) found = v.layer;
     });
     if (!found) return;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
     _shadow.shadowColor = found.shadowColor;
     _shadow.shadowOpacity = found.shadowOpacity;
     _shadow.shadowRadius = found.shadowRadius;
     _shadow.shadowOffset = found.shadowOffset;
+    [CATransaction commit];
     SGLog(@"redesign album: square shadow from %@, opacity %.2f radius %.1f offset %@", NSStringFromClass(found.delegate.class),
           found.shadowOpacity, found.shadowRadius, NSStringFromCGSize(found.shadowOffset));
     [self setNeedsLayout];
@@ -442,11 +447,12 @@ static void applyHero(UIView *header, UIView *cover, CGFloat bottom) {
     // Spotify's square at full size, in the header's coordinates, which are the hero's: grow-only like the height,
     // so the square stays put while the header fades and collapses. Its bottom too, since the cover can reach its
     // full size before the header's top inset is in.
-    CGRect square = [cover convertRect:cover.bounds toView:header];
-    if (square.size.width >= kMinCover && (square.size.width > hero.square.size.width + 0.5
-                                           || CGRectGetMaxY(square) > CGRectGetMaxY(hero.square) + 0.5)) hero.square = square;
-
-    if (!SGRFullBleedCovers()) [hero takeShadowFrom:cover];
+    if (!SGRFullBleedCovers()) {
+        CGRect square = [cover convertRect:cover.bounds toView:header];
+        if (square.size.width >= kMinCover && (square.size.width > hero.square.size.width + 0.5
+                                               || CGRectGetMaxY(square) > CGRectGetMaxY(hero.square) + 0.5)) hero.square = square;
+        [hero takeShadowFrom:cover];
+    }
     [hero followCover:coverImageIn(cover)];
     conceal(cover);
 }
