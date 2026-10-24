@@ -39,6 +39,10 @@ SGModRow *SGLockScreenLyricsRow(void) {
     return SGOptionRow(@"Lock screen lyrics", @"Current line in place of the artist", SGKeyLockScreenLyrics);
 }
 
+SGModRow *SGLockScreenTranslationRow(void) {
+    return SGOptionRow(@"Lock screen translation", @"The line's translation in its place, when the lyrics have one", SGKeyLockScreenTranslation);
+}
+
 SGModRow *SGLyricsTranslationLanguageRow(void) {
     SGModRow *row = SGChoiceRow(@"Translation language", nil, SGKeyLyricsTranslationLanguage, SGLyricsTranslationLanguageNames(), 0);
     row.choiceFooter = @"A language brings Musixmatch's community translations to lyrics that have none, "

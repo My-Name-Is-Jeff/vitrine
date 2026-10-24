@@ -106,7 +106,7 @@ UIViewController *SGNavbarPage(void) {
 // Pronunciation, romanized lines, translation, word sweeping and line meanings exist only in the redesign's lyrics view.
 static UIViewController *lyricsPage(void) {
     BOOL redesigned = SGRedesignedUIStored();
-    NSMutableArray<SGModRow *> *more = [NSMutableArray arrayWithObject:SGLockScreenLyricsRow()];
+    NSMutableArray<SGModRow *> *more = [NSMutableArray arrayWithObjects:SGLockScreenLyricsRow(), SGLockScreenTranslationRow(), nil];
     if (!redesigned) [more insertObject:SGGlassLyricsRow() atIndex:0];
     SGModRow *sing = SGPageRow(@"Karaoke", ^UIViewController *{ return SGSingSettingsPage(); });
     sing.value = ^NSString *{ return SGSingSummary(); };

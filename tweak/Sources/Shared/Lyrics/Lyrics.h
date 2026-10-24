@@ -14,6 +14,7 @@
 // community translations are asked in (the redesign's lyrics being where translations show), whether lines timed only by the line are swept word by word, whether lines in other alphabets show again in Latin letters, and how much later than the song every line shows.
 SGModSection *SGLyricsSourcesSection(BOOL namingSource);
 SGModRow *SGLockScreenLyricsRow(void);
+SGModRow *SGLockScreenTranslationRow(void);
 SGModRow *SGLyricsTranslationLanguageRow(void);
 SGModRow *SGLyricsWordTimingRow(void);
 SGModRow *SGLyricsRomanisedRow(void);

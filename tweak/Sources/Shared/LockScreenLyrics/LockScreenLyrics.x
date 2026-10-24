@@ -24,6 +24,8 @@ static NSString *sg_shownLine;
 static BOOL sg_resending;
 static dispatch_source_t sg_timer;
 static CFAbsoluteTime sg_due;
+// SGKeyLockScreenTranslation, read at launch.
+static BOOL sg_translation;
 
 static NSString *textOf(NSArray<SGKaraokeWord *> *words) {
     SGKaraokeLine *line = [SGKaraokeLine new];
@@ -55,6 +57,16 @@ static NSArray<NSArray<SGKaraokeWord *> *> *piecesOf(SGKaraokeLine *line) {
     return pieces;
 }
 
+// Piece `index` of `count` of a translation, split by its words as evenly as the line is: the translation has no
+// word times of its own, so each piece shows while the line's piece of that number does. One with fewer words than
+// pieces (Japanese, Chinese) shows whole, for the system to cut off.
+static NSString *translatedPiece(NSString *translation, NSUInteger count, NSUInteger index) {
+    NSArray<NSString *> *words = [translation componentsSeparatedByString:@" "];
+    if (count < 2 || words.count < count) return translation;
+    NSUInteger from = words.count * index / count, to = words.count * (index + 1) / count;
+    return [[words subarrayWithRange:NSMakeRange(from, to - from)] componentsJoinedByString:@" "];
+}
+
 // Seconds into the track at `now`, run on from what Spotify last reported. A rate it left out runs at 1, as
 // playingBy counts it: read as 0, every line written pinned the lock screen's time to Spotify's last report.
 static double elapsedAt(NSDictionary *info, CFAbsoluteTime reportedAt, CFAbsoluteTime now) {
@@ -64,7 +76,8 @@ static double elapsedAt(NSDictionary *info, CFAbsoluteTime reportedAt, CFAbsolut
 }
 
 // nil between lines and for a track without synced lyrics, plain text included. Past a line's end by
-// SGKaraokeBreakMs, with the next line at least that far off, the artist comes back. `wait` is the playback
+// SGKaraokeBreakMs, with the next line at least that far off, the artist comes back. With translations on, a
+// line that has one shows it instead. `wait` is the playback
 // time in seconds until it can change: kTick while it cannot be worked out yet, negative for not again.
 static NSString *lineFor(NSDictionary *info, double elapsed, NSTimeInterval *wait) {
     *wait = kTick;
@@ -89,11 +102,14 @@ static NSString *lineFor(NSDictionary *info, double elapsed, NSTimeInterval *wai
     if (index < 0) return nil;
     BOOL nextFarOff = index + 1 == (NSInteger)lines.count || lines[index + 1].start - position > SGKaraokeBreakMs;
     if (position > lines[index].end + SGKaraokeBreakMs && nextFarOff) return nil;
-    NSString *shown = nil;
-    for (NSArray<SGKaraokeWord *> *piece in piecesOf(lines[index])) {
-        if (!shown || piece.firstObject.start <= position) shown = textOf(piece);
+    NSArray<NSArray<SGKaraokeWord *> *> *pieces = piecesOf(lines[index]);
+    NSUInteger shown = 0;
+    for (NSUInteger i = 1; i < pieces.count; i++) {
+        if (pieces[i].firstObject.start <= position) shown = i;
     }
-    return shown;
+    NSString *translation = sg_translation ? lines[index].translation : nil;
+    if (translation.length) return translatedPiece(translation, pieces.count, shown);
+    return textOf(pieces[shown]);
 }
 
 // Spotify's info with the line in place of the artist, or its own artist for nil. The clock always moves
@@ -216,6 +232,7 @@ static void lookNow(void) {
 %ctor {
     if (!SGFlag(SGKeyLockScreenLyrics, NO)) return;
     sg_lock = [NSObject new];
+    sg_translation = SGFlag(SGKeyLockScreenTranslation, NO);
     %init;
     // Lines kept for a track, or replaced by better timed ones, can change the line at once.
     [NSNotificationCenter.defaultCenter addObserverForName:SGKaraokeLinesKeptNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
@@ -234,5 +251,5 @@ static void lookNow(void) {
         dispatch_async(dispatch_get_main_queue(), ^{ lookNow(); });
     }];
     // The timer waits for Spotify to report a playing track; nothing before that has a line to show.
-    SGLog(@"lock screen lyrics: on");
+    SGLog(@"lock screen lyrics: on%@", sg_translation ? @", translations" : @"");
 }
