@@ -53,26 +53,11 @@ static NSString *string(id value) {
     return [value isKindOfClass:NSString.class] ? value : nil;
 }
 
-static NSTimeInterval aiTimeout(void) {
-    NSInteger seconds = [NSUserDefaults.standardUserDefaults integerForKey:SGKeyLyricsAITimeout];
-    return seconds > 0 ? (NSTimeInterval)seconds : 120.0;
-}
+static const NSInteger kDefaultAITimeout = 120;
 
-static NSURLSession *aiSession(void) {
-    @synchronized (NSURLSession.class) {
-        static NSURLSession *session;
-        static NSTimeInterval lastTimeout = 0;
-        NSTimeInterval timeout = aiTimeout();
-        if (!session || timeout != lastTimeout) {
-            if (session) [session finishTasksAndInvalidate];
-            lastTimeout = timeout;
-            NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
-            config.timeoutIntervalForRequest = timeout;
-            config.timeoutIntervalForResource = timeout;
-            session = [NSURLSession sessionWithConfiguration:config];
-        }
-        return session;
-    }
+static NSTimeInterval aiTimeout(void) {
+    NSInteger seconds = [NSUserDefaults.standardUserDefaults integerForKey:SGKeyAITimeout];
+    return seconds > 0 ? seconds : kDefaultAITimeout;
 }
 
 static NSMutableURLRequest *post(NSString *url, NSDictionary *body) {
@@ -93,8 +78,9 @@ static NSDictionary *linesSchema(void) {
 }
 
 static NSString *geminiThinkingLevel(void) {
-    NSString *stored = [NSUserDefaults.standardUserDefaults stringForKey:SGKeyLyricsGeminiThinking];
-    return stored.length ? stored.lowercaseString : @"minimal";
+    // Only the menu's levels: a stored "minimal" from an early build of this row would make 3.8 Flash answer 400 every ask.
+    NSString *level = [NSUserDefaults.standardUserDefaults stringForKey:SGKeyAIThinking];
+    return [@[@"medium", @"high"] containsObject:level] ? level : @"low";
 }
 
 // Gemini: generateContent, the key in x-goog-api-key, a bare array forced by responseSchema.
@@ -447,7 +433,7 @@ NSArray<NSString *> *SGAITranslationsIn(NSString *provider, id root, NSInteger s
 // out is not asked again. plain is the same request without the optional fields, sent once if a 400 names one.
 static void send(const SGAIProvider *p, NSURLRequest *request, NSURLRequest *plain, NSUInteger attempt,
                  void (^finished)(NSData *data, NSInteger status, NSError *error)) {
-    [[aiSession() dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+    [[NSURLSession.sharedSession dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         NSInteger status = [response isKindOfClass:NSHTTPURLResponse.class] ? ((NSHTTPURLResponse *)response).statusCode : 0;
         NSString *reply = status == 400 && data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : nil;
         for (NSUInteger i = 0; plain && reply && i < 4 && p->plainWhen[i]; i++) {
@@ -468,7 +454,7 @@ static void send(const SGAIProvider *p, NSURLRequest *request, NSURLRequest *pla
     }] resume];
 }
 
-// Per launch, by "track|language|" and then the provider, server, model and prompt: a translation asked again
+// Per launch, by "track|language|" and then the provider, server, model, Gemini's thinking and prompt: a translation asked again
 // after any of them changed is a new one.
 static NSMutableDictionary<NSString *, NSArray<NSString *> *> *sg_done;
 
@@ -490,8 +476,9 @@ void SGLyricsTranslateWithAI(NSString *trackID, NSArray<SGKaraokeLine *> *lines,
         return;
     }
     if (!sg_done) sg_done = [NSMutableDictionary dictionary];
-    NSString *memo = [NSString stringWithFormat:@"%@|%@|%@|%@|%@|%@", trackID, languageTag, p->tag,
-                      isOpenAI(p) ? openAIServer() : @"", modelID, template];
+    NSString *memo = [NSString stringWithFormat:@"%@|%@|%@|%@|%@|%@|%@", trackID, languageTag, p->tag,
+                      isOpenAI(p) ? openAIServer() : @"", modelID,
+                      [p->tag isEqualToString:@"gemini"] ? geminiThinkingLevel() : @"", template];
     if (trackID && sg_done[memo].count == lines.count) {
         done(sg_done[memo], nil);
         return;
@@ -773,27 +760,25 @@ NSArray<SGModRow *> *SGAITranslatorRows(void) {
         SGPresentDark(nav);
         [SGTopController() presentViewController:nav animated:YES completion:nil];
     });
-    NSArray<NSString *> *thinkingLevels = @[@"Minimal", @"Low", @"Medium", @"High"];
+    // Low first: 3.8 Flash refuses minimal.
+    NSArray<NSString *> *thinkingLevels = @[@"Low", @"Medium", @"High"];
     SGModRow *thinking = SGMenuRow(@"Thinking", thinkingLevels, ^NSString *{
-        NSString *level = [NSUserDefaults.standardUserDefaults stringForKey:SGKeyLyricsGeminiThinking];
-        return level.length ? level.capitalizedString : @"Minimal";
+        return geminiThinkingLevel().capitalizedString;
     }, ^(NSInteger index) {
-        if (index == 0) [NSUserDefaults.standardUserDefaults removeObjectForKey:SGKeyLyricsGeminiThinking];
-        else [NSUserDefaults.standardUserDefaults setObject:thinkingLevels[index].lowercaseString forKey:SGKeyLyricsGeminiThinking];
+        if (index == 0) [NSUserDefaults.standardUserDefaults removeObjectForKey:SGKeyAIThinking];
+        else [NSUserDefaults.standardUserDefaults setObject:thinkingLevels[index].lowercaseString forKey:SGKeyAIThinking];
+        translatorChanged();
     });
     thinking.visible = ^{ return [chosen()->tag isEqualToString:@"gemini"]; };
-
-    NSArray<NSString *> *timeouts = @[@"30 s", @"60 s", @"90 s", @"120 s", @"180 s", @"240 s", @"300 s"];
-    NSArray<NSNumber *> *timeoutSeconds = @[@30, @60, @90, @120, @180, @240, @300];
+    NSArray<NSNumber *> *timeoutSeconds = @[@30, @60, @90, @(kDefaultAITimeout), @180, @240, @300];
+    NSMutableArray<NSString *> *timeouts = [NSMutableArray array];
+    for (NSNumber *seconds in timeoutSeconds) [timeouts addObject:[NSString stringWithFormat:@"%@ s", seconds]];
     SGModRow *timeout = SGMenuRow(@"Timeout", timeouts, ^NSString *{
-        NSInteger seconds = [NSUserDefaults.standardUserDefaults integerForKey:SGKeyLyricsAITimeout];
-        if (seconds <= 0) seconds = 120;
-        NSUInteger idx = [timeoutSeconds indexOfObject:@(seconds)];
-        return idx != NSNotFound ? timeouts[idx] : [NSString stringWithFormat:@"%ld s", (long)seconds];
+        return [NSString stringWithFormat:@"%ld s", (long)aiTimeout()];
     }, ^(NSInteger index) {
-        if (index == 3) [NSUserDefaults.standardUserDefaults removeObjectForKey:SGKeyLyricsAITimeout];
-        else [NSUserDefaults.standardUserDefaults setInteger:timeoutSeconds[index].integerValue forKey:SGKeyLyricsAITimeout];
+        NSInteger seconds = timeoutSeconds[index].integerValue;
+        if (seconds == kDefaultAITimeout) [NSUserDefaults.standardUserDefaults removeObjectForKey:SGKeyAITimeout];
+        else [NSUserDefaults.standardUserDefaults setInteger:seconds forKey:SGKeyAITimeout];
     });
-
     return @[provider, key, models, thinking, timeout, prompt];
 }
