@@ -7,21 +7,15 @@
 #import "Core/SGCore.h"
 #import "SGRRestyle.h"
 
-// The style last set here, so a layout pass the setter itself causes does not set it again; a hard style here
-// stays (SGRHardTopEdge).
-static char setKey;
+// The style last set here, so a layout pass the setter itself causes does not set it again; and whether a page asked
+// for the hard style rather than the soft one (SGRHardTopEdge).
+static char setKey, hardKey;
 
-static void soften(UIScrollView *scrollView) {
+static void styleTopEdge(UIScrollView *scrollView) {
     if (@available(iOS 26.0, *)) {
         UIScrollEdgeEffect *top = scrollView.topEdgeEffect;
-        UIScrollEdgeEffectStyle *hard = UIScrollEdgeEffectStyle.hardStyle;
-        if (objc_getAssociatedObject(scrollView, &setKey) == hard) {
-            if (top.style != hard) top.style = hard;
-            return;
-        }
         if (top.style == objc_getAssociatedObject(scrollView, &setKey)) return;
-        UIScrollEdgeEffectStyle *soft = UIScrollEdgeEffectStyle.softStyle;
-        top.style = soft;
+        top.style = objc_getAssociatedObject(scrollView, &hardKey) ? UIScrollEdgeEffectStyle.hardStyle : UIScrollEdgeEffectStyle.softStyle;
         objc_setAssociatedObject(scrollView, &setKey, top.style, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         static dispatch_once_t once;
         dispatch_once(&once, ^{ SGLog(@"soft top edge: first scroll view %@", NSStringFromClass(scrollView.class)); });
@@ -29,23 +23,21 @@ static void soften(UIScrollView *scrollView) {
 }
 
 void SGRHardTopEdge(UIScrollView *scrollView) {
-    if (@available(iOS 26.0, *)) {
-        UIScrollEdgeEffectStyle *hard = UIScrollEdgeEffectStyle.hardStyle;
-        if (objc_getAssociatedObject(scrollView, &setKey) == hard) return;
-        scrollView.topEdgeEffect.style = hard;
-        objc_setAssociatedObject(scrollView, &setKey, hard, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
+    if (objc_getAssociatedObject(scrollView, &hardKey)) return;
+    objc_setAssociatedObject(scrollView, &hardKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(scrollView, &setKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    styleTopEdge(scrollView);
 }
 
 %hook UIScrollView
 - (void)didMoveToWindow {
     %orig;
-    if (self.window) soften(self);
+    if (self.window) styleTopEdge(self);
 }
 
 - (void)layoutSubviews {
     %orig;
-    if (self.window) soften(self);
+    if (self.window) styleTopEdge(self);
 }
 %end
 

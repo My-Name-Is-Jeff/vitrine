@@ -227,7 +227,7 @@ static CGRect untransformed(UIView *view) {
     return CGRectMake(view.center.x - size.width / 2, view.center.y - size.height / 2, size.width, size.height);
 }
 
-// The avatar's place, by its center and bounds too: it carries the scroll's transform (followScroll).
+// The avatar's place, by its center and bounds too: it carries the scroll's transform (followScroll), unless kept.
 static CGRect facePlace(UIStackView *stack, UIView *face) {
     CGRect place = untransformed(stack);
     return CGRectOffset(untransformed(face), place.origin.x - stack.bounds.origin.x, place.origin.y - stack.bounds.origin.y);
@@ -325,7 +325,7 @@ static BOOL findHeader(UIView *view) {
 
 // The title row scrolls away with the page, as the Music app's large title and avatar do: the title, the glass pill
 // and Spotify's avatar rise with what is under them and fade over the title's height, so the page never passes
-// under them.
+// under them. Kept in place instead (keepTitle), the page passes under them over a hard edge.
 static __weak UIView *sg_face;
 static void rise(UIView *part, CGAffineTransform transform, CGFloat alpha) {
     if (!CGAffineTransformEqualToTransform(part.transform, transform)) part.transform = transform;
@@ -384,11 +384,13 @@ static __weak UIView *sg_pageView;
 // say of text outside glass), which then darkens the page under the title and the pill as under a navigation bar.
 static BOOL keepTitle(void) {
     static int state = -1;
-    if (state < 0) state = SGHidden(SGRKeyHomeKeepTitle) ? 1 : 0;
+    // Below iOS 26 there is no edge effect to put under it, and the scrim is gone: the title scrolls away there.
+    if (state < 0) state = SGRedesignAvailable() && SGHidden(SGRKeyHomeKeepTitle) ? 1 : 0;
     return state == 1;
 }
 
 static void shapeEdge(UIScrollView *feed) {
+    SGRHardTopEdge(feed);
     if (@available(iOS 26.0, *)) {
         UIView *header = sg_header;
         if (!header) return;
@@ -401,7 +403,6 @@ static void shapeEdge(UIScrollView *feed) {
         }
         if (edge.scrollView != feed) edge.scrollView = feed;
     }
-    SGRHardTopEdge(feed);
 }
 
 static void followFeed(UIScrollView *feed) {
