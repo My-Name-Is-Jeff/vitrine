@@ -1092,6 +1092,15 @@ static const NSUInteger kLinesPerFrame = 4;
 - (void)showTime:(double)ms running:(BOOL)running at:(CFTimeInterval)shown;
 @end
 
+// Apple Music's hop: each dot rises about 0.8 of its own width as it fills,
+// holds at the top, drops back with a small undershoot and settles. One hop per dot, over its third.
+static const double kHopLift = 0.8;     // of a dot's width
+static const double kHopRise = 0.48;    // of the dot's third: up, and filled by the top
+static const double kHopHold = 0.62;    // of the dot's third: where the drop begins
+static const double kHopUnder = 0.12;   // of a dot's width below rest, where the drop lands
+static const double kHopRest = 0.05;    // ...and where it settles
+static const double kHopSpan = 1.15;    // the whole hop in dot thirds; the settle runs a little into the next
+
 // Local time on the dots' clock is this far into the break plus this, so no animation begins at 0,
 // which Core Animation reads as "now".
 static const CFTimeInterval kBreakEpoch = 1;
@@ -1204,17 +1213,40 @@ static double smoothstep(double p) {
         atFullRate(run);
         [_group addAnimation:run forKey:run.keyPath];
     }
-    // Each dot fills over its third of the time before they go, in the order the next line reads.
+
+    double slot = exitAt / 3;
+    CAMediaTimingFunction *rise = [CAMediaTimingFunction functionWithControlPoints:0.3 :0 :0.2 :1];
+    CAMediaTimingFunction *drop = [CAMediaTimingFunction functionWithControlPoints:0.4 :0 :1 :1];
+    CAMediaTimingFunction *settle = [CAMediaTimingFunction functionWithControlPoints:0 :0 :0.3 :1];
     for (NSUInteger i = 0; i < _dots.count; i++) {
+        CALayer *dot = _dots[i];
+        CFTimeInterval begin = kBreakEpoch + (_rightToLeft ? _dots.count - 1 - i : i) * slot;
+
+        // Brightness comes up with the rise.
         CABasicAnimation *fill = [CABasicAnimation animationWithKeyPath:@"opacity"];
         fill.fromValue = @(kDimAlpha);
         fill.toValue = @1;
-        fill.beginTime = kBreakEpoch + (_rightToLeft ? _dots.count - 1 - i : i) * exitAt / 3;
-        fill.duration = exitAt / 3;
+        fill.beginTime = begin;
+        fill.duration = slot * kHopRise;
+        fill.timingFunction = rise;
         fill.fillMode = kCAFillModeBoth;
         fill.removedOnCompletion = NO;
         atFullRate(fill);
-        [_dots[i] addAnimation:fill forKey:@"fill"];
+        [dot addAnimation:fill forKey:@"fill"];
+
+        if (still) continue;   // Reduce Motion keeps the fill and drops the hop
+
+        CGFloat lift = -kHopLift * _side;   // y grows downward, so up is negative
+        CAKeyframeAnimation *hop = [CAKeyframeAnimation animationWithKeyPath:@"transform.translation.y"];
+        hop.values = @[@0, @(lift), @(lift), @(kHopUnder * _side), @(kHopRest * _side)];
+        hop.keyTimes = @[@0, @(kHopRise / kHopSpan), @(kHopHold / kHopSpan), @(1 / kHopSpan), @1];
+        hop.timingFunctions = @[rise, [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear], drop, settle];
+        hop.beginTime = begin;
+        hop.duration = slot * kHopSpan;
+        hop.fillMode = kCAFillModeBoth;
+        hop.removedOnCompletion = NO;
+        atFullRate(hop);
+        [dot addAnimation:hop forKey:@"hop"];
     }
 }
 
