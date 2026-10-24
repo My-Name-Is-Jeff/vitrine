@@ -8,7 +8,7 @@
 //     PlayerField.x      the switch's flags and rows, the field in the background plane, the cover it reads
 //     PlayerArtwork.x    the cover's corners, shadow and paused shrink; the lyric preview as Spotify's setting has it
 //     PlayerHeader.x     glass behind the close and more buttons
-//     PlayerControls.x   previous, play and next as bare glyphs, monospaced times
+//     PlayerControls.x   previous, play and next as bare glyphs, shuffle and repeat hidden on request, monospaced times
 //     PlayerFooter.x     share gone, lyrics, Connect and queue as one row of three glyphs
 //     DJPlayer.x         the AI DJ's player (its own units): skip glyphs, a four glyph footer row, over the shared
 //                        play glyph, lowered row and Connect of PlayerControls.x and PlayerFooter.x
@@ -121,6 +121,12 @@ BOOL SGRPlayerPlaceVolume(UIView *stack, UIView *controls, UIView *row, CGFloat 
 BOOL SGRPlayerFollowsCover(void);
 void SGRPlayerSetCoverAccent(UIColor *cover);
 void SGRPlayerPaintCover(UIView *stack);
+
+// Shuffle and repeat left out of the controls (PlayerControls.x), each on its own switch under Hide on the player, the
+// way the Music app keeps them off its main controls. Off until switched on, read at launch. The buttons go by alpha
+// and keep their slots, so previous, play and next stay where they are, centered.
+#define SGRKeyPlayerHideShuffle @"spotifyglass.redesign.player.hideShuffle"
+#define SGRKeyPlayerHideRepeat @"spotifyglass.redesign.player.hideRepeat"
 
 // The lyrics turn sideways with the phone onto a landscape screen of their own (PlayerLandscape.x). On
 // until switched off. Shown or put away by hand for the harness.

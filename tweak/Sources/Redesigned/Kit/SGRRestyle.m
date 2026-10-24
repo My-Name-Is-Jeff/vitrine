@@ -4,7 +4,7 @@
 #import "SGRRestyle.h"
 #import "SGRTokens.h"
 
-static char kPlateKey, kImageObserverKey, kLayoutObserverKey;
+static char kPlateKey, kImageObserverKey, kLayoutObserverKey, kSuppressedKey;
 
 #pragma mark - instance subclasses
 
@@ -112,7 +112,18 @@ void SGRSuppress(UIView *view) {
             ((void (*)(struct objc_super *, SEL, BOOL))objc_msgSendSuper)(&parent, @selector(setUserInteractionEnabled:), NO);
         });
     });
-    if (!kept) {
+    // One of Spotify's Swift classes (an Encore button, whose state render sets its alpha back to 1) keeps it
+    // through an override on the class, which only holds the instances marked here. The class `class` answers,
+    // so an instance KVO observes (the player's repeat button) is held too: KVO's class passes setAlpha: on to it.
+    // Only a class inside the app: a plain UILabel KVO observes answers UILabel, which must never be touched.
+    BOOL spotifys = [[NSBundle bundleForClass:view.class].bundlePath hasPrefix:NSBundle.mainBundle.bundlePath];
+    BOOL onClass = !kept && spotifys && overrideOnClass(view.class, @selector(setAlpha:), ^id(IMP replaced) {
+        return ^(UIView *self, CGFloat alpha) {
+            ((void (*)(id, SEL, CGFloat))replaced)(self, @selector(setAlpha:), objc_getAssociatedObject(self, &kSuppressedKey) ? 0 : alpha);
+        };
+    });
+    if (onClass) objc_setAssociatedObject(view, &kSuppressedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (!kept && !onClass) {
         static NSMutableSet<NSString *> *logged;
         if (!logged) logged = [NSMutableSet set];
         NSString *name = NSStringFromClass(object_getClass(view));
