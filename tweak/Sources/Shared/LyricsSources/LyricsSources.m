@@ -503,18 +503,14 @@ static void step(SGLyricsWalk *walk) {
         }
         // The pick stands timed or not, so a timed source lower in the order cannot replace it. A pick made while
         // the walk runs is left to finish, which keeps the order's answer for Automatic.
-        if (fresh.karaokeLines.count && [provider.key isEqualToString:walk.picked]
-            && [walk.picked isEqualToString:SGLyricsChosenSource(query.trackID)]) {
+        BOOL pick = [provider.key isEqualToString:walk.picked] && [walk.picked isEqualToString:SGLyricsChosenSource(query.trackID)];
+        // The user's own timed file is the answer too: Prefer word-by-word timing looks past the sources' line timing,
+        // not past lyrics the user imported for the song (#111). Below a source as finely timed, the order still wins.
+        BOOL imported = fresh.synced && [provider.key isEqualToString:SGImportedLRCKey] && betterLines(merged, fresh);
+        if (fresh.karaokeLines.count && (pick || imported)) {
             if (!fresh.provider) fresh.provider = provider.name;
             walk.merged = fresh;
-            walk.pickedAnswered = YES;
-            finish(walk);
-            return;
-        }
-        // The user's own timed file is the answer: Prefer word-by-word timing looks past the sources' line timing,
-        // not past lyrics the user imported for the song (#111).
-        if (fresh.synced && fresh.karaokeLines.count && [provider.key isEqualToString:SGImportedLRCKey]) {
-            walk.merged = fresh;
+            walk.pickedAnswered = pick;
             finish(walk);
             return;
         }
