@@ -74,6 +74,9 @@
 // `source` is Spotify's own ⋯, wherever the page keeps it; nil hides the button until one is found. Kept
 // on `page` under `key` and cheap to call again on every pass.
 SGRMirrorButton *SGRPinnedMore(UIView *page, const void *key, UIView *source);
+// Called with the pinned ⋯ on every pass of SGRPinnedMore, once it is placed and fed: the system menu
+// (Redesigned/ContextMenu) sets it to open its menu from the button itself, as it does the player's ⋯.
+extern void (*SGRPinnedMoreHook)(SGRMirrorButton *button);
 
 // A sheet opening within this long of a tap on a pinned ⋯ is that page's context menu.
 static const NSTimeInterval SGRPinnedMoreWindow = 3;
