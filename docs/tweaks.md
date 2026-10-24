@@ -557,7 +557,7 @@ Redesigned:
                   from the seam under the controls and over the whole clip behind the lyrics. The clip and the cover
                   cross over as one comes and the other goes, the clip from its poster frame before the video has
                   decoded one, and the Fluid field under a clip holds still and, once the clip has faded in, is hidden
-                  (SGRArtworkField's covered); the menu switches between Animated, Fluid and the Visualizer without
+                  (SGRArtworkField's covered); the menu switches between Animated, Fluid, the Visualizer and Liquid without
                   a restart. The clip holds its frame while the song is paused, goes while
                   Spotify's music video shows, is given up when it has drawn nothing in 5 s on screen, and on a skip
                   stays a moment for the next track's to cross over it. Under Reduce Motion and in Low Power Mode no
@@ -830,9 +830,12 @@ PlayerSettings.m): the background chosen edge to edge, and over its foot the cov
 for Animated while the player has no clip, the card looks the playing track's up itself while it is on screen
 (SGMotionClipFor, the player's sources, size and Low Data Mode, into the store the player reads), Fluid until it
 is in, then the clip over it, poster first (harness/player/ `preview`);
-under it a segmented control of the five backgrounds (Still, Colors, Fluid, Animated, Visualizer, changing the card at once)
+under it a segmented control of the six backgrounds (Still, Colors, Fluid, Animated, Visualizer, Liquid, changing the card
+at once; Liquid draws Fluid's blurred cover through a slow ripple shader on the GPU, Redesigned/Kit/SGRFluidWarp.h, from a
+display link of at most 30 frames a second that is down whenever Fluid would hold still, and is Fluid under Reduce Motion
+or Low Power Mode)
 with a note on what the one picked does, Artwork sources and Download in Low Data Mode while Animated is chosen,
-while Fluid is chosen its five sliders and a red Reset (Redesigned/Kit/SGRFluid.h, spotifyglass.redesign.fluid.*):
+while Fluid or Liquid is chosen its five sliders and a red Reset (Redesigned/Kit/SGRFluid.h, spotifyglass.redesign.fluid.*):
 Speed (25-300 %, how fast the four blurred copies turn, picked up from the angle each is at), Warp (0-100 %, how
 far from the middle they turn and how much the upper three show; at none one copy turns alone), Blur (2-24, the
 radius at 1.25 px a step on the 128 px cover), Saturation (0-250 %) and Brightness (40-150 %, a gain on linear

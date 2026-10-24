@@ -3,7 +3,10 @@
 // speeds, two each way; where they overlap the picture seems to flow. A shade over the bottom keeps the
 // controls legible.
 //
-// Like SGRFlow.h it is all Core Animation: repeating rotations the render server plays, nothing drawn
+// Liquid artwork (`warps`) draws the same blurred cover through a slow liquid warp on the GPU instead
+// (SGRFluidWarp.h): a display link draws at most 30 frames a second while it moves, and none while it holds.
+//
+// Fluid itself, like SGRFlow.h, is all Core Animation: repeating rotations the render server plays, nothing drawn
 // per frame by the app. Stopping holds every copy where it is, and starting again carries on from there.
 //
 // The Player page tunes it with five sliders (Redesigned/Player/PlayerSettings.m), stored as whole numbers under
@@ -33,6 +36,10 @@ extern NSNotificationName const SGRFluidSettingsDidChangeNotification;
 - (void)setArtwork:(UIImage *)image animated:(BOOL)animated;
 // Turning, or held still where it is. Off to begin with.
 @property (nonatomic) BOOL moving;
+// The cover through the liquid warp rather than the turning copies, moving and holding as they would. Off to
+// begin with; the owner turns it off where the warp may not move (Reduce Motion, Low Power Mode), and the copies
+// show, held still where they were.
+@property (nonatomic) BOOL warps;
 // The part of the layer on screen, in its own coordinates: the copies turn about points in it and the
 // shade darkens its bottom, whatever the layer bleeds past it. The whole layer while empty.
 @property (nonatomic) CGRect visibleRect;

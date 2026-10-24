@@ -179,6 +179,12 @@ const NSTimeInterval SGRFieldHoldLimit = 1.0;
     [self setNeedsLayout];
 }
 
+- (void)setLiquid:(BOOL)liquid {
+    if (liquid == _liquid) return;
+    _liquid = liquid;
+    [self updateMotion];
+}
+
 - (void)setMotionHeld:(BOOL)held {
     if (held == _motionHeld) return;
     _motionHeld = held;
@@ -218,8 +224,9 @@ const NSTimeInterval SGRFieldHoldLimit = 1.0;
     if (!_flow && !_fluidLayer) return;
     // A locked phone keeps the player in its window, so being in front counts as much as being in one.
     BOOL front = UIApplication.sharedApplication.applicationState == UIApplicationStateActive;
-    BOOL may = self.window && front && !SGRPlayerIsTransitioning() && !SGRReduceMotion()
-            && !NSProcessInfo.processInfo.lowPowerModeEnabled && !_motionHeld;
+    BOOL calm = SGRReduceMotion() || NSProcessInfo.processInfo.lowPowerModeEnabled;
+    BOOL may = self.window && front && !SGRPlayerIsTransitioning() && !calm && !_motionHeld;
+    _fluidLayer.warps = _liquid && !calm;
     _fluidLayer.moving = may && _fluid;
     BOOL moving = may && _flows && !_flow.hidden;
     if (!_flow || moving == _flow.moving) return;

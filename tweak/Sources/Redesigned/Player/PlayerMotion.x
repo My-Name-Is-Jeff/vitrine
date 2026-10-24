@@ -635,7 +635,7 @@ static BOOL beginTrack(NSString *track) {
 
 #pragma mark - the ⋯ menu's switch (Shared/Player/SpeedPitch.h)
 
-// Fluid, Animated and the Visualizer share the field, so the menu moves between them without a restart. The
+// Fluid, Animated, the Visualizer and Liquid share the field, so the menu moves between them without a restart. The
 // other backgrounds are a field of another kind, chosen on the Player page (PlayerSettings.m).
 BOOL SGPlayerMenuOffersAnimatedArtwork(void) {
     return sg_follower && SGRPlayerBackground() >= SGRPlayerBackgroundFluid;

@@ -29,6 +29,9 @@ extern NSNotificationName const SGRFieldColorDidChangeNotification;
 // Fluid artwork instead (SGRFluid.h): the cover itself blurred and slowly turning over the whole of the
 // bounds, under the same conditions for moving as `flows`. Setting one turns the other off.
 @property (nonatomic) BOOL fluid;
+// With `fluid`, Liquid artwork: the same cover through a slow liquid warp drawn by the GPU (SGRFluidWarp.h),
+// under the same conditions for moving. Under Reduce Motion or Low Power Mode it is Fluid, held still.
+@property (nonatomic) BOOL liquid;
 // Held still by the owner (the player while playback is paused, or while an Animated artwork clip covers
 // the field).
 @property (nonatomic) BOOL motionHeld;

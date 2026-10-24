@@ -1,6 +1,7 @@
 #import <CoreImage/CoreImage.h>
 #import "Core/SGCore.h"
 #import "SGRFluid.h"
+#import "SGRFluidWarp.h"
 #import "SGRTokens.h"
 
 // Each copy: its side as a share of the visible rect's longer side, its center as shares of that rect, and
@@ -15,10 +16,15 @@ enum { kCopies = sizeof(kCopy) / sizeof(kCopy[0]) };
 // The blurred cover is small: it is drawn several times the screen's size, so detail is lost anyway. The Blur
 // setting is its radius in steps of 1.25 px, so the standard 8 is 10 px, a twelfth of the side.
 static const CGFloat kBlurSide = 128, kBlurPerStep = 1.25, kBrightness = -0.08;
+// The warp's cover is sharper, or its ripples have nothing to bend: twice the side, a quarter of the Blur.
+static const CGFloat kWarpSide = 256, kWarpBlurShare = 0.25;
 // The upper three copies' opacity at full Warp.
 static const float kOverOpacity = 0.7;
 // The shade over the bottom of the visible rect, where the controls are.
 static const CGFloat kShadeFrom = 0.45, kShadeAlpha = 0.55;
+// The warp's frames a second at most. Its link asks for this but takes up to 120 and skips the extra ticks: a
+// link that caps the rate holds the player's 120 Hz animations down with it (AGENTS.md).
+static const CFTimeInterval kWarpFrame = 1.0 / 30;
 
 NSNotificationName const SGRFluidSettingsDidChangeNotification = @"spotifyglass.redesign.fluidSettingsDidChange";
 
@@ -51,11 +57,11 @@ void SGRResetFluidSettings(void) {
 }
 
 // `gain` is the Brightness setting as a factor on linear light, applied under the ceiling below.
-static UIImage *blurred(UIImage *image, BOOL contrast, CGFloat radius, CGFloat saturation, CGFloat gain) {
+static UIImage *blurred(UIImage *image, CGFloat side, BOOL contrast, CGFloat radius, CGFloat saturation, CGFloat gain) {
     CGImageRef source = image.CGImage;
     if (!source) return nil;
     CIImage *input = [CIImage imageWithCGImage:source];
-    CGFloat scale = kBlurSide / MAX(input.extent.size.width, input.extent.size.height);
+    CGFloat scale = side / MAX(input.extent.size.width, input.extent.size.height);
     input = [input imageByApplyingTransform:CGAffineTransformMakeScale(scale, scale)];
     CGRect extent = input.extent;
     CIImage *output = [[[input imageByClampingToExtent]
@@ -104,6 +110,9 @@ static UIImage *blurred(UIImage *image, BOOL contrast, CGFloat radius, CGFloat s
 @implementation SGRFluidLayer {
     CALayer *_copies[kCopies];
     CAGradientLayer *_shade;
+    SGRFluidWarpLayer *_warpLayer;
+    CADisplayLink *_link;              // only while the warp moves
+    CFTimeInterval _drawn;
     UIImage *_source;
     NSUInteger _generation;
     BOOL _moving;
@@ -156,6 +165,7 @@ static UIImage *blurred(UIImage *image, BOOL contrast, CGFloat radius, CGFloat s
     [CATransaction setDisableActions:YES];
     for (int i = 1; i < kCopies; i++) _copies[i].opacity = kOverOpacity * (float)_warp;
     [CATransaction commit];
+    _warpLayer.warp = (float)_warp;
 }
 
 - (void)settingsChanged {
@@ -187,6 +197,8 @@ static UIImage *blurred(UIImage *image, BOOL contrast, CGFloat radius, CGFloat s
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     _shade.frame = bounds;
+    _warpLayer.frame = bounds;
+    _warpLayer.visibleRect = visible;
     _shade.locations = @[@(MIN(1, (CGRectGetMinY(visible) + visible.size.height * kShadeFrom) / total)),
                          @(MIN(1, CGRectGetMaxY(visible) / total))];
     if (!CGRectEqualToRect(visible, _laidOutFor) && visible.size.width >= 1) {
@@ -212,18 +224,20 @@ static UIImage *blurred(UIImage *image, BOOL contrast, CGFloat radius, CGFloat s
     BOOL contrast = SGRIncreaseContrast();
     CGFloat radius = kBlurPerStep * SGRFluidValue(SGRFluidBlur), saturation = SGRFluidValue(SGRFluidSaturation) / 100.0;
     CGFloat gain = SGRFluidValue(SGRFluidBrightness) / 100.0;
+    BOOL warp = _warpLayer != nil;
     __weak SGRFluidLayer *weakSelf = self;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        UIImage *blur = blurred(image, contrast, radius, saturation, gain);
+        UIImage *blur = blurred(image, kBlurSide, contrast, radius, saturation, gain);
+        UIImage *sharper = warp ? blurred(image, kWarpSide, contrast, MAX(kBlurPerStep, radius * 2 * kWarpBlurShare), saturation, gain) : nil;
         dispatch_async(dispatch_get_main_queue(), ^{
             SGRFluidLayer *layer = weakSelf;
             if (!blur || !layer || generation != layer->_generation) return;
-            [layer show:blur animated:animated];
+            [layer show:blur warp:sharper animated:animated];
         });
     });
 }
 
-- (void)show:(UIImage *)blur animated:(BOOL)animated {
+- (void)show:(UIImage *)blur warp:(UIImage *)sharper animated:(BOOL)animated {
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     for (int i = 0; i < kCopies; i++) {
@@ -236,6 +250,8 @@ static UIImage *blurred(UIImage *image, BOOL contrast, CGFloat radius, CGFloat s
         _copies[i].contents = (__bridge id)blur.CGImage;
     }
     [CATransaction commit];
+    // shortcut: the warp's new cover cuts in rather than crossfading; blend two textures in the shader if it jars.
+    if (sharper) [_warpLayer setPicture:sharper.CGImage];
 }
 
 #pragma mark - moving
@@ -251,6 +267,16 @@ static UIImage *blurred(UIImage *image, BOOL contrast, CGFloat radius, CGFloat s
     if (self.bounds.size.width < 1) return;
     _since = CACurrentMediaTime();
     _rate = SGRFluidValue(SGRFluidSpeed) / 100.0;
+    if (_warps) {
+        // Down whenever the warp holds (-stop), so it never takes part in choosing the display's rate then.
+        _link = [CADisplayLink displayLinkWithTarget:self selector:@selector(tick:)];
+        _link.preferredFrameRateRange = CAFrameRateRangeMake(15, 120, 1 / kWarpFrame);
+        [_link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
+        _drawn = 0;
+        static NSUInteger logged;
+        if (logged++ < 6) SGLog(@"redesign kit: liquid warp moves");
+        return;
+    }
     CAFrameRateRange rate = CAFrameRateRangeMake(15, 60, 30);
     for (int i = 0; i < kCopies; i++) {
         CFTimeInterval length = fabs(kCopy[i].turn);
@@ -270,10 +296,12 @@ static UIImage *blurred(UIImage *image, BOOL contrast, CGFloat radius, CGFloat s
     }
 }
 
-// Every copy held at the angle it is drawn at now.
+// Every copy held at the angle it is drawn at now, and the warp at its last frame.
 - (void)stop {
     if (_since > 0) _elapsed += (CACurrentMediaTime() - _since) * _rate;
     _since = 0;
+    [_link invalidate];
+    _link = nil;
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     for (int i = 0; i < kCopies; i++) {
@@ -283,6 +311,40 @@ static UIImage *blurred(UIImage *image, BOOL contrast, CGFloat radius, CGFloat s
         _copies[i].transform = CATransform3DMakeRotation(angle, 0, 0, 1);
     }
     [CATransaction commit];
+}
+
+#pragma mark - the liquid warp
+
+- (void)setWarps:(BOOL)warps {
+    if (warps == _warps) return;
+    BOOL moving = _moving;
+    if (moving) [self stop];
+    _warps = warps;
+    if (warps && !_warpLayer) {
+        _warpLayer = [SGRFluidWarpLayer layer];
+        _warpLayer.warp = (float)_warp;
+        [self insertSublayer:_warpLayer below:_shade];
+        [self setNeedsLayout];
+        [self reblur];   // the warp's own, sharper cover
+    }
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    _warpLayer.hidden = !warps;
+    for (int i = 0; i < kCopies; i++) _copies[i].hidden = warps;
+    [CATransaction commit];
+    if (moving) [self start];
+    else [_warpLayer drawAt:_elapsed];
+    static NSUInteger logged;
+    if (logged++ < 6) SGLog(@"redesign kit: liquid warp %@", warps ? @"draws the cover" : @"gives way to Fluid");
+}
+
+- (void)tick:(CADisplayLink *)link {
+    // The resign-active notification reaches the owner a moment late, on the main queue.
+    if (UIApplication.sharedApplication.applicationState != UIApplicationStateActive) return;
+    // 2 ms early still counts, so a 120 Hz display draws every fourth tick rather than every fifth.
+    if (link.timestamp - _drawn < kWarpFrame - 0.002) return;
+    _drawn = link.timestamp;
+    [_warpLayer drawAt:_elapsed + (CACurrentMediaTime() - _since) * _rate];
 }
 
 @end
