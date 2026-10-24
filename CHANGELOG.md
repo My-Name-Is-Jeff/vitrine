@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0-beta.16](https://github.com/My-Name-Is-Jeff/vitrine/compare/v1.0.0-beta.15...v1.0.0-beta.16) (2026-10-24)
+
+
+### Features
+
+* Spoof Premium drops more of Free's limits, Hide upsells hides 4 more ([981873c](https://github.com/My-Name-Is-Jeff/vitrine/commit/981873c0df91e5b8e527f9c84aae06bc7a6549bc))
+
 ## [1.0.0-beta.15](https://github.com/My-Name-Is-Jeff/vitrine/compare/v1.0.0-beta.14...v1.0.0-beta.15) (2026-10-24)
 
 
