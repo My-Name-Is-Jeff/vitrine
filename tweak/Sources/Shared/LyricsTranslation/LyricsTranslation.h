@@ -79,7 +79,7 @@ NSArray<SGModRow *> *SGAITranslatorRows(void);
 @property (class, readonly) BOOL translationAvailable;
 + (BOOL)appleIntelligenceAvailable:(NSString *)languageTag;
 + (void)openTranslateSettings;
-+ (void)translate:(NSArray<NSString *> *)lines to:(NSString *)languageTag done:(void (^)(NSArray<NSString *> *lines, NSString *error))done;
++ (void)translate:(NSArray<NSString *> *)lines to:(NSString *)languageTag from:(UIView *)view done:(void (^)(NSArray<NSString *> *lines, NSString *error))done;
 // Apple Intelligence works through the song a batch at a time: `progress` gets the lines so far, "" for the rest.
 + (void)translateWithAppleIntelligence:(NSArray<NSString *> *)lines to:(NSString *)languageTag song:(NSString *)song
                               progress:(void (^)(NSArray<NSString *> *lines))progress
