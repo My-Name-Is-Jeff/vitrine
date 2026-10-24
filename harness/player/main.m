@@ -912,7 +912,9 @@ static BOOL fieldCovered(void) {
     after(5, ^{
         UIView *motion = motionView();
         CALayer *foot = [motion valueForKey:@"_foot"], *clip = [motion valueForKey:@"_clip"];
-        UIVisualEffectView *seam = [motion valueForKey:@"_seamBlur"], *lyrics = [motion valueForKey:@"_lyricsBlur"];
+        UIVisualEffectView *seam = [motion valueForKey:@"_seamBlur"];
+        // The lyrics' blur is a filter on the clip, there only while the lyrics are up.
+        BOOL lyricsBlurred = ((UIView *)[motion valueForKey:@"_picture"]).layer.filters.count > 0;
         [self expect:motion != nil && self->_covers.layer.mask != nil step:@"the player opened"
               detail:[NSString stringWithFormat:@"clip %@ the field, cover %@", motion ? @"on" : @"not on", self->_covers.layer.mask ? @"hidden" : @"shown"]];
         CGFloat seamAt = round(clip.frame.size.height * 0.9);
@@ -929,9 +931,9 @@ static BOOL fieldCovered(void) {
               detail:[NSString stringWithFormat:@"poster %@ at %@, video %@, fade %@, field %@, %@", still.contents ? @"in" : @"missing",
                       NSStringFromCGRect(still.frame), NSStringFromCGRect(clip.frame), still.mask ? @"on the poster" : @"missing",
                       SGRPlayerField().motionHeld ? @"held" : @"moving", fieldCovered() ? @"its Fluid copies hidden" : @"its Fluid copies drawn"]];
-        [self expect:seam.effect && !lyrics.effect step:@"the blur from the seam"
+        [self expect:seam.effect && !lyricsBlurred step:@"the blur from the seam"
               detail:[NSString stringWithFormat:@"seam blur %@, from %@ of the height, lyrics blur %@", seam.effect ? @"on" : @"off",
-                      [[seam.maskView.layer.sublayers.firstObject valueForKey:@"locations"] componentsJoinedByString:@" to "], lyrics.effect ? @"on" : @"off"]];
+                      [[seam.maskView.layer.sublayers.firstObject valueForKey:@"locations"] componentsJoinedByString:@" to "], lyricsBlurred ? @"on" : @"off"]];
         // Dimmed by its brightness: HARNESS_DIM is what the clip in HARNESS_CANVAS_FILE should get (0.54 for white,
         // 0.10 for black); the rule itself is checked at its ends.
         CALayer *dim = [motion valueForKey:@"_dim"];
@@ -947,7 +949,7 @@ static BOOL fieldCovered(void) {
     });
     after(7, ^{ SGRPlayerToggleLyrics(); });
     after(8.5, ^{
-        UIVisualEffectView *lyrics = [motionView() valueForKey:@"_lyricsBlur"];
+        BOOL lyricsBlurred = ((UIView *)[motionView() valueForKey:@"_picture"]).layer.filters.count > 0;
         UIView *thumb = nil;
         for (UIView *view in self->_host.subviews) {
             if ([NSStringFromClass(view.class) isEqualToString:@"SGRPlayerLyricsOverlay"]) thumb = [view valueForKey:@"thumb"];
@@ -956,9 +958,9 @@ static BOOL fieldCovered(void) {
         float dim = ((CALayer *)[motionView() valueForKey:@"_dim"]).opacity;
         [self expect:fabsf(dim - self->_dimAlone - 0.15f) < 0.01f step:@"the dim under the lyrics"
               detail:[NSString stringWithFormat:@"%.2f, %.2f without them", dim, self->_dimAlone]];
-        [self expect:SGRPlayerLyricsOpen() && lyrics.effect && away step:@"the lyrics"
+        [self expect:SGRPlayerLyricsOpen() && lyricsBlurred && away step:@"the lyrics"
               detail:[NSString stringWithFormat:@"lyrics %@, clip blurred %@, thumbnail %@ at alpha %.2f", SGRPlayerLyricsOpen() ? @"up" : @"down",
-                      lyrics.effect ? @"yes" : @"no", thumb && !CGAffineTransformIsIdentity(thumb.transform) ? @"in its corner" : @"at the cover", thumb.alpha]];
+                      lyricsBlurred ? @"yes" : @"no", thumb && !CGAffineTransformIsIdentity(thumb.transform) ? @"in its corner" : @"at the cover", thumb.alpha]];
         NSLog(@"[harness] motion: screenshot the lyrics now");
     });
     after(10, ^{ SGRPlayerToggleLyrics(); });

@@ -92,8 +92,7 @@ static UIImage *blurred(UIImage *image, BOOL contrast, CGFloat radius, CGFloat s
             rgb[c] = v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4);
         }
         CGFloat light = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
-        CGFloat cap = gain * (light > ceiling ? ceiling / light : 1);
-        if (light * cap > ceiling) cap = ceiling / light;
+        CGFloat cap = MIN(gain * (light > ceiling ? ceiling / light : 1), ceiling / light);
         for (int c = 0; c < 3; c++) {
             CGFloat v = MIN(1, rgb[c] * cap);
             p[c] = floor(255 * (v <= 0.0031308 ? v * 12.92 : 1.055 * pow(v, 1 / 2.4) - 0.055));

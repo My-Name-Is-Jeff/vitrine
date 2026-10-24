@@ -64,7 +64,7 @@ static const double kMeasuredAt[] = {1, 2};
 // Behind the lyrics the clip itself is blurred, a plain Gaussian blur with no material's gray tint over it
 // (issue #101), so it keeps its colors as the Fluid field does; the dim keeps the text's contrast.
 static NSString *const kLyricsBlurPath = @"filters.gaussianBlur.inputRadius";
-static const CGFloat kLyricsBlurRadius = 30, kLyricsBlurScale = 1;
+static const CGFloat kLyricsBlurRadius = 30;
 
 @interface CAFilter : NSObject
 + (instancetype)filterWithType:(NSString *)type;
@@ -156,6 +156,7 @@ static UIColor *footColor(CGImageRef poster) {
     CALayer *_dim;   // black over the clip and its foot, as dark as the clip is bright
     NSMutableData *_luminances;   // of the frames measured so far
     BOOL _lyricsUp;
+    NSUInteger _blurTurn;   // counts the lyrics' turns, so a fade cut short leaves the filter to the turn after it
     UIVisualEffectView *_seamBlur;
     CGFloat _aspect;
     BOOL _timing;   // the give-up's count is running
@@ -209,6 +210,7 @@ static UIBlurEffect *blurEffect(void) {
         [center addObserver:self selector:@selector(updateMotionSoon) name:name object:nil];
     }
     [center addObserver:self selector:@selector(updateDim) name:UIAccessibilityDarkerSystemColorsStatusDidChangeNotification object:nil];
+    [center addObserver:self selector:@selector(updateDim) name:UIAccessibilityReduceTransparencyStatusDidChangeNotification object:nil];
     SGRObservePlayerTransition(self, ^(id owner) { [owner updateMotion]; }, ^(id owner) { [owner updateMotion]; });
     SGAddPlayerStateObserver(self);
     return self;
@@ -295,7 +297,9 @@ static UIBlurEffect *blurEffect(void) {
 }
 
 - (void)updateDim {
-    CGFloat dim = SGRPlayerClipDim(brightEnd(_luminances), UIAccessibilityDarkerSystemColorsEnabled(), _lyricsUp);
+    // Reduce Transparency puts the lyrics on black, as the material it replaced went opaque there.
+    CGFloat dim = _lyricsUp && SGRReduceTransparency() ? 1
+        : SGRPlayerClipDim(brightEnd(_luminances), UIAccessibilityDarkerSystemColorsEnabled(), _lyricsUp);
     _dim.opacity = (float)dim;
 }
 
@@ -327,19 +331,24 @@ static UIBlurEffect *blurEffect(void) {
 // The lyrics' blur, and their share of the dim, which a layer's own animation carries over the same fade. The
 // filter is on the clip only while the lyrics are up, so a closed lyrics page costs no blur pass a frame.
 - (void)setBlurred:(BOOL)blurred animated:(BOOL)animated {
+    // Asked again on every footer layout pass: the same state again would restart the fade.
+    if (blurred == _lyricsUp) return;
     _lyricsUp = blurred;
+    NSUInteger turn = ++_blurTurn;
     CALayer *layer = _picture.layer;
-    if (blurred && !layer.filters) {
+    if (blurred && !layer.filters && !SGRReduceTransparency()) {
         CAFilter *blur = [NSClassFromString(@"CAFilter") filterWithType:@"gaussianBlur"];
         [blur setValue:@0 forKey:@"inputRadius"];
         // The clip's edges blur against themselves, not against the clear around it.
         [blur setValue:@YES forKey:@"inputNormalizeEdges"];
-        if (blur) layer.filters = @[blur];
-        // The clip changes every video frame, so the blur runs every frame either way: rendered at one pixel a
-        // point it blurs a ninth of a 3x screen's pixels, as cheap as the material's quarter-scale backdrop
-        // was. Nothing sharp is left to lose.
-        layer.rasterizationScale = kLyricsBlurScale;
-        layer.shouldRasterize = blur != nil;
+        if (blur) {
+            layer.filters = @[blur];
+            // The clip changes every video frame, so the blur runs every frame either way: rendered at one pixel a
+            // point it blurs a ninth of a 3x screen's pixels, as cheap as the material's quarter-scale backdrop
+            // was. Nothing sharp is left to lose.
+            layer.rasterizationScale = 1;
+            layer.shouldRasterize = YES;
+        }
     }
     id shown = [layer.presentationLayer valueForKeyPath:kLyricsBlurPath];
     CGFloat from = [shown isKindOfClass:NSNumber.class] ? [shown doubleValue] : 0, to = blurred ? kLyricsBlurRadius : 0;
@@ -351,7 +360,7 @@ static UIBlurEffect *blurEffect(void) {
         __weak SGRPlayerMotionView *weakSelf = self;
         [CATransaction setCompletionBlock:^{
             SGRPlayerMotionView *view = weakSelf;
-            if (!view || view->_lyricsUp) return;
+            if (!view || view->_blurTurn != turn || view->_lyricsUp) return;
             view->_picture.layer.filters = nil;
             view->_picture.layer.shouldRasterize = NO;
         }];
