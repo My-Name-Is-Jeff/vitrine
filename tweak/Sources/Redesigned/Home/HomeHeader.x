@@ -1,7 +1,8 @@
 // Home redesign: the header the way the Music app has it. The filter pills (All, Music, Podcasts) go and
 // a large title takes their place at the leading edge; the avatar that opens the side drawer moves to the
 // trailing edge; the scrim Spotify lays behind the header goes too, the soft scroll edge (Kit/SGREdgeEffect.x)
-// being what keeps the page scrolling under it soft; the title itself scrolls away (followScroll).
+// being what keeps the page scrolling under it soft; the title itself scrolls away (followScroll), or stays
+// with the feed's hard edge under it (keepTitle).
 //
 // Tree (trees/clean/home/10.txt:3018-3051): FunkisViewController's view holds a 402x112 UIView around
 // Reprise_LiquidGlassKit LiquidGlass.GradientView (the scrim) and, at {0, 62}, an
@@ -375,11 +376,40 @@ static void followScroll(UIScrollView *scroll) {
 
 // The feed: the page's outermost scroll view taller than the pills, found once. Not the tallest: a shelf can grow taller
 // than the page, and a shelf's offset never moves the title. Followed by an observer that lives as long as it does.
-static char kFollowerKey;
+static char kFollowerKey, kEdgeKey;
 static __weak UIScrollView *sg_feed;
 static __weak UIView *sg_pageView;
+// Kept in place (SGRKeyHomeKeepTitle), the row stays and no observer is added: the header instead shapes the feed's
+// top edge effect, hard rather than the redesign's soft one (too faint under a large title, as Apple's guidelines
+// say of text outside glass), which then darkens the page under the title and the pill as under a navigation bar.
+static BOOL keepTitle(void) {
+    static int state = -1;
+    if (state < 0) state = SGHidden(SGRKeyHomeKeepTitle) ? 1 : 0;
+    return state == 1;
+}
+
+static void shapeEdge(UIScrollView *feed) {
+    if (@available(iOS 26.0, *)) {
+        UIView *header = sg_header;
+        if (!header) return;
+        UIScrollEdgeElementContainerInteraction *edge = objc_getAssociatedObject(header, &kEdgeKey);
+        if (!edge) {
+            edge = [UIScrollEdgeElementContainerInteraction new];
+            edge.edge = UIRectEdgeTop;
+            [header addInteraction:edge];
+            objc_setAssociatedObject(header, &kEdgeKey, edge, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        if (edge.scrollView != feed) edge.scrollView = feed;
+    }
+    SGRHardTopEdge(feed);
+}
+
 static void followFeed(UIScrollView *feed) {
     sg_feed = feed;
+    if (keepTitle()) {
+        shapeEdge(feed);
+        return;
+    }
     if (!objc_getAssociatedObject(feed, &kFollowerKey)) {
         SGRHomeTitleFollower *follower = [SGRHomeTitleFollower new];
         follower.scroll = feed;

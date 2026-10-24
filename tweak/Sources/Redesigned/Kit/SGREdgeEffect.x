@@ -5,18 +5,35 @@
 // on arrival, in case UIKit resolves the style again after the page appears.
 #import <objc/runtime.h>
 #import "Core/SGCore.h"
+#import "SGRRestyle.h"
+
+// The style last set here, so a layout pass the setter itself causes does not set it again; a hard style here
+// stays (SGRHardTopEdge).
+static char setKey;
 
 static void soften(UIScrollView *scrollView) {
     if (@available(iOS 26.0, *)) {
-        // The style last set here, so a layout pass the setter itself causes does not set it again.
-        static char setKey;
         UIScrollEdgeEffect *top = scrollView.topEdgeEffect;
+        UIScrollEdgeEffectStyle *hard = UIScrollEdgeEffectStyle.hardStyle;
+        if (objc_getAssociatedObject(scrollView, &setKey) == hard) {
+            if (top.style != hard) top.style = hard;
+            return;
+        }
         if (top.style == objc_getAssociatedObject(scrollView, &setKey)) return;
         UIScrollEdgeEffectStyle *soft = UIScrollEdgeEffectStyle.softStyle;
         top.style = soft;
         objc_setAssociatedObject(scrollView, &setKey, top.style, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         static dispatch_once_t once;
         dispatch_once(&once, ^{ SGLog(@"soft top edge: first scroll view %@", NSStringFromClass(scrollView.class)); });
+    }
+}
+
+void SGRHardTopEdge(UIScrollView *scrollView) {
+    if (@available(iOS 26.0, *)) {
+        UIScrollEdgeEffectStyle *hard = UIScrollEdgeEffectStyle.hardStyle;
+        if (objc_getAssociatedObject(scrollView, &setKey) == hard) return;
+        scrollView.topEdgeEffect.style = hard;
+        objc_setAssociatedObject(scrollView, &setKey, hard, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
 }
 

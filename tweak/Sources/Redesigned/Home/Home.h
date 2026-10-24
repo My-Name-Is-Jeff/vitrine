@@ -36,6 +36,9 @@ BOOL SGRHomeLook(void);
 // Top picks keeps Spotify's heading over its cards (drawn at the size of the other shelves' headings, HomeHeadings.x)
 // when set; unset, the heading and the band it takes go. Read at launch.
 #define SGRKeyHomeTopPicksHeading @"spotifyglass.redesign.home.topPicksHeading"
+// The title row stays where it is as the feed scrolls under it, over the feed's hard top edge shaped to the row
+// (HomeHeader.x), rather than rising and fading away. Off until switched on; read at launch.
+#define SGRKeyHomeKeepTitle @"spotifyglass.redesign.home.keepTitle"
 // Parts of Home hidden when set (HomeSections.x): the shortcuts grid and the DJ.
 #define SGRKeyHomeHideShortcuts @"spotifyglass.redesign.home.hide.shortcuts"
 #define SGRKeyHomeHideDJ @"spotifyglass.redesign.home.hide.dj"

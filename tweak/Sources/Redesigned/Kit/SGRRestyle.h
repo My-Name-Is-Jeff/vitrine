@@ -84,3 +84,8 @@ void SGRActivate(UIView *source);
 // else those for touch up inside. NO when the control has neither (an Encore control that reads its
 // touches through a gesture recognizer); what was found is logged once per class.
 BOOL SGRFire(UIControl *control);
+
+// Gives a scroll view the hard top edge effect, a dark band, and keeps the soft one SGREdgeEffect.x sets on every
+// other scroll view off it: for text that stays over a page scrolling under it (Home's kept title, HomeHeader.x).
+// iOS 26 on; nothing before.
+void SGRHardTopEdge(UIScrollView *scrollView);

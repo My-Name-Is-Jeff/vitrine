@@ -502,8 +502,9 @@ Native:
 Redesigned:
 
     Kit/          what the redesign builds on (SGRKit.h lists it), the flags it forces (SGRedesign.h, SGRGlassDesign.x for
-                  Spotify's own glass design), its repaint hook (SGRRepaint.x), soft top edge, AMOLED black (always on,
-                  SGRAmoled.x) and its own accent color (SGRAccent.x, stored apart from the native look's). The
+                  Spotify's own glass design), its repaint hook (SGRRepaint.x), soft top edge (hard where a page asks for
+                  it, SGRHardTopEdge), AMOLED black (always on, SGRAmoled.x) and its own accent color (SGRAccent.x, stored
+                  apart from the native look's). The
                   playlist, album and artist pages take their field's color from the cover's main color (checked on
                   the Mac by harness/palette/), and come in whole: a black veil over the page until the cover has
                   been read, at most SGRFieldHoldLimit (1 s), then faded away (SGRField.h)
@@ -608,7 +609,9 @@ Redesigned:
     Home/         Home decluttered to music on black (an allow list of its sections: shortcuts, the DJ without its heading and
                   transcript, the shelves of cards, each with a switch on the Home page of Mod Settings; the previews and the
                   song suggestions only when switched on), a large title where the filter pills were, the title rising and
-                  fading with the feed as it scrolls, as the Music app's does, the shelves' headings at the Music app's size,
+                  fading with the feed as it scrolls, as the Music app's does (or, with Title stays on scroll, staying put
+                  over the feed's hard top edge, shaped to the row, and no scroll observer), the shelves' headings at the
+                  Music app's size,
                   continuous corners on the covers, and, under the Home look switch (the Home page's first row; off, none of
                   its hooks install and Home is as before it): at the trailing edge a glass pill of the filter (a menu that
                   drives Spotify's own chips, with the device picker and the top shelf's Show all) and the avatar, Top picks
