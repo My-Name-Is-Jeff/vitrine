@@ -289,7 +289,7 @@ static SGRPlayerMorph *morphFor(SPTBarOverlayPresentationTransition *transition,
 // stand-ins (npbSnapshotView, tabBarSnapshotView; BarTransition.x). A display link reads how far up Spotify's animation
 // has the player and morphs to match, so Spotify's frame, alpha and completion stay its own. It is let go once the
 // transition is no longer interactive and the player has no animation left and holds still a few frames.
-static const CFTimeInterval kGiveUp = 0.9;   // UIKit's presentation runs about 0.5 s
+static const CFTimeInterval kGiveUp = 0.9;   // ticking with no move this long; UIKit's whole presentation runs about 0.5 s
 static const float kCloseSpeed = 1.5;         // how much faster than Spotify's a close it runs on its own plays
 
 @interface SGRMorphFollower : NSObject
@@ -299,7 +299,8 @@ static const float kCloseSpeed = 1.5;         // how much faster than Spotify's 
 @property (nonatomic, strong) CADisplayLink *link;
 @property (nonatomic) NSInteger still;
 @property (nonatomic) CGFloat lastY;
-@property (nonatomic) CFTimeInterval settledSince;   // when it was last driven by a finger, or began
+@property (nonatomic) CFTimeInterval settledSince;   // when it last moved or was driven by a finger, or began
+@property (nonatomic) CFTimeInterval lastTick;
 @property (nonatomic) BOOL sped;                     // the container's layer runs at kCloseSpeed until let go
 @property (nonatomic) BOOL closing, wasInteractive;
 @end
@@ -336,9 +337,11 @@ static void runAtSpeed(CALayer *layer, float speed) {
     self.lastY = y;
     self.still = moving ? 0 : self.still + 1;
     // Let go once still, or kGiveUp after it last moved whatever the layer holds: a mask and a transform left on the player
-    // would keep its glass buttons from drawing. Counted from the last move, so a stall before the slide does not use it up.
+    // would keep its glass buttons from drawing. Counted from the last move and over ticks only, so a stall of the main
+    // thread before the slide (a cold open's first layout) does not use it up.
     CFTimeInterval now = CACurrentMediaTime();
-    if (interactive || moved || !self.settledSince) self.settledSince = now;
+    if (interactive || moved || !self.settledSince || now - self.lastTick > kGiveUp / 4) self.settledSince = now;
+    self.lastTick = now;
     if (self.still >= 3 || now - self.settledSince > kGiveUp) [self finish];
 }
 - (void)finish {

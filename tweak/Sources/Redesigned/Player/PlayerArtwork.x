@@ -74,11 +74,9 @@ static UIView *showingTilt(void) {
     for (UIView *tilt in sg_tilts) {
         UIWindow *window = tilt.window;
         if (!window) continue;
+        if (!SGShownUnder(tilt, nil)) continue;
         CGFloat middle = CGRectGetMidX([tilt convertRect:tilt.bounds toView:nil]);
-        if (middle < 0 || middle > CGRectGetWidth(window.bounds)) continue;
-        BOOL hidden = NO;
-        for (UIView *v = tilt; v && !hidden; v = v.superview) hidden = v.hidden;
-        if (!hidden) return tilt;
+        if (middle >= 0 && middle <= CGRectGetWidth(window.bounds)) return tilt;
     }
     return nil;
 }
@@ -117,9 +115,15 @@ CGRect SGRPlayerArtworkAreaIn(UIView *host) {
 static __weak UIView *sg_hiddenCover, *sg_hiddenPlate;
 // Asked for while no cover was laid out yet (the first open): the cover is hidden in the layout pass that makes it,
 // so its first frame on screen is already hidden.
-static BOOL sg_coverHeld;
+static BOOL sg_coverKeptHidden;
 
-static void hideCoverOf(UIView *tilt) {
+void SGRPlayerSetCoverHidden(BOOL hidden) {
+    sg_hiddenCover.alpha = SGRReduceMotion() && SGPlayerState().isPaused ? 0.75 : 1;
+    sg_hiddenPlate.alpha = 1;
+    sg_hiddenCover = sg_hiddenPlate = nil;
+    sg_coverKeptHidden = hidden;
+    if (!hidden) return;
+    UIView *tilt = showingTilt();
     UIView *cover = coverIn(tilt);
     if (!cover) return;
     UIView *plate = SGRShadowPlateIn(tilt, &kPlateKey);
@@ -127,14 +131,6 @@ static void hideCoverOf(UIView *tilt) {
     plate.alpha = 0;
     sg_hiddenCover = cover;
     sg_hiddenPlate = plate;
-}
-
-void SGRPlayerSetCoverHidden(BOOL hidden) {
-    sg_hiddenCover.alpha = SGRReduceMotion() && SGPlayerState().isPaused ? 0.75 : 1;
-    sg_hiddenPlate.alpha = 1;
-    sg_hiddenCover = sg_hiddenPlate = nil;
-    sg_coverHeld = hidden;
-    if (hidden) hideCoverOf(showingTilt());
 }
 
 #pragma mark - the paused shrink
@@ -263,11 +259,10 @@ static void watchHold(UIView *tilt) {
     UIView *cover = coverIn(tilt);
     if (!cover) return;
     [sg_tilts addObject:tilt];
-    // The hold goes to whichever cover is showing: the first open can lay out a second cell in its place.
-    if (sg_coverHeld && cover != sg_hiddenCover && showingTilt() == tilt) {
-        SGRPlayerSetCoverHidden(NO);
-        sg_coverHeld = YES;
-        hideCoverOf(tilt);
+    // Kept hidden, it is whichever cover is showing: the first open can lay out a second cell in its place. Not animated,
+    // though this pass may run inside Spotify's transition.
+    if (sg_coverKeptHidden && cover != sg_hiddenCover && showingTilt() == tilt) {
+        [UIView performWithoutAnimation:^{ SGRPlayerSetCoverHidden(YES); }];
     }
     watchHold(tilt);
     SGRPlayerMotionCoverLaidOut();
