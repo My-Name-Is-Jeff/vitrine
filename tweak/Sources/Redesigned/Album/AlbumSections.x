@@ -31,7 +31,7 @@
 // Over the album's own line, and between it and the copyright: the spacers they sat between are gone.
 static const CGFloat kLead = 16;
 
-static char kSettledKey, kMeasuredWidthKey;
+static char kSettledKey;
 
 static BOOL isFooterContent(UIView *content) {
     static NSMutableDictionary<id, NSNumber *> *answers;
@@ -79,7 +79,6 @@ static void settle(UICollectionViewCell *cell, CGFloat natural, CGFloat lead) {
 static void unsettle(UICollectionViewCell *cell) {
     UIView *content = cell.contentView;
     objc_setAssociatedObject(cell, &kSettledKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(cell, &kMeasuredWidthKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     content.autoresizingMask |= UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     content.frame = cell.bounds;
     content.hidden = NO;
@@ -191,20 +190,19 @@ static void logOnce(NSString *what) {
 - (UICollectionViewLayoutAttributes *)preferredLayoutAttributesFittingAttributes:(UICollectionViewLayoutAttributes *)attributes {
     UICollectionViewCell *cell = (UICollectionViewCell *)self;
     UIView *content = cell.contentView.subviews.firstObject;
+    NSArray<NSNumber *> *settled = objc_getAssociatedObject(cell, &kSettledKey);
     // Cells are reused across kinds, and one settled before can hold a track row now.
     if (!isFooterContent(content) || !SGRAlbumPageOf(cell)) {
-        if (objc_getAssociatedObject(cell, &kSettledKey)) unsettle(cell);
+        if (settled) unsettle(cell);
         return %orig;
     }
-    // Measured once per width. Asking Spotify again after settle() has pinned the content gives another answer,
-    // and the collection view keeps re-asking until the answer holds still (the watchdog got there first).
-    NSArray<NSNumber *> *settled = objc_getAssociatedObject(cell, &kSettledKey);
-    NSNumber *measuredWidth = objc_getAssociatedObject(cell, &kMeasuredWidthKey);
-    if (settled && measuredWidth && fabs(measuredWidth.doubleValue - attributes.size.width) < 0.5) {
-        UICollectionViewLayoutAttributes *again = [attributes copy];
-        CGFloat lead = settled[1].doubleValue;
-        again.size = CGSizeMake(attributes.size.width, lead > 0 ? settled[0].doubleValue + lead : 0);
-        return again;
+    // A kept cell is measured from the top and settled again below: content settle() moved down its lead measures
+    // that much taller on every pass, and the collection view asks again until the answer holds still. Only the
+    // lead is undone; a dropped cell's content is never squeezed to the cell's 0 (see the top of the file).
+    if (settled[1].doubleValue > 0) {
+        CGRect frame = cell.contentView.frame;
+        frame.origin.y = 0;
+        cell.contentView.frame = frame;
     }
     UICollectionViewLayoutAttributes *result = %orig;
     CGFloat natural = MAX(1, result.size.height);
@@ -214,14 +212,13 @@ static void logOnce(NSString *what) {
         result.size = CGSizeMake(result.size.width, natural + kLead);
         logOnce(@"the album's own line and its copyright kept under the tracks");
     } else if (shown(cell, content, attributes.indexPath, NO)) {
-        if (objc_getAssociatedObject(cell, &kSettledKey)) unsettle(cell);
+        if (settled) unsettle(cell);
         logOnce(@"a section under the tracks shown, its switch off");
     } else {
         settle(cell, natural, 0);
         result.size = CGSizeMake(result.size.width, 0);
         logOnce(@"the sections under the tracks dropped");
     }
-    objc_setAssociatedObject(cell, &kMeasuredWidthKey, @(attributes.size.width), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     return result;
 }
 

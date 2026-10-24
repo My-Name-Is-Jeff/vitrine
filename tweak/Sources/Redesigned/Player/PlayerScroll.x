@@ -5,7 +5,7 @@
 // That pull is no scrub's, though: a finger dragging the progress bar that drifts down closed the player
 // instead of seeking (issue #172). A scroll view lets a UIControl in it track a touch while its own pan
 // runs on the same touch, so the list's pan is turned off from the moment the slider tracks a touch until
-// it lets go.
+// it lets go. The volume row's slider holds it the same way.
 //
 // Spotify's tap-to-scroll band, a plain view over the bottom 55pt drawn after the list, scrolls the list
 // down a step on a tap. With the list held at the top that step is taken straight back, and the band
@@ -68,24 +68,36 @@ static void holdAtTop(UIScrollView *list) {
 #pragma mark - a scrub is not a pull
 
 // The list whose pan a scrub turned off, so only that one is turned back on: a pan off for some other
-// reason stays off. One finger scrubs at a time, so one is enough.
+// reason stays off. One finger scrubs at a time, so one is enough. The slider that holds it is kept too:
+// MPVolumeView swaps its slider on a route change, and the old one leaving its window ends no other scrub.
 static __weak UIScrollView *sg_scrubbedList;
+static __weak UIView *sg_scrubber;
 
 static void scrubBegan(UIView *slider) {
     UIScrollView *list = nil;
     for (UIView *v = slider.superview; v && !list; v = v.superview) {
         if ([v isKindOfClass:UIScrollView.class] && [v.accessibilityIdentifier isEqualToString:kListIdentifier]) list = (UIScrollView *)v;
     }
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{ SGLog(@"redesign player: a scrub %@", list ? @"holds the list's pan" : @"found no list above the slider"); });
+    // Once per slider class and answer: the volume slider is hooked app-wide, and the progress bar's answer still shows.
+    static NSMutableSet<NSString *> *logged;
+    if (!logged) logged = [NSMutableSet set];
+    NSString *what = [NSString stringWithFormat:@"a scrub on %@ %@", NSStringFromClass(slider.class),
+                      list ? @"holds the list's pan" : @"found no list above the slider"];
+    if (![logged containsObject:what]) {
+        [logged addObject:what];
+        SGLog(@"redesign player: %@", what);
+    }
     if (!list.panGestureRecognizer.enabled) return;
     list.panGestureRecognizer.enabled = NO;
     sg_scrubbedList = list;
+    sg_scrubber = slider;
 }
 
-static void scrubEnded(void) {
+static void scrubEnded(UIView *slider) {
+    if (slider != sg_scrubber) return;
     sg_scrubbedList.panGestureRecognizer.enabled = YES;
     sg_scrubbedList = nil;
+    sg_scrubber = nil;
 }
 
 // Shared/Haptics/ControlHaptics.x hooks the same begin for the scrub's taps; both call through.
@@ -98,19 +110,43 @@ static void scrubEnded(void) {
 
 - (void)endTrackingWithTouch:(UITouch *)touch withEvent:(UIEvent *)event {
     %orig;
-    scrubEnded();
+    scrubEnded((UIView *)self);
 }
 
 - (void)cancelTrackingWithEvent:(UIEvent *)event {
     %orig;
-    scrubEnded();
+    scrubEnded((UIView *)self);
 }
 
 // A lock, a call or the player going some other way can take the slider off screen mid-scrub, and then
 // neither of the two above may come.
 - (void)didMoveToWindow {
     %orig;
-    if (!((UIView *)self).window) scrubEnded();
+    if (!((UIView *)self).window) scrubEnded((UIView *)self);
+}
+%end
+
+// The volume row's slider (PlayerVolume.m) is held the same way: a drag along it that drifts down is the volume's.
+%hook MPVolumeSlider
+- (BOOL)beginTrackingWithTouch:(UITouch *)touch withEvent:(UIEvent *)event {
+    BOOL tracking = %orig;
+    if (tracking) scrubBegan((UIView *)self);
+    return tracking;
+}
+
+- (void)endTrackingWithTouch:(UITouch *)touch withEvent:(UIEvent *)event {
+    %orig;
+    scrubEnded((UIView *)self);
+}
+
+- (void)cancelTrackingWithEvent:(UIEvent *)event {
+    %orig;
+    scrubEnded((UIView *)self);
+}
+
+- (void)didMoveToWindow {
+    %orig;
+    if (!((UIView *)self).window) scrubEnded((UIView *)self);
 }
 %end
 
@@ -121,5 +157,6 @@ static void scrubEnded(void) {
         @"_TtC21NowPlaying_ScrollImpl23NPVScrollViewController",
         @"_TtC21NowPlaying_ScrollImpl28NPVTapToScrollViewController",
         @"_TtCO17NowPlaying_ECMKit11ProgressBar6Slider",
+        @"MPVolumeSlider",
     ]);
 }

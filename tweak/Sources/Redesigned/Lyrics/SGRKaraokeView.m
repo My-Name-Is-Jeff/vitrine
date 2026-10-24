@@ -1097,8 +1097,7 @@ static const NSUInteger kLinesPerFrame = 4;
 static const double kHopLift = 0.8;     // of a dot's width
 static const double kHopRise = 0.48;    // of the dot's third: up, and filled by the top
 static const double kHopHold = 0.62;    // of the dot's third: where the drop begins
-static const double kHopUnder = 0.12;   // of a dot's width below rest, where the drop lands
-static const double kHopRest = 0.05;    // ...and where it settles
+static const double kHopUnder = 0.12;   // of a dot's width below rest, where the drop lands before it settles
 static const double kHopSpan = 1.15;    // the whole hop in dot thirds; the settle runs a little into the next
 
 // Local time on the dots' clock is this far into the break plus this, so no animation begins at 0,
@@ -1238,7 +1237,7 @@ static double smoothstep(double p) {
 
         CGFloat lift = -kHopLift * _side;   // y grows downward, so up is negative
         CAKeyframeAnimation *hop = [CAKeyframeAnimation animationWithKeyPath:@"transform.translation.y"];
-        hop.values = @[@0, @(lift), @(lift), @(kHopUnder * _side), @(kHopRest * _side)];
+        hop.values = @[@0, @(lift), @(lift), @(kHopUnder * _side), @0];
         hop.keyTimes = @[@0, @(kHopRise / kHopSpan), @(kHopHold / kHopSpan), @(1 / kHopSpan), @1];
         hop.timingFunctions = @[rise, [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear], drop, settle];
         hop.beginTime = begin;
@@ -1507,6 +1506,7 @@ typedef struct {
         return;
     }
     if (_plain) return;   // a line with no time has nowhere to seek to
+    if (_seeksAbove > 0 && [tap locationInView:self].y > _seeksAbove) return;   // the host's, where its controls were
     for (SGRKaraokeLineView *view in _shown.allValues) {
         if (!CGRectContainsPoint(CGRectInset(view.frame, -_margin, -_lineGap / 2), point)) continue;
         [self seekToLine:view.line];
@@ -1569,7 +1569,7 @@ typedef struct {
         _browseBreak = _openBreak;
     }
     _browsing = YES;
-    if (self.browsingBegan) self.browsingBegan();
+    if (self.browsingBegan) self.browsingBegan([scrollView.panGestureRecognizer translationInView:scrollView].y < 0);
     for (SGRKaraokeLineView *view in _shown.allValues) view.blur = 0;
 }
 

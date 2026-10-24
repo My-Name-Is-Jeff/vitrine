@@ -55,11 +55,11 @@ static const CGFloat kLivingHeight = 200;
 // The lines on their own: the controls under them fade after this long without a touch.
 static const NSTimeInterval kRest = 4;
 
-static char kOverlayKey, kPlateKey, kTitleKey, kStackKey, kDirectionKey;
+static char kOverlayKey, kPlateKey, kTitleKey, kStackKey;
 static BOOL sg_open;
 static BOOL sg_moving;                      // the transition is in flight, so no layout pass may re-place it
 static __weak UIView *sg_host;              // SPTNowPlayingView
-static __weak UIViewController *sg_info, *sg_duration, *sg_floating, *sg_header;
+static __weak UIViewController *sg_info, *sg_duration, *sg_floating;
 static __weak UIView *sg_titleElement;      // the arranged element view holding the title and the artist
 static __weak UIViewController *sg_player;  // NowPlayingViewController, whose units the controls are
 static BOOL sg_alone;                       // the lines have the player to themselves
@@ -118,12 +118,11 @@ static __weak UIGestureRecognizer *sg_wake; // on the player, on while alone: th
 // What it hands them to instead is the title row. Translated to the top of the player it is drawn well
 // outside the stack view it is arranged in, and UIKit stops looking at a view whose bounds the touch is
 // not in, so the add button and the menu that rode up with it are past Spotify's own reach. Asked here
-// directly, the row answers for where it is drawn. Not while the lines are alone: the row is faded then,
-// and a tap where its add button was is the player's, which brings everything back.
+// directly, the row answers for where it is drawn. It stays while the lines are alone, so it answers then too.
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
     UIView *hit = [super hitTest:point withEvent:event];
     if (hit != self) return hit;
-    UIView *row = SGRPlayerLyricsOpen() && !sg_alone ? sg_info.viewIfLoaded : nil;
+    UIView *row = SGRPlayerLyricsOpen() ? sg_info.viewIfLoaded : nil;
     UIView *inRow = row ? [row hitTest:[row convertPoint:point fromView:self] withEvent:event] : nil;
     return inRow == row ? nil : inRow;
 }
@@ -310,18 +309,20 @@ static CGFloat thumbRadius(SGRLyricsLayout l, BOOL open) {
 
 #pragma mark - the lines on their own
 
-// Scrolling the lines down fades the controls under them, and the lines grow down into their room, the way
-// the Music app leaves its lyrics alone. Scrolling them back up brings the controls back (SGRLyricsDirection).
-// The header row, the thumbnail and the title row always stay. The lines scroll and seek as they always do,
-// hidden controls or not, and a tap on them brings nothing back; a tap anywhere else does. A pause brings
-// the controls back and keeps them; VoiceOver, a sheet over the player and the app in the background keep
-// them up. Sing's mic stays with the lines, and a touch on it is the mic's: it does not bring the controls back.
+// Scrolling the lines on fades the controls under them, and the lines grow down into their room, the way
+// the Music app leaves its lyrics alone; with Hide the controls on, so does kRest without a touch while the
+// song plays. Scrolling the lines back brings the controls back. The header row, the thumbnail and the title
+// row always stay. The lines scroll and seek as they always do, hidden controls or not, and a tap on them
+// brings nothing back; a tap anywhere else does. A pause brings the controls back and keeps them; VoiceOver,
+// a sheet over the player and the app in the background keep them up. Sing's mic stays with the lines, and a
+// touch on it is the mic's: it does not bring the controls back.
 //
 // The tap is a recognizer on the player that recognizes with any other, and a button takes its own tap:
-// UIKit gives a control its tap over a tap recognizer above it. A faded view takes no touch (UIKit's hit
-// test skips it), so a tap where the thumbnail or a button was only wakes. A drag or a second finger fails
-// it. A touch on the lines is the lines' alone: the recognizer does not take it, so their tap seeks and the
-// controls stay hidden.
+// UIKit gives a control its tap over a tap recognizer above it, so the title row's buttons act and leave the
+// controls as they are. A faded view takes no touch (UIKit's hit test skips it), so a tap where a faded control was
+// only wakes, and so does one on the lines where the controls were: they seek only above that (seeksAbove).
+// A drag or a second finger fails it. A tap on the lines above it is the lines' alone: the recognizer does
+// not take it, so their tap seeks and the controls stay hidden.
 
 // What fades: every view of Spotify's bottom stack but the title row and the chips (gone while the lines are
 // up), which is the progress bar, the buttons, the footer and a volume row where the phone has one. Each fades
@@ -397,13 +398,10 @@ static BOOL coveredBySheet(void) {
 
 // Whether the clock runs: the lines up with the controls, the song playing with the app in front, no finger
 // on the player and VoiceOver off (which keeps the controls up, and starts the clock again when it goes).
-// Only a scroll hides the controls now, so the clock that hid them after a rest stays off.
-static const BOOL kRestHides = NO;
-
 static BOOL mayCount(void) {
     SPTPlayerState *state = SGPlayerState();
     UIView *host = sg_host;
-    return kRestHides && SGEnabled(SGRKeyLyricsAutoHide) && sg_open && !sg_alone && !sg_touching && host.window && state && !state.isPaused
+    return SGEnabled(SGRKeyLyricsAutoHide) && sg_open && !sg_alone && !sg_touching && host.window && state && !state.isPaused
         && !UIAccessibilityIsVoiceOverRunning()
         && UIApplication.sharedApplication.applicationState == UIApplicationStateActive;
 }
@@ -495,12 +493,13 @@ static void restartRest(void) {
     return YES;
 }
 // Sing's mic and its slider stay while the lines are alone, and a touch on them is theirs alone. So is a touch
-// on the lines: a tap there brings nothing back, only a scroll up or a tap anywhere else does.
+// on the lines above where the controls were: a tap there seeks and brings nothing back.
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)recognizer shouldReceiveTouch:(UITouch *)touch {
     SGRPlayerLyricsOverlay *overlay = objc_getAssociatedObject(sg_host, &kOverlayKey);
-    UIView *lines = overlay.lyrics;
+    SGRKaraokeView *lines = overlay.lyrics;
     for (UIView *v = touch.view; v; v = v.superview) {
-        if (v == lines || [v isKindOfClass:SGRSingButton.class]) return NO;
+        if ([v isKindOfClass:SGRSingButton.class]) return NO;
+        if (v == lines) return lines.seeksAbove > 0 && [touch locationInView:lines].y > lines.seeksAbove;
     }
     return YES;
 }
@@ -510,56 +509,22 @@ static void restartRest(void) {
 }
 @end
 
-// Which way the finger drags the lines decides the controls: the lyrics scrolling down hides them, scrolling
-// back up brings them back. It takes no touch and lets the lines' own scrolling have every one.
-static const BOOL kScrollDownHides = YES;   // the lyrics scrolling down = the finger moving up
-static const CGFloat kScrollSlop = 12;      // how far the finger goes before it counts
-
-@interface SGRLyricsDirection : UIPanGestureRecognizer <UIGestureRecognizerDelegate>
-@end
-
-@implementation SGRLyricsDirection
-- (instancetype)init {
-    if (!(self = [super initWithTarget:nil action:nil])) return nil;
-    [self addTarget:self action:@selector(sgr_panned)];
-    self.delegate = self;
-    self.cancelsTouchesInView = NO;
-    self.delaysTouchesBegan = NO;
-    self.delaysTouchesEnded = NO;
-    return self;
-}
-- (BOOL)gestureRecognizer:(UIGestureRecognizer *)recognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)other {
-    return YES;
-}
-- (void)sgr_panned {
-    if (self.state != UIGestureRecognizerStateChanged || !sg_open) return;
-    CGFloat dy = [self translationInView:nil].y;   // window coordinates, so the lines resizing does not move it
-    if (fabs(dy) < kScrollSlop) return;
-    BOOL scrollingDown = dy < 0;                    // the finger went up
-    [self setTranslation:CGPointZero inView:nil];   // each turn of direction counts afresh
-    if (scrollingDown == kScrollDownHides) {
-        // Not under VoiceOver, which keeps the controls up, nor under a sheet.
-        if (!UIAccessibilityIsVoiceOverRunning() && !coveredBySheet()) setAlone(YES, YES);
-    } else {
-        setAlone(NO, YES);
-    }
-}
-@end
-
 static void setAlone(BOOL alone, BOOL animated) {
     UIView *host = sg_host;
     if (alone == sg_alone || !host || (alone && !sg_open)) return;
     SGRLyricsLayout l = layoutIn(host);
-    // Going alone needs somewhere to put the lines. Coming back never waits for it: the controls and the
-    // lines' tap are given back even when the player can no longer be measured.
+    // Going alone needs somewhere to put the lines. Coming back never waits for it: the controls are given
+    // back even when the player can no longer be measured.
     if (alone && !l.ok) return;
     sg_alone = alone;
+    SGRPlayerLyricsOverlay *overlay = objc_getAssociatedObject(host, &kOverlayKey);
+    // Alone, the lines seek only as far down as they reached with the controls up.
+    if (overlay.superview) overlay.lyrics.seeksAbove = alone ? l.stage.size.height : 0;
     if (alone) {
         [sg_rest invalidate];
         sg_rest = nil;
         l.stage = aloneStage(host, l);
     }
-    SGRPlayerLyricsOverlay *overlay = objc_getAssociatedObject(host, &kOverlayKey);
     // Layout and opacity have their own timing; Reduce Motion dissolves the layout in place.
     void (^move)(void) = ^{
         if (!overlay.superview || !l.ok) return;
@@ -625,13 +590,12 @@ static void setOpen(BOOL open, BOOL animated) {
         overlay.cover.image = SGRNowPlayingArtwork(NULL, NULL);
         overlay.stage.alpha = 0;
         overlay.stage.transform = entering;
-        // The direction of the scroll decides, not that one began (SGRLyricsDirection).
-        overlay.lyrics.browsingBegan = nil;
-        if (![objc_getAssociatedObject(overlay.lyrics, &kDirectionKey) isKindOfClass:SGRLyricsDirection.class]) {
-            SGRLyricsDirection *direction = [SGRLyricsDirection new];
-            [overlay.lyrics addGestureRecognizer:direction];
-            objc_setAssociatedObject(overlay.lyrics, &kDirectionKey, direction, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
+        // Once a drag, as it starts: the lines resize then and not again under the finger. Going alone, not under
+        // VoiceOver, which keeps the controls up, nor under a sheet.
+        overlay.lyrics.browsingBegan = ^(BOOL onward) {
+            if (!onward) setAlone(NO, YES);
+            else if (!UIAccessibilityIsVoiceOverRunning() && !coveredBySheet()) setAlone(YES, YES);
+        };
         // Spotify's cover goes the moment the redesign's own takes its place: the same picture at the
         // same size with the same corners, so there is nothing to see in the swap. Coming back it waits
         // for the thumbnail to land on it, or the two would be on screen at once, one of them half size.
@@ -708,6 +672,7 @@ static void replace(void) {
     if (!overlay.superview) return;
     if (overlay.superview == host && host.subviews.lastObject != overlay) [host bringSubviewToFront:overlay];
     if (sg_alone) {
+        overlay.lyrics.seeksAbove = l.stage.size.height;
         l.stage = aloneStage(host, l);
         fadeControls(YES);
     }
@@ -784,33 +749,12 @@ static void durationUnitLaidOut(UIViewController *unit) {
 }
 %end
 
-// The header row (the down arrow, Playing from, the ⋯; PlayerHeader.x has its tree), which fades with the
-// controls while the lines are alone.
-%hook _TtC20NowPlaying_ModesImpl18HeaderElementsUnit
-- (void)viewDidLayoutSubviews {
-    %orig;
-    sg_header = (UIViewController *)self;
-    replace();
-}
-%end
-
 // The DJ player units are other classes, hooked only when the build has them (see %ctor).
 %group SGRDJInformationHooks
 %hook SGRDJInformationUnit
 - (void)viewDidLayoutSubviews {
     %orig;
     informationUnitLaidOut((UIViewController *)self);
-}
-%end
-%end
-
-// The DJ's header row fades with the rest while the lines are alone.
-%group SGRDJHeaderFadeHooks
-%hook SGRDJHeaderFadeUnit
-- (void)viewDidLayoutSubviews {
-    %orig;
-    sg_header = (UIViewController *)self;
-    replace();
 }
 %end
 %end
@@ -918,8 +862,6 @@ BOOL SGRPlayerLyricsNone(void) {
     if (djInformation) { %init(SGRDJInformationHooks, SGRDJInformationUnit = djInformation); }
     Class djDuration = SGRDJClass(@"DJMDurationElementsUnit");
     if (djDuration) { %init(SGRDJDurationHooks, SGRDJDurationUnit = djDuration); }
-    Class djHeader = SGRDJClass(@"DJMHeaderElementsUnitViewController");
-    if (djHeader) { %init(SGRDJHeaderFadeHooks, SGRDJHeaderFadeUnit = djHeader); }
     sg_watcher = [SGRPlayerLyricsWatcher new];
     SGAddPlayerStateObserver(sg_watcher);
     // In the background the controls stay up; back in front the clock starts again.
@@ -952,6 +894,5 @@ BOOL SGRPlayerLyricsNone(void) {
         @"_TtC20NowPlaying_ModesImpl23InformationElementsUnit",
         @"_TtC20NowPlaying_ModesImpl19DurationElementUnit",
         @"_TtC20NowPlaying_ModesImpl20FloatingElementsUnit",
-        @"_TtC20NowPlaying_ModesImpl18HeaderElementsUnit",
     ]);
 }

@@ -14,7 +14,7 @@
 //                        play glyph, lowered row and Connect of PlayerControls.x and PlayerFooter.x
 //     PlayerCards.x      every card under the player collapsed, so the list closes up
 //     PlayerScroll.x     the list held at its top, so the player is one screen and cannot be scrolled up,
-//                        and its pull held off while the progress bar is scrubbed
+//                        and its pull held off while the progress bar or the volume is dragged
 //     PlayerLyrics.x     the lyrics in the player: the cover as a thumbnail, the title up beside it
 //     PlayerGestures.x   the gestures' hookup
 //     PlayerMorph.x      the open and close grown out of the now playing bar's card, the cover flown
