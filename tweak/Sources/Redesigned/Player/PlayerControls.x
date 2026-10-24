@@ -102,11 +102,14 @@ static void skipGlyph(UIView *host, NSString *identifier, const void *findKey, N
 // alpha in their slots: the row is Spotify's stack of five, and setting `hidden` in an Encore stack crashes. Kept by
 // SGRSuppress, since Spotify's state render sets a button's alpha back to 1 when shuffle or repeat changes.
 static BOOL sg_hideShuffle, sg_hideRepeat;
+// The ordinary player's controls, apart from sg_controlsHost, which the DJ's set too.
+static __weak UIView *sg_buttonsHost;
+static NSString *const kShuffleID = @"Components.UI.ShuffleButton", *const kRepeatID = @"Nowplaying-RepeatButton";
 
 static BOOL isHiddenButton(UIView *view) {
     NSString *identifier = view.accessibilityIdentifier;
-    return (sg_hideShuffle && [identifier isEqualToString:@"Components.UI.ShuffleButton"])
-        || (sg_hideRepeat && [identifier isEqualToString:@"Nowplaying-RepeatButton"]);
+    return (sg_hideShuffle && [identifier isEqualToString:kShuffleID])
+        || (sg_hideRepeat && [identifier isEqualToString:kRepeatID]);
 }
 
 // Spotify also swaps in a new button a moment after the controls lay out (seen for repeat on 9.1.90: the instance
@@ -120,7 +123,7 @@ static BOOL isHiddenButton(UIView *view) {
 - (void)didMoveToWindow {
     %orig;
     UIView *view = (UIView *)self;
-    if (view.window && sg_controlsHost && isHiddenButton(view) && [view isDescendantOfView:sg_controlsHost]) SGRSuppress(view);
+    if (view.window && isHiddenButton(view) && sg_buttonsHost && [view isDescendantOfView:sg_buttonsHost]) SGRSuppress(view);
 }
 %end
 %end
@@ -136,9 +139,10 @@ static void suppressButton(UIView *button) {
 
 // Each is looked for only in its own end of the row, so a row without it (a podcast's) costs a walk of one
 // element, not the unit.
-static void hideShuffleAndRepeat(UIStackView *row) {
-    if (sg_hideShuffle) suppressButton(SGRFindByIdentifier(row.arrangedSubviews.firstObject, @"Components.UI.ShuffleButton", &kShuffleKey));
-    if (sg_hideRepeat) suppressButton(SGRFindByIdentifier(row.arrangedSubviews.lastObject, @"Nowplaying-RepeatButton", &kRepeatKey));
+static void hideShuffleAndRepeat(UIView *host, UIStackView *row) {
+    sg_buttonsHost = host;
+    if (sg_hideShuffle) suppressButton(SGRFindByIdentifier(row.arrangedSubviews.firstObject, kShuffleID, &kShuffleKey));
+    if (sg_hideRepeat) suppressButton(SGRFindByIdentifier(row.arrangedSubviews.lastObject, kRepeatID, &kRepeatKey));
 }
 
 #pragma mark - play
@@ -234,7 +238,7 @@ void SGRPlayerPlayGlyphIn(UIView *host) {
     skipGlyph(host, @"SPTNowPlayingPreviousTrackButton", &kPreviousKey, @"backward.fill");
     skipGlyph(host, @"SPTNowPlayingNextTrackButton", &kNextKey, @"forward.fill");
     SGRPlayerPlayGlyphIn(host);
-    hideShuffleAndRepeat(row);
+    hideShuffleAndRepeat(host, row);
 }
 %end
 

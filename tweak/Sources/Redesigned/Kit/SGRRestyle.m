@@ -116,21 +116,17 @@ void SGRSuppress(UIView *view) {
     // through an override on the class, which only holds the instances marked here. The class `class` answers,
     // so an instance KVO observes (the player's repeat button) is held too: KVO's class passes setAlpha: on to it.
     // Only a class inside the app: a plain UILabel KVO observes answers UILabel, which must never be touched.
-    BOOL spotifys = [[NSBundle bundleForClass:view.class].bundlePath hasPrefix:NSBundle.mainBundle.bundlePath];
-    BOOL onClass = !kept && spotifys && overrideOnClass(view.class, @selector(setAlpha:), ^id(IMP replaced) {
-        return ^(UIView *self, CGFloat alpha) {
-            ((void (*)(id, SEL, CGFloat))replaced)(self, @selector(setAlpha:), objc_getAssociatedObject(self, &kSuppressedKey) ? 0 : alpha);
-        };
-    });
-    if (onClass) objc_setAssociatedObject(view, &kSuppressedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    // An instance marked on an earlier call is held already: callers ask on every layout pass.
+    BOOL onClass = objc_getAssociatedObject(view, &kSuppressedKey) != nil;
     if (!kept && !onClass) {
-        static NSMutableSet<NSString *> *logged;
-        if (!logged) logged = [NSMutableSet set];
-        NSString *name = NSStringFromClass(object_getClass(view));
-        if (![logged containsObject:name]) {
-            [logged addObject:name];
-            SGLog(@"redesign kit: %@ cannot keep being suppressed, set once per call", name);
-        }
+        BOOL spotifys = [[NSBundle bundleForClass:view.class].bundlePath hasPrefix:NSBundle.mainBundle.bundlePath];
+        onClass = spotifys && overrideOnClass(view.class, @selector(setAlpha:), ^id(IMP replaced) {
+            return ^(UIView *self, CGFloat alpha) {
+                ((void (*)(id, SEL, CGFloat))replaced)(self, @selector(setAlpha:), objc_getAssociatedObject(self, &kSuppressedKey) ? 0 : alpha);
+            };
+        });
+        if (onClass) objc_setAssociatedObject(view, &kSuppressedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        logWatch(view, @selector(setAlpha:), onClass, onClass);
     }
     view.alpha = 0;
     view.userInteractionEnabled = NO;

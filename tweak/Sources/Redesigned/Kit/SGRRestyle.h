@@ -14,8 +14,9 @@
 // Alpha 0, no touches, hidden from accessibility, and kept so: the instance becomes a runtime subclass
 // of its own class (the way KVO does it, `class` still answers the original) whose setAlpha: and
 // setUserInteractionEnabled: hold those values. For plain UIKit views (a UIImageView, a UILabel). One of
-// Spotify's Swift classes, or an instance KVO observes, keeps its alpha through an override on its class
-// that holds only the instances suppressed; where neither takes, the values are set once instead, re-applied
+// Spotify's Swift classes, or an instance KVO observes, keeps its alpha (only its alpha: touches and
+// accessibility are set again on each call) through an override on its class that holds only the instances
+// suppressed; where neither takes, the values are set once instead, re-applied
 // on the next call, and a log line says so once.
 void SGRSuppress(UIView *view);
 

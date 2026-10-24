@@ -158,9 +158,10 @@ UIViewController *SGPlayerSettingsPage(void) {
         [sections addObjectsFromArray:SGNativePlayerScreenSections()];
     }
     // Switch to video is the same chip of Spotify's player under either look.
-    NSArray<SGModRow *> *hidden = @[SGHideRow(@"Switch to video", @"The chip over the title of a song with a music video", SGKeyHideVideoSwitch)];
+    SGModRow *video = SGHideRow(@"Switch to video", @"The chip over the title of a song with a music video", SGKeyHideVideoSwitch);
     // The native look's Shuffle and Repeat rows are in its Hide on the player section, with their own keys.
-    if (!native) hidden = [@[SGHideRow(@"Shuffle", nil, SGRKeyPlayerHideShuffle), SGHideRow(@"Repeat", nil, SGRKeyPlayerHideRepeat)] arrayByAddingObjectsFromArray:hidden];
+    NSArray<SGModRow *> *hidden = native ? @[video]
+        : @[SGHideRow(@"Shuffle", nil, SGRKeyPlayerHideShuffle), SGHideRow(@"Repeat", nil, SGRKeyPlayerHideRepeat), video];
     [sections addObject:SGSection(native ? nil : @"Hide on the player", hidden)];
 
     [sections addObject:SGNotedSection(@"Lossless", @[
