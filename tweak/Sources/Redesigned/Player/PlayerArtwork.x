@@ -68,10 +68,14 @@ static void scaleCover(UIView *tilt, CGFloat scale) {
 #pragma mark - where the cover is
 
 // The tilt view of the cover on screen: the queue is a cover per cell and the cells out of view are
-// kept hidden (player/02.txt:521), so the one showing is the one in a window with nothing hidden over it.
+// kept hidden (player/02.txt:521), so the one showing is the one in a window with nothing hidden over it. On the first
+// open the cells off to the side are not hidden yet, so it must also sit across the screen, not a page off it.
 static UIView *showingTilt(void) {
     for (UIView *tilt in sg_tilts) {
-        if (!tilt.window) continue;
+        UIWindow *window = tilt.window;
+        if (!window) continue;
+        CGFloat middle = CGRectGetMidX([tilt convertRect:tilt.bounds toView:nil]);
+        if (middle < 0 || middle > CGRectGetWidth(window.bounds)) continue;
         BOOL hidden = NO;
         for (UIView *v = tilt; v && !hidden; v = v.superview) hidden = v.hidden;
         if (!hidden) return tilt;
@@ -111,13 +115,11 @@ CGRect SGRPlayerArtworkAreaIn(UIView *host) {
 
 // The cover hidden for a stand-in, so the same one comes back if the list moved on meanwhile.
 static __weak UIView *sg_hiddenCover, *sg_hiddenPlate;
+// Asked for while no cover was laid out yet (the first open): the cover is hidden in the layout pass that makes it,
+// so its first frame on screen is already hidden.
+static BOOL sg_coverHeld;
 
-void SGRPlayerSetCoverHidden(BOOL hidden) {
-    sg_hiddenCover.alpha = SGRReduceMotion() && SGPlayerState().isPaused ? 0.75 : 1;
-    sg_hiddenPlate.alpha = 1;
-    sg_hiddenCover = sg_hiddenPlate = nil;
-    if (!hidden) return;
-    UIView *tilt = showingTilt();
+static void hideCoverOf(UIView *tilt) {
     UIView *cover = coverIn(tilt);
     if (!cover) return;
     UIView *plate = SGRShadowPlateIn(tilt, &kPlateKey);
@@ -125,6 +127,14 @@ void SGRPlayerSetCoverHidden(BOOL hidden) {
     plate.alpha = 0;
     sg_hiddenCover = cover;
     sg_hiddenPlate = plate;
+}
+
+void SGRPlayerSetCoverHidden(BOOL hidden) {
+    sg_hiddenCover.alpha = SGRReduceMotion() && SGPlayerState().isPaused ? 0.75 : 1;
+    sg_hiddenPlate.alpha = 1;
+    sg_hiddenCover = sg_hiddenPlate = nil;
+    sg_coverHeld = hidden;
+    if (hidden) hideCoverOf(showingTilt());
 }
 
 #pragma mark - the paused shrink
@@ -253,6 +263,12 @@ static void watchHold(UIView *tilt) {
     UIView *cover = coverIn(tilt);
     if (!cover) return;
     [sg_tilts addObject:tilt];
+    // The hold goes to whichever cover is showing: the first open can lay out a second cell in its place.
+    if (sg_coverHeld && cover != sg_hiddenCover && showingTilt() == tilt) {
+        SGRPlayerSetCoverHidden(NO);
+        sg_coverHeld = YES;
+        hideCoverOf(tilt);
+    }
     watchHold(tilt);
     SGRPlayerMotionCoverLaidOut();
     // The cover fills the tilt view (01.txt:37); bounds and center, unlike a frame, hold under the scale.
