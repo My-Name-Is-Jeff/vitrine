@@ -29,23 +29,45 @@ static void unpack(NSInteger rgb, CGFloat *r, CGFloat *g, CGFloat *b) {
     *b = (rgb & 0xFF) / 255.0;
 }
 
+// Made once per cover color: every pass over the stack hands it out.
 static UIColor *coverColor(void) {
+    static NSInteger madeFor = -1;
+    static UIColor *made;
+    if (made && madeFor == sg_cover) return made;
     CGFloat r, g, b;
     unpack(sg_cover, &r, &g, &b);
-    return [UIColor colorWithRed:r green:g blue:b alpha:1];
+    made = [UIColor colorWithRed:r green:g blue:b alpha:1];
+    madeFor = sg_cover;
+    return made;
+}
+
+// -[UIColor getHue:saturation:brightness:alpha:] worked out from the components, without making a color for it.
+static void hsv(CGFloat r, CGFloat g, CGFloat b, CGFloat *h, CGFloat *s, CGFloat *v) {
+    CGFloat high = MAX(r, MAX(g, b)), low = MIN(r, MIN(g, b)), range = high - low;
+    *v = high;
+    *s = high > 0 ? range / high : 0;
+    if (range <= 0 || high <= 0) *h = 0;
+    else if (high == r) *h = (g - b) / range;
+    else if (high == g) *h = 2 + (b - r) / range;
+    else *h = 4 + (r - g) / range;
+    *h /= 6;
+    if (*h < 0) *h += 1;
 }
 
 // Whether a color is the accent's: its hue within kHueNear, and colorful. Darker shades of it count (a pressed state).
+// A color made from Spotify's green comes out as the accent (Kit/SGRAccent.x), so that green is judged as the accent.
 static const CGFloat kHueNear = 0.05, kColorful = 0.35;
 static BOOL accentLike(CGFloat r, CGFloat g, CGFloat b) {
     static CGFloat accentHue = -1;
     if (accentHue < 0) {
-        CGFloat ar, ag, ab, s, v, a;
+        CGFloat ar, ag, ab, s, v;
         unpack(SGRAccentRGB(), &ar, &ag, &ab);
-        [[UIColor colorWithRed:ar green:ag blue:ab alpha:1] getHue:&accentHue saturation:&s brightness:&v alpha:&a];
+        SGRAccentSwap(&ar, &ag, &ab);
+        hsv(ar, ag, ab, &accentHue, &s, &v);
     }
-    CGFloat h, s, v, a;
-    if (![[UIColor colorWithRed:r green:g blue:b alpha:1] getHue:&h saturation:&s brightness:&v alpha:&a]) return NO;
+    CGFloat h, s, v;
+    SGRAccentSwap(&r, &g, &b);
+    hsv(r, g, b, &h, &s, &v);
     CGFloat d = fabs(h - accentHue);
     return MIN(d, 1 - d) < kHueNear && s > kColorful && v > 0.2;
 }
@@ -115,7 +137,8 @@ static void paintBackground(UIView *view) {
         original = current;
         objc_setAssociatedObject(view, &kOriginalKey, original, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
-    view.backgroundColor = sg_cover < 0 ? original : coverColor();
+    UIColor *color = sg_cover < 0 ? original : coverColor();
+    if (![view.backgroundColor isEqual:color]) view.backgroundColor = color;
 }
 
 static void paintShape(CAShapeLayer *layer) {
@@ -129,6 +152,7 @@ static void paintShape(CAShapeLayer *layer) {
             objc_setAssociatedObject(layer, key, original, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
         CGColorRef color = sg_cover < 0 ? (__bridge CGColorRef)original : coverColor().CGColor;
+        if (CGColorEqualToColor(current, color)) continue;
         if (stroke) layer.strokeColor = color;
         else layer.fillColor = color;
     }

@@ -824,19 +824,28 @@ static OSStatus setProperty(AudioUnit unit, AudioUnitPropertyID property, AudioU
 
 static OSStatus (*sg_startOutput)(AudioUnit unit);
 
-// The silence check, a couple of times a second from Spotify's first start; it returns at once unless two
-// outputs run.
-static void startChecking(void) {
-    static dispatch_once_t once;
-    static dispatch_source_t timer;   // kept, or it stops with its last reference
-    dispatch_once(&once, ^{
+// The silence check, a couple of times a second while two outputs run, as it does nothing with fewer. Under
+// sg_outputsLock, after any output starts, stops or goes.
+static void updateChecking(void) {
+    static dispatch_source_t timer;   // kept for good: a source must not be released while suspended
+    static BOOL checking;
+    if (!timer) {
         timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, sg_outputsQueue);
-        dispatch_source_set_timer(timer, dispatch_time(DISPATCH_TIME_NOW, 0), (uint64_t)(kCheckEvery * NSEC_PER_SEC), NSEC_PER_SEC / 10);
         dispatch_source_set_event_handler(timer, ^{
             checkSilence();
         });
-        dispatch_resume(timer);
-    });
+    }
+    int running = 0;
+    for (int i = 0; i < kMaxOutputs; i++) running += atomic_load(&sg_outputs[i].unit) && atomic_load(&sg_outputs[i].running);
+    if ((running > 1) == checking) return;
+    checking = running > 1;
+    if (!checking) {
+        dispatch_suspend(timer);
+        return;
+    }
+    uint64_t every = (uint64_t)(kCheckEvery * NSEC_PER_SEC);
+    dispatch_source_set_timer(timer, dispatch_time(DISPATCH_TIME_NOW, (int64_t)every), every, NSEC_PER_SEC / 10);
+    dispatch_resume(timer);
 }
 
 static OSStatus startOutput(AudioUnit unit) {
@@ -844,11 +853,11 @@ static OSStatus startOutput(AudioUnit unit) {
     pthread_mutex_lock(&sg_outputsLock);
     Output *output = outputFor(unit);
     if (output) {
-        startChecking();
         AudioStreamBasicDescription client, hardware;
         NSString *why = settle(output, &client, &hardware);
         markEvent(output);
         atomic_store(&output->running, true);
+        updateChecking();
         if (!output->listened) {
             output->listened = YES;
             AudioUnitAddRenderNotify(unit, rendered, output);
@@ -873,6 +882,7 @@ static OSStatus stopOutput(AudioUnit unit) {
     pthread_mutex_lock(&sg_outputsLock);
     Output *output = outputOf(unit);
     if (output && atomic_exchange(&output->running, false)) {
+        updateChecking();
         reselect(NO, @"its output stopped");
         SGLog(@"audio: output %p stopped (Spotify's side %.0f Hz); the processors are on %@", unit, rateOf(&output->client), describe(music()));
     }
@@ -907,7 +917,10 @@ static OSStatus disposeUnit(AudioComponentInstance unit) {
             changed = YES;
         }
     }
-    if (changed) reselect(NO, @"a unit disposed");
+    if (changed) {
+        updateChecking();
+        reselect(NO, @"a unit disposed");
+    }
     // Under the lock, so its slot is not used again while its last render may still be running.
     OSStatus status = sg_dispose(unit);
     pthread_mutex_unlock(&sg_outputsLock);

@@ -6,13 +6,6 @@
 
 static char kPlateKey, kImageObserverKey, kLayoutObserverKey;
 
-@interface SGRWeakBox : NSObject
-@property (nonatomic, weak) id value;
-@end
-
-@implementation SGRWeakBox
-@end
-
 #pragma mark - instance subclasses
 
 // A Swift class can lose its metadata when the runtime makes a subclass of it, and an instance KVO
@@ -273,18 +266,8 @@ BOOL SGRIsAvatar(UIView *view) {
 
 UIView *SGRFindByIdentifier(UIView *root, NSString *identifier, const void *cacheKey) {
     if (!root || !identifier.length) return nil;
-    SGRWeakBox *box = cacheKey ? objc_getAssociatedObject(root, cacheKey) : nil;
-    UIView *cached = box.value;
-    if (cached && identifierMatches(cached.accessibilityIdentifier, identifier) && [cached isDescendantOfView:root]) return cached;
-    UIView *found = findIdentifier(root, identifier);
-    if (found && cacheKey) {
-        if (!box) {
-            box = [SGRWeakBox new];
-            objc_setAssociatedObject(root, cacheKey, box, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-        box.value = found;
-    }
-    return found;
+    if (!cacheKey) return findIdentifier(root, identifier);
+    return SGFindRemembered(root, cacheKey, ^BOOL(UIView *v) { return identifierMatches(v.accessibilityIdentifier, identifier); });
 }
 
 @implementation SGRShadowPlate {
@@ -391,7 +374,7 @@ static BOOL aboveFooter(UIView *row) {
     NSArray<UIView *> *siblings = row.superview.subviews;
     NSUInteger at = [siblings indexOfObject:row];
     for (NSUInteger i = at + 1; at != NSNotFound && i + 1 < siblings.count; i++) {
-        if ([NSStringFromClass(siblings[i].class) containsString:@"GradientView"] && isFooter(siblings[i + 1])) return YES;
+        if (SGClassNamed(siblings[i].class, @"GradientView") && isFooter(siblings[i + 1])) return YES;
     }
     return NO;
 }
@@ -399,14 +382,15 @@ static BOOL aboveFooter(UIView *row) {
 static void clearPaint(UIView *view, UIView *cell, CGFloat wide) {
     BOOL full = view.bounds.size.width >= wide;
     if (view != cell && !full && [view isKindOfClass:UICollectionViewCell.class]) return;
-    CALayer *fade = objc_getAssociatedObject(view, &kRowFadeKey);
-    if (fade && view.layer.mask == fade && !aboveFooter(view)) view.layer.mask = nil;
+    // A row's fade is only ever in place as its mask, so an unmasked view has none to take off.
+    CALayer *mask = view.layer.mask;
+    if (mask && mask == objc_getAssociatedObject(view, &kRowFadeKey) && !aboveFooter(view)) view.layer.mask = nil;
     if (full) {
         // Read off the layer, written through the view, so the two are left saying the same thing: the
         // clear color lands on both, and reads back with an alpha the next pass does not take for paint.
         CGColorRef color = view.layer.backgroundColor;
         if (color && SGIsBaseSurface(color)) view.backgroundColor = UIColor.clearColor;
-        if ([NSStringFromClass(view.class) containsString:@"GradientView"]) {
+        if (SGClassNamed(view.class, @"GradientView")) {
             if (!view.layer.mask) view.layer.mask = [CALayer layer];
             fadeRowsAbove(view);
         }
