@@ -443,7 +443,8 @@ static void finish(SGLyricsWalk *walk) {
 // Whether the walk has its answer. walk.merged is the best seen so far: betterLines keeps the finest timed
 // lines, the first in the order among equals, so a walk run to the end takes words over a line's start over
 // plain text. It stops at the first timed answer, or with Prefer word-by-word timing at the first with words
-// timed. A source picked for the track is asked first, and its answer ends the walk in step.
+// timed. A source picked for the track is asked first, and its answer ends the walk in step, as a timed
+// imported LRC does.
 static BOOL settled(SGLyricsWalk *walk) {
     SGLyricsResult *merged = walk.merged;
     if (!(merged.synced && merged.texts.count && merged.karaokeLines.count)) return NO;
@@ -507,6 +508,13 @@ static void step(SGLyricsWalk *walk) {
             if (!fresh.provider) fresh.provider = provider.name;
             walk.merged = fresh;
             walk.pickedAnswered = YES;
+            finish(walk);
+            return;
+        }
+        // The user's own timed file is the answer: Prefer word-by-word timing looks past the sources' line timing,
+        // not past lyrics the user imported for the song (#111).
+        if (fresh.synced && fresh.karaokeLines.count && [provider.key isEqualToString:SGImportedLRCKey]) {
+            walk.merged = fresh;
             finish(walk);
             return;
         }
