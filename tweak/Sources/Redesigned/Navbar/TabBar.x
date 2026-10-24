@@ -862,7 +862,9 @@ static BOOL sg_itemsLaidOut;
 
 %hook _TtC23NavigationUI_TabBarImpl10TabBarView
 - (void)layoutSubviews {
+    // A pass nested in another (an item's layoutIfNeeded) hands both back, so the outer one still composes.
     UIView *bar = (UIView *)self, *outer = sg_passBar;
+    BOOL outerLaidOut = sg_itemsLaidOut;
     sg_passBar = bar;
     %orig;
     SGRComposeTabBar(bar);
@@ -873,6 +875,7 @@ static BOOL sg_itemsLaidOut;
     // Items the row's pass laid out are composed once, all together, rather than once each.
     if (sg_itemsLaidOut) SGRComposeTabBar(bar);
     sg_passBar = outer;
+    sg_itemsLaidOut = outerLaidOut;
     holdHome(bar);
     syncBar(bar);
     SGRLogTabBarRow(bar);

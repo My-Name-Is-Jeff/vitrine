@@ -424,10 +424,12 @@ void SGRLogTabBarRow(UIView *tabBar) {
     // The row SGRComposeTabBar found in this bar on the same pass, just before.
     UIStackView *stack = sg_row;
     if (!stack) return;
-    // The line is written out only when a frame, an item or the boxes read off them changed. shortcut: items
+    // The line is written out only when a frame, an item, the stack's settings or the boxes read off them changed. shortcut: items
     // past the 16th are not compared, raise it if a bar ever holds more.
     struct {
         CGRect bar, stack, icon, label;
+        NSInteger axis, distribution, alignment;
+        CGFloat spacing;
         NSUInteger count;
         struct { const void *item; CGRect frame; BOOL hidden; } items[16];
     } key;
@@ -436,6 +438,10 @@ void SGRLogTabBarRow(UIView *tabBar) {
     key.stack = stack.frame;
     key.icon = sg_iconBox;
     key.label = sg_labelBox;
+    key.axis = stack.axis;
+    key.distribution = stack.distribution;
+    key.alignment = stack.alignment;
+    key.spacing = stack.spacing;
     for (UIView *item in stack.arrangedSubviews) {
         NSUInteger i = key.count++;
         if (i >= 16) continue;

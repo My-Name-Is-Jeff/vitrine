@@ -544,11 +544,9 @@ void SGSetLiveActivityEnabled(BOOL on) {
         // long gone. On, a fresh one starts once it is: until then the first ticks update the leftover, which is
         // harmless, an update after the end being ignored. A launch in the background (a play from AirPods,
         // CarPlay or the lock screen) keeps it, since no new one can start there, and the first tick updates it.
-        // Off, and none ever started (LiveActivityBridge.swift notes each start under this key): none can be left,
-        // so ActivityKit is not asked.
-        BOOL everStarted = [NSUserDefaults.standardUserDefaults objectForKey:@"spotifyglass.liveActivity.startedAt"] != nil;
+        // Off, it is ended only if one shows, so nothing is queued for the many who never turned it on.
         dispatch_async(dispatch_get_main_queue(), ^{
-            if ((!on && everStarted) || (on && UIApplication.sharedApplication.applicationState != UIApplicationStateBackground))
+            if ((!on && SGLiveActivityBridge.isShowing) || (on && UIApplication.sharedApplication.applicationState != UIApplicationStateBackground))
                 [SGLiveActivityBridge end];
             if (on) SGSetLiveActivityEnabled(YES);
         });

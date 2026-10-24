@@ -47,16 +47,20 @@ static char kFieldKey;
 @interface SGRAlbumPlace : NSObject
 @property (nonatomic, weak) UIView *page;
 @property (nonatomic) BOOL pageCell;
+// pagesFound when no page was found: a cell measured before Spotify names its page looks again once one turns up.
+@property (nonatomic) NSInteger pagesFound;
 @end
 
 @implementation SGRAlbumPlace
 @end
 
 static char kPlaceKey;
+static NSInteger pagesFound;
+static __weak UIView *lastPage;
 
 static SGRAlbumPlace *placeOf(UIView *cell) {
     SGRAlbumPlace *place = objc_getAssociatedObject(cell, &kPlaceKey);
-    if (place) return place;
+    if (place.page || (place && place.pagesFound == pagesFound)) return place;
     place = [SGRAlbumPlace new];
     BOOL nested = NO;
     for (UIView *v = cell; v; v = v.superview) {
@@ -67,6 +71,11 @@ static SGRAlbumPlace *placeOf(UIView *cell) {
             break;
         }
     }
+    if (place.page && place.page != lastPage) {
+        lastPage = place.page;
+        pagesFound++;
+    }
+    place.pagesFound = pagesFound;
     if (cell.window) objc_setAssociatedObject(cell, &kPlaceKey, place, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     return place;
 }
