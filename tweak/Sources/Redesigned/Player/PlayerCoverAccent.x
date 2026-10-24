@@ -14,7 +14,7 @@
 
 static NSInteger sg_cover = -1;   // 0xRRGGBB while a cover gives one, else -1
 static __weak UIView *sg_stack;   // the bottom stack last painted
-static char kOriginalKey, kTintedKey, kTintedCoverKey, kAccentImageKey, kOriginalFillKey, kOriginalStrokeKey;
+static char kOriginalKey, kTintedKey, kTintedCoverKey, kAccentImageKey, kInkKey, kOriginalFillKey, kOriginalStrokeKey;
 
 BOOL SGRPlayerFollowsCover(void) {
     static BOOL on;
@@ -72,13 +72,9 @@ static BOOL accentLike(CGFloat r, CGFloat g, CGFloat b) {
     return MIN(d, 1 - d) < kHueNear && s > kColorful && v > 0.2;
 }
 
-static BOOL colorAccentLike(UIColor *color) {
+BOOL SGRPlayerAccentLike(UIColor *color) {
     CGFloat r, g, b, a;
     return color && [color getRed:&r green:&g blue:&b alpha:&a] && a > 0.5 && accentLike(r, g, b);
-}
-
-BOOL SGRPlayerAccentLike(UIColor *color) {
-    return colorAccentLike(color);
 }
 
 static BOOL cgAccentLike(CGColorRef color) {
@@ -87,16 +83,15 @@ static BOOL cgAccentLike(CGColorRef color) {
     return c[3] > 0.5 && accentLike(c[0], c[1], c[2]);
 }
 
-// Whether an image is drawn in the accent: the average of its opaque pixels, read once at 16 by 16 and kept on it.
-static BOOL imageAccentLike(UIImage *image) {
-    NSNumber *known = objc_getAssociatedObject(image, &kAccentImageKey);
-    if (known) return known.boolValue;
+UIColor *SGRPlayerImageInk(UIImage *image) {
+    id known = objc_getAssociatedObject(image, &kInkKey);
+    if (known) return known == NSNull.null ? nil : known;
     enum { kSide = 16 };
     uint8_t pixels[kSide * kSide * 4] = {0};
     CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
     CGContextRef context = CGBitmapContextCreate(pixels, kSide, kSide, 8, kSide * 4, space, (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
     CGColorSpaceRelease(space);
-    BOOL accent = NO;
+    UIColor *ink = nil;
     if (context && image.CGImage) {
         CGContextDrawImage(context, CGRectMake(0, 0, kSide, kSide), image.CGImage);
         double r = 0, g = 0, b = 0, n = 0;
@@ -108,9 +103,18 @@ static BOOL imageAccentLike(UIImage *image) {
             b += pixels[i * 4 + 2] / (double)alpha;
             n++;
         }
-        accent = n >= 4 && accentLike(r / n, g / n, b / n);
+        if (n >= 4) ink = [UIColor colorWithRed:r / n green:g / n blue:b / n alpha:1];
     }
     if (context) CGContextRelease(context);
+    objc_setAssociatedObject(image, &kInkKey, ink ?: NSNull.null, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return ink;
+}
+
+// Whether an image is drawn in the accent, judged once and kept on it.
+static BOOL imageAccentLike(UIImage *image) {
+    NSNumber *known = objc_getAssociatedObject(image, &kAccentImageKey);
+    if (known) return known.boolValue;
+    BOOL accent = SGRPlayerAccentLike(SGRPlayerImageInk(image));
     objc_setAssociatedObject(image, &kAccentImageKey, @(accent), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     return accent;
 }
@@ -136,7 +140,7 @@ static void paintImageView(UIImageView *view) {
 static void paintBackground(UIView *view) {
     UIColor *original = objc_getAssociatedObject(view, &kOriginalKey);
     UIColor *current = view.backgroundColor;
-    if (!original && !colorAccentLike(current)) return;
+    if (!original && !SGRPlayerAccentLike(current)) return;
     if (!original) {
         original = current;
         objc_setAssociatedObject(view, &kOriginalKey, original, OBJC_ASSOCIATION_RETAIN_NONATOMIC);

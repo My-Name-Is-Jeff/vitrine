@@ -118,7 +118,7 @@ SGRGlyphButton *SGRPlayerLyricsGlyphIn(UIView *host) {
 
 #pragma mark - the Music app's glyphs
 
-static char kStandInKey, kInkKey, kClearKey, kQueueActiveColorKey;
+static char kStandInKey, kClearKey, kQueueActiveColorKey;
 
 // The Kit's glyph centered inside `drawn`: it takes `drawn`'s hidden, alpha and animations with it.
 static SGRGlyphView *standIn(UIView *drawn, NSString *symbol) {
@@ -128,6 +128,10 @@ static SGRGlyphView *standIn(UIView *drawn, NSString *symbol) {
         glyph = [[SGRGlyphView alloc] initWithSymbol:symbol pointSize:kLyricsGlyphSize weight:UIImageSymbolWeightRegular];
         glyph.userInteractionEnabled = NO;
         glyph.isAccessibilityElement = NO;
+        glyph.tintColor = SGRSecondary();   // at rest, as the Lyrics glyph while it is off
+        // Kept centered when Spotify resizes the view between the footer's passes (a new Connect image of another size).
+        glyph.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin
+                               | UIViewAutoresizingFlexibleTopMargin | UIViewAutoresizingFlexibleBottomMargin;
         objc_setAssociatedObject(drawn, &kStandInKey, glyph, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     if (glyph.superview != drawn) [drawn addSubview:glyph];
@@ -136,42 +140,25 @@ static SGRGlyphView *standIn(UIView *drawn, NSString *symbol) {
     return glyph;
 }
 
-// The color Spotify drew its glyph in: the average of its opaque pixels, read once at 16 by 16 and kept on the image,
-// so an image Spotify hands over again costs a lookup. One drawn from the tint answers the tint.
+// The color Spotify drew its glyph in (SGRPlayerImageInk, kept on the image, so an image Spotify hands over again costs
+// a lookup). One drawn from the tint answers the tint.
 static UIColor *inkOf(UIImageView *view, UIImage *image) {
     if (image.isSymbolImage || image.renderingMode == UIImageRenderingModeAlwaysTemplate) return view.tintColor;
-    UIColor *known = objc_getAssociatedObject(image, &kInkKey);
-    if (known) return known;
-    enum { kSide = 16 };
-    uint8_t pixels[kSide * kSide * 4] = {0};
-    CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
-    CGContextRef context = CGBitmapContextCreate(pixels, kSide, kSide, 8, kSide * 4, space, (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
-    CGColorSpaceRelease(space);
-    if (!context) return SGRPrimary();
-    CGContextDrawImage(context, CGRectMake(0, 0, kSide, kSide), image.CGImage);
-    CGContextRelease(context);
-    double r = 0, g = 0, b = 0, n = 0;
-    for (int i = 0; i < kSide * kSide; i++) {
-        uint8_t alpha = pixels[i * 4 + 3];
-        if (alpha < 128) continue;
-        r += pixels[i * 4] / (double)alpha;
-        g += pixels[i * 4 + 1] / (double)alpha;
-        b += pixels[i * 4 + 2] / (double)alpha;
-        n++;
-    }
-    UIColor *ink = n >= 4 ? [UIColor colorWithRed:r / n green:g / n blue:b / n alpha:1] : SGRPrimary();
-    objc_setAssociatedObject(image, &kInkKey, ink, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    return ink;
+    return SGRPlayerImageInk(image) ?: SGRPrimary();
 }
 
 // A lit glyph as a bitmap in its color, the way Spotify draws its own: Follow the cover finds lit controls by their
 // pixels, and a symbol image has none to read. The symbol's alignment insets are kept, so it sits where it did.
-static UIImage *litImage(UIImage *symbol, UIColor *color) {
-    UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat preferredFormat];
+// Drawn in the glyph's traits (Bold Text, contrast), as its template image is.
+static UIImage *litImage(SGRGlyphView *glyph, UIImage *symbol, UIColor *color) {
+    UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat formatForTraitCollection:glyph.traitCollection];
     format.scale = symbol.scale;
     UIImage *tinted = [symbol imageWithTintColor:color renderingMode:UIImageRenderingModeAlwaysOriginal];
-    UIImage *bitmap = [[[UIGraphicsImageRenderer alloc] initWithSize:symbol.size format:format] imageWithActions:^(UIGraphicsImageRendererContext *context) {
-        [tinted drawAtPoint:CGPointZero];
+    __block UIImage *bitmap;
+    [glyph.traitCollection performAsCurrentTraitCollection:^{
+        bitmap = [[[UIGraphicsImageRenderer alloc] initWithSize:symbol.size format:format] imageWithActions:^(UIGraphicsImageRendererContext *context) {
+            [tinted drawAtPoint:CGPointZero];
+        }];
     }];
     return [bitmap imageWithAlignmentRectInsets:symbol.alignmentRectInsets];
 }
@@ -183,10 +170,10 @@ static void takeConnectImage(UIImageView *drawn) {
     UIImage *clear = objc_getAssociatedObject(drawn, &kClearKey);
     if (!image.CGImage || image == clear) return;
     SGRGlyphView *glyph = objc_getAssociatedObject(drawn, &kStandInKey);
-    UIImage *symbol = [UIImage systemImageNamed:kConnectSymbol withConfiguration:glyph.preferredSymbolConfiguration];
+    UIImage *symbol = [UIImage systemImageNamed:glyph.symbol withConfiguration:glyph.preferredSymbolConfiguration];
     UIColor *ink = inkOf(drawn, image);
     BOOL lit = SGRPlayerAccentLike(ink);
-    glyph.image = lit ? litImage(symbol, ink) : [symbol imageWithTintColor:SGRSecondary() renderingMode:UIImageRenderingModeAlwaysOriginal];
+    glyph.image = lit ? litImage(glyph, symbol, ink) : symbol;
     // Spotify hands the new image over with no layout pass, so Follow the cover is told here, or a lit glyph keeps the accent.
     if (lit) SGRPlayerPaintCover(glyph);
     if (!clear || !CGSizeEqualToSize(clear.size, image.size) || clear.scale != image.scale) {
@@ -199,12 +186,13 @@ static void takeConnectImage(UIImageView *drawn) {
 }
 
 // Spotify draws a new glyph when the device changes, with no layout pass of the footer to tell it, so its setImage:
-// tells the stand-in; the clear image set back in reports too, and stops there.
+// tells the stand-in; the clear image set back in reports too, and stops there. Each pass looks too, at the cost of a
+// compare, for a view the image cannot be watched on.
 static void standInForConnect(UIImageView *drawn) {
     BOOL made = objc_getAssociatedObject(drawn, &kStandInKey) != nil;
-    if (!standIn(drawn, kConnectSymbol) || made) return;
+    if (!standIn(drawn, kConnectSymbol)) return;
     takeConnectImage(drawn);
-    SGRObserveImage(drawn, ^(UIImageView *view) { takeConnectImage(view); });
+    if (!made) SGRObserveImage(drawn, ^(UIImageView *view) { takeConnectImage(view); });
 }
 
 // The queue's state as Spotify sets it, for the stand-in; Spotify's own glyph is drawn in clear.
@@ -213,10 +201,9 @@ static void tintQueueStandIn(SPTEncoreIconView *icon) {
     // Lit by Spotify's own state, not by a color a cover could make look gray. Lit, it is drawn in the color, as Connect
     // is, so Follow the cover finds it by its pixels and repaints it.
     UIColor *active = objc_getAssociatedObject(icon, &kQueueActiveColorKey);
-    UIImage *symbol = [UIImage systemImageNamed:kQueueSymbol withConfiguration:glyph.preferredSymbolConfiguration];
+    UIImage *symbol = [UIImage systemImageNamed:glyph.symbol withConfiguration:glyph.preferredSymbolConfiguration];
     BOOL lit = icon.isActive && active;
-    glyph.image = lit ? litImage(symbol, active) : symbol;
-    glyph.tintColor = SGRSecondary();
+    glyph.image = lit ? litImage(glyph, symbol, active) : symbol;
     if (lit) SGRPlayerPaintCover(glyph);
 }
 
@@ -232,10 +219,9 @@ static void standInForQueue(SPTEncoreIconView *icon) {
 }
 
 %hook SPTEncoreIconView
+// The stand-in does not take the color at rest, only the active one.
 - (void)setForegroundColor:(UIColor *)color {
-    BOOL ours = objc_getAssociatedObject(self, &kStandInKey) != nil;
-    %orig(ours ? UIColor.clearColor : color);
-    if (ours) tintQueueStandIn(self);
+    %orig(objc_getAssociatedObject(self, &kStandInKey) ? UIColor.clearColor : color);
 }
 - (void)setActiveForegroundColor:(UIColor *)color {
     BOOL ours = objc_getAssociatedObject(self, &kStandInKey) != nil;
