@@ -936,14 +936,18 @@ static BOOL fieldCovered(void) {
                       [[seam.maskView.layer.sublayers.firstObject valueForKey:@"locations"] componentsJoinedByString:@" to "], lyricsBlurred ? @"on" : @"off"]];
         // Dimmed by its brightness: HARNESS_DIM is what the clip in HARNESS_CANVAS_FILE should get (0.54 for white,
         // 0.10 for black); the rule itself is checked at its ends.
-        CALayer *dim = [motion valueForKey:@"_dim"];
+        CAGradientLayer *dim = [motion valueForKey:@"_dim"];
+        // Only where text is: whole at the top and from the seam's blur down, clear between (issue #101).
+        BOOL banded = CGColorGetAlpha((__bridge CGColorRef)dim.colors[0]) == 1 && CGColorGetAlpha((__bridge CGColorRef)dim.colors[1]) == 0
+                      && CGColorGetAlpha((__bridge CGColorRef)dim.colors[3]) == 1;
         const char *expected = getenv("HARNESS_DIM");
         BOOL rule = fabs(SGRPlayerClipDim(1, NO, NO) - 0.54) < 0.01 && fabs(SGRPlayerClipDim(1, YES, NO) - 0.65) < 0.01
                     && SGRPlayerClipDim(0, NO, NO) == 0.10 && fabs(SGRPlayerClipDim(0, NO, YES) - 0.25) < 1e-6
                     && fabs(SGRPlayerClipDim(0.5, NO, NO) - 0.37) < 0.01;
         self->_dimAlone = dim.opacity;
-        [self expect:rule && dim && dim.superlayer == clip.superlayer.superlayer && (!expected || fabs(dim.opacity - atof(expected)) < 0.02)
-                step:@"the dim" detail:[NSString stringWithFormat:@"rule %@, dim %.2f over the clip%@", rule ? @"right" : @"wrong", dim.opacity,
+        [self expect:rule && banded && dim && dim.superlayer == clip.superlayer.superlayer && (!expected || fabs(dim.opacity - atof(expected)) < 0.02)
+                step:@"the dim" detail:[NSString stringWithFormat:@"rule %@, dim %.2f %@%@", rule ? @"right" : @"wrong", dim.opacity,
+                                        banded ? [NSString stringWithFormat:@"over the top and from %@", dim.locations[2]] : @"not banded",
                                         expected ? [NSString stringWithFormat:@", %s expected", expected] : @""]];
         NSLog(@"[harness] motion: screenshot the clip now");
     });
@@ -955,8 +959,11 @@ static BOOL fieldCovered(void) {
             if ([NSStringFromClass(view.class) isEqualToString:@"SGRPlayerLyricsOverlay"]) thumb = [view valueForKey:@"thumb"];
         }
         BOOL away = thumb && !CGAffineTransformIsIdentity(thumb.transform) && thumb.alpha > 0.99;
-        float dim = ((CALayer *)[motionView() valueForKey:@"_dim"]).opacity;
-        [self expect:fabsf(dim - self->_dimAlone - 0.15f) < 0.01f step:@"the dim under the lyrics"
+        CAGradientLayer *shade = [motionView() valueForKey:@"_dim"];
+        float dim = shade.opacity;
+        // The lyrics run down the whole screen, so the dim covers all of it.
+        BOOL whole = CGColorGetAlpha((__bridge CGColorRef)shade.colors[1]) == 1;
+        [self expect:whole && fabsf(dim - self->_dimAlone - 0.15f) < 0.01f step:@"the dim under the lyrics"
               detail:[NSString stringWithFormat:@"%.2f, %.2f without them", dim, self->_dimAlone]];
         [self expect:SGRPlayerLyricsOpen() && lyricsBlurred && away step:@"the lyrics"
               detail:[NSString stringWithFormat:@"lyrics %@, clip blurred %@, thumbnail %@ at alpha %.2f", SGRPlayerLyricsOpen() ? @"up" : @"down",

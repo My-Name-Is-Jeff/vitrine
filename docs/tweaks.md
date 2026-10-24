@@ -568,9 +568,10 @@ Redesigned:
                   a restart. The clip holds its frame while the song is paused, goes while
                   Spotify's music video shows, is given up when it has drawn nothing in 5 s on screen, and on a skip
                   stays a moment for the next track's to cross over it. Under Reduce Motion and in Low Power Mode no
-                  clip plays: the cover stays over Fluid. A black layer dims the clip by its brightness (the 75th
+                  clip plays: the cover stays over Fluid. A black gradient dims the clip by its brightness (the 75th
                   percentile of the linear luminance of three frames), so white text keeps 4.5:1 (7:1 with Increase
-                  Contrast), from 0.10 to 0.80 and 0.15 more behind the lyrics. A track that changes while the player
+                  Contrast), from 0.10 to 0.80, only where text is: a band under the header and from above the title
+                  down; behind the lyrics it covers the whole clip, 0.15 darker (issue #101). A track that changes while the player
                   cannot be seen (no window, or the app not in front) takes the last clip away at once. Checked in the simulator against
                   harness/player/ (`motion`). The Visualizer
                   (PlayerVisualiser.m) draws two soft hills of the song's spectrum across the foot of the player, the kick
