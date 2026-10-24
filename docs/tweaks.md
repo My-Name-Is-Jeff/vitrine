@@ -581,9 +581,10 @@ Redesigned:
                   a paused song's hills have settled. The spectrum is checked on the Mac against harness/visualiser/,
                   the view in the simulator against harness/player/ (`visualiser`)
     Lyrics/       the full screen lyrics page on glass with Apple Music style lyrics over it, always on (SGRKaraokeView,
-                  which the player shows in itself too, Player/PlayerLyrics.x, where with Hide the controls on
+                  which the player shows in itself too, Player/PlayerLyrics.x, where with Hide the controls on Everything
                   everything else -- the header row, the thumbnail, the title row and the controls -- fades a few
-                  seconds after the last touch and the lines take the whole safe area until a tap): lines sung over each other lit together,
+                  seconds after the last touch and the lines take the whole safe area until a tap; with it on Keep the
+                  title, only the controls under the title row fade and the lines grow down into their room): lines sung over each other lit together,
                   the stack moving on once the first is sung out; an instrumental break of 7 s or more held by three dots
                   that breathe and fill over its length on a Core Animation timeline laid against the song's clock; and
                   a line's pronunciation (under the words it spells) and translation, switched on from a glass button in
