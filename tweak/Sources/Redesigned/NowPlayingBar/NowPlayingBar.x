@@ -472,6 +472,44 @@ void SGRNowPlayingBarFollowTabBar(void) {
     [container.view layoutIfNeeded];
 }
 
+CGRect SGRNowPlayingStripFrameIn(UIView *host) {
+    UIView *strip = sg_strip;
+    if (SGRNowPlayingStripHeight() <= 0 || !host || ![strip isDescendantOfView:host]) return CGRectNull;
+    return [host convertRect:strip.bounds fromView:strip];
+}
+
+// The tab bar's moves under way (one can start before the last one ends), and the relayout owed to their end.
+static NSInteger sg_barMoves;
+static BOOL sg_owedLayout, sg_owedRefresh;
+
+static void relayoutBar(UIView *host, BOOL taller) {
+    if (sg_barMoves > 0) {
+        sg_owedLayout = YES;
+        sg_owedRefresh |= taller;
+        return;
+    }
+    [host setNeedsLayout];
+    if (taller) SGRRefreshTabBar();
+}
+
+void SGRNowPlayingBarMoving(BOOL moving) {
+    UIView *strip = sg_strip;
+    if (moving) {
+        // Spotify's own strip-in animation would race the tab bar's spring: the strip goes to where it is set.
+        if (sg_barMoves++ == 0 && SGRNowPlayingStripHeight() > 0 && strip.window && strip.layer.animationKeys.count) [strip.layer removeAllAnimations];
+        return;
+    }
+    if (sg_barMoves == 0 || --sg_barMoves > 0) return;
+    UIView *host = sg_container.viewIfLoaded;
+    if (sg_owedLayout && host) relayoutBar(host, sg_owedRefresh);
+    sg_owedLayout = sg_owedRefresh = NO;
+    static dispatch_once_t once;
+    if (host && SGRNowPlayingStripHeight() > 0 && [strip isDescendantOfView:host]) dispatch_once(&once, ^{
+        SGLog(@"now playing bar: tab bar move ended in a Jam, strip %@, card glass %@ (in the container's view)",
+              NSStringFromCGRect(SGFrameIn(strip, host)), NSStringFromCGRect(SGFrameIn(sg_cardGlass, host)));
+    });
+}
+
 // The same bar class also stands at the top of Spotify's sheets (the DJ request one: Up next, device, play).
 // It is not the tab bar's card there: the sheet has its own blue ground and corners, and a dark 24pt pane of
 // the bar's full width on it reads as a frame round the track. It is left as Spotify draws it, and it must not
@@ -549,10 +587,8 @@ static void styleNowPlayingBar(UIViewController *container) {
         BOOL taller = stripFrame.size.height != sg_stripFrame.size.height;
         sg_stripFrame = stripFrame;
         UIView *host = container.view;
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [host setNeedsLayout];
-            if (taller) SGRRefreshTabBar();
-        });
+        // During the tab bar's move it waits for the move's end (SGRNowPlayingBarMoving).
+        dispatch_async(dispatch_get_main_queue(), ^{ relayoutBar(host, taller); });
     }
     if (strip.bounds.size.height < 1) strip = nil;
     // The track's frame for the row, then again for the glass: the row narrows the bar, which the card follows.

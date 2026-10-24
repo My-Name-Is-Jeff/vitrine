@@ -822,7 +822,11 @@ static void setMinimized(BOOL minimized, BOOL animated) {
         settle(YES);
         return;
     }
-    moveFrom(host, before, ^{ SGRNowPlayingBarFollowTabBar(); }, settle);
+    SGRNowPlayingBarMoving(YES);
+    moveFrom(host, before, ^{ SGRNowPlayingBarFollowTabBar(); }, ^(BOOL finished) {
+        SGRNowPlayingBarMoving(NO);
+        settle(finished);
+    });
 }
 
 CGRect SGRTabBarInlineSlot(UIView *host, CGFloat height) {
