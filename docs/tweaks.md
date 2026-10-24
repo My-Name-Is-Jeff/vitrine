@@ -530,7 +530,10 @@ Redesigned:
                   so it slides and fades with it; Spotify lays a page out as "title • artists" over the device line or as
                   title over artists, and both are read. In the minimized row
                   the card drops its device and add buttons, faded out as it heads there and back in as it leaves. Only the title stays in the row. In a Jam the
-                  glass stays on the track and Spotify's Jam strip gets a pane of its own above it (harness/tabbar/, jam)
+                  glass stays on the track and Spotify's Jam strip gets a pane of the same glass above it, and the fade under
+                  the bars reaches above the strip while the card is above the bar; in the minimized row the card docks as it does outside a Jam and the strip
+                  rides above it at its width (harness/tabbar/, jam). Another hat on the bar keeps the card above the tab bar.
+                  Follow the cover (Player/PlayerCoverAccent.x) paints the card's lit device and like buttons too
     ContextMenu/  the ⋯ of the player and the ⋯ pinned over the playlist, album and artist pages open the system menu,
                   always (ContextMenu.h). The player's ⋯ is a pull-down button of the mod's over Spotify's: the menu
                   opens on touch down with the quick row (Spotify's items 9, 19 and 11), the player's items and More,

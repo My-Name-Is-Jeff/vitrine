@@ -27,3 +27,7 @@ CGRect SGRNowPlayingArtworkFrameIn(UIView *host);
 // Lays the bar out again at once, into the minimized tab bar's slot or back above the bar
 // (Navbar.h's SGRTabBarInlineSlot); TabBar.x calls it inside its own animation.
 void SGRNowPlayingBarFollowTabBar(void);
+// The height of Spotify's Jam strip on the bar, 0 outside a Jam (NowPlayingBar.x): the fade under the bars
+// (TabBar.x) reaches that much higher, so the strip's text has it behind it too. The tab bar is laid out
+// again when it changes.
+CGFloat SGRNowPlayingStripHeight(void);
