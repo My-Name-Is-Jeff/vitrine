@@ -28,7 +28,7 @@ static const NSUInteger kTitleTries = 8;
 static char kTitleKey, kTabKey, kPillGlassKey, kGlassKey, kButtonsKey, kConnectKey, kTintKey, kWatchKey;
 // The title row's pill: a glass capsule around the filter button and the avatar, 44pt tall, as the reference has
 // it; the menu drives Spotify's own filter chips, hidden in the stack, and offers the device picker when Spotify
-// has one (a now playing bar) and the large shelf's Show all, its heading being gone (HomeTopPicks.x).
+// has one (a now playing bar) and the large shelf's Show all while its heading is gone (HomeTopPicks.x).
 static const CGFloat kPillHeight = 44, kPillButton = 44, kPillPad = 6;
 // The page's color behind the title (SGRHomeSetPageTint), fading to black over this height.
 static const CGFloat kTintHeight = 480;

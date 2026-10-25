@@ -89,10 +89,12 @@ void SGRHomeTintForCover(UIImage *image, void (^completion)(UIColor *color));
 // cover's color under the cover. NO, and the card left as Spotify's, for one at Spotify's own size.
 BOOL SGRHomeStyleLargeCard(UIView *card);
 
-// Whether `view` is in the shelf Top picks draws large (HomeTopPicks.x), whose heading goes (HomeHeadings.x).
+// Whether `view` is in the shelf Top picks draws large (HomeTopPicks.x), whose heading goes unless Show Top picks
+// heading is on (HomeHeadings.x).
 BOOL SGRHomeInTopPicks(UIView *view);
 // Spotify's "Show all" of the shelf Top picks draws, while the shelf is on screen and offers one, and the shelf's
-// title with it: the header's menu offers it (HomeHeader.x), the heading it sits in being gone.
+// title with it: the header's menu offers it (HomeHeader.x), the heading it sits in being gone. nil while Show Top
+// picks heading keeps the heading.
 UIControl *SGRHomeTopPicksShowAll(NSString **title);
 // The page's color from the first large card's cover (HomeHeader.x draws it behind the title, fading to black);
 // nil for none.
