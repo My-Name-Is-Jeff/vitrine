@@ -1,8 +1,8 @@
 // Player redesign: a volume slider under the controls, as the Music app has. The row draws its own pill: it grows while
 // held, its glyphs move out, a drag anywhere on the row moves the volume by the finger's travel, and VoiceOver steps it.
 // Under it sits a hidden MPVolumeView whose slider the row reads and moves, so it is the system's volume: the hardware
-// buttons move it, and while Spotify plays on a Connect device it is that device's, which Spotify hands iOS through its
-// remote volume. No route button: the footer's Connect glyph is the route.
+// buttons move it. A Connect device's own volume reaches Spotify, not iOS, so the row does not show it. No route
+// button: the footer's Connect glyph is the route.
 //
 // It sits in Spotify's bottom stack, outside its arranged views, between the controls and the footer row, so the
 // lyrics fade it with the rest of the stack (PlayerLyrics.x) and its touches stay inside the stack. The footer's
@@ -25,7 +25,7 @@ static const CGFloat kTrackRest = 7, kTrackHeld = 12, kStretch = 5, kGlyphShift 
 // White's opacity: the fill at rest and held, the empty part, the glyphs at rest (held they are full white).
 static const CGFloat kFillRest = 0.65, kFillHeld = 1, kEmpty = 0.24, kGlyphRest = 0.68;
 
-static char kSliderContext, kSessionContext;
+static char kSessionContext;
 
 static UIImageView *glyph(NSString *symbol) {
     UIImageSymbolConfiguration *configuration =
@@ -40,6 +40,7 @@ static UIImageView *glyph(NSString *symbol) {
 
 @interface SGRVolumeRow : UIControl
 - (UISlider *)systemSlider;
+- (void)systemSliderSet;
 @end
 
 // MPVolumeView makes its slider when it lays out and may make another later, for example after a route change, so the
@@ -110,7 +111,6 @@ static UIImageView *glyph(NSString *symbol) {
     [self restoreAncestorGestures];
     [NSNotificationCenter.defaultCenter removeObserver:self];
     [AVAudioSession.sharedInstance removeObserver:self forKeyPath:@"outputVolume" context:&kSessionContext];
-    [_systemSlider removeObserver:self forKeyPath:@"value" context:&kSliderContext];
 }
 
 // The volume view builds its slider itself and may replace it, so the one it has now is looked for each time.
@@ -123,9 +123,7 @@ static UIImageView *glyph(NSString *symbol) {
     }
     if (current == _systemSlider) return current;
 
-    [_systemSlider removeObserver:self forKeyPath:@"value" context:&kSliderContext];
     _systemSlider = current;
-    [current addObserver:self forKeyPath:@"value" options:NSKeyValueObservingOptionNew context:&kSliderContext];
     // Hide the system slider's visible artwork.
     current.thumbTintColor = UIColor.clearColor;
     current.minimumTrackTintColor = UIColor.clearColor;
@@ -134,11 +132,16 @@ static UIImageView *glyph(NSString *symbol) {
 }
 
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
-    if (context != &kSliderContext && context != &kSessionContext) {
+    if (context != &kSessionContext) {
         [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
         return;
     }
     dispatch_async(dispatch_get_main_queue(), ^{ [self refreshFromSystem]; });
+}
+
+// Our own pushVolume sets the slider too, and refreshFromSystem skips that echo.
+- (void)systemSliderSet {
+    [self refreshFromSystem];
 }
 
 - (void)refreshFromSystem {
@@ -382,4 +385,13 @@ BOOL SGRPlayerPlaceVolume(UIView *stack, UIView *controls, UIView *row, CGFloat 
     if (!fits) volume.alpha = 0;
     else if (volume.alpha < 0.01 && controls.alpha > 0.99) volume.alpha = 1;
     return fits;
+}
+
+// MPVolumeSlider takes an outside change (AirPlay, Connect) through super's setValue:animated:, which sends no KVO, and
+// sends ValueChanged only when the change shows the system's HUD, which Spotify's own Connect HUD turns off.
+void SGRPlayerVolumeSliderSet(UISlider *slider) {
+    UIView *row = slider.superview.superview;
+    if (![slider.superview isKindOfClass:SGRVolumeView.class] || ![row isKindOfClass:SGRVolumeRow.class]) return;
+    if (slider != ((SGRVolumeRow *)row).systemSlider) return;
+    dispatch_async(dispatch_get_main_queue(), ^{ [(SGRVolumeRow *)row systemSliderSet]; });
 }

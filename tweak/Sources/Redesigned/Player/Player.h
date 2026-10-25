@@ -119,6 +119,8 @@ SGModRow *SGRLyricsHideRow(void);
 BOOL SGRPlayerVolumeOn(void);
 // YES when the row shows; NO when it is off, has no controls to sit under or no room between them and the footer.
 BOOL SGRPlayerPlaceVolume(UIView *stack, UIView *controls, UIView *row, CGFloat margin);
+// Called after any slider's setValue:animated: (PlayerFooter.x), so the row follows its hidden system slider.
+void SGRPlayerVolumeSliderSet(UISlider *slider);
 
 // Follow the cover (PlayerCoverAccent.x): the player's lit controls painted in the cover's color instead of the accent.
 // Off until switched on, read at launch. The cover's color (a gray one gives the accent back), and a paint of Spotify's

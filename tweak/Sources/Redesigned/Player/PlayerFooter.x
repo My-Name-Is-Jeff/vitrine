@@ -446,8 +446,18 @@ void SGRPlayerLowerRow(UIView *row) {
 }
 %end
 
+%group VolumeSlider
+%hook UISlider
+- (void)setValue:(float)value animated:(BOOL)animated {
+    %orig;
+    SGRPlayerVolumeSliderSet(self);
+}
+%end
+%end
+
 %ctor {
     if (!SGRedesignedUI()) return;
     %init;
+    if (SGRPlayerVolumeOn()) %init(VolumeSlider);
     SGRequireClasses(@[@"_TtC20NowPlaying_ModesImpl18FooterElementsUnit", @"SPTEncoreIconView"]);
 }
