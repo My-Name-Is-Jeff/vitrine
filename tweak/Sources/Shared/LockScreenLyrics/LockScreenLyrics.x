@@ -6,6 +6,7 @@
 // are not in yet it looks four times a second. The lock screen keeps the line it was left on until the
 // sound starts again.
 #import <MediaPlayer/MediaPlayer.h>
+#import <objc/runtime.h>
 #import "Core/SGCore.h"
 #import "LockScreenLyrics.h"
 #import "Shared/Lyrics/Lyrics.h"
@@ -24,6 +25,8 @@ static NSString *sg_shownLine;
 static BOOL sg_resending;
 static dispatch_source_t sg_timer;
 static CFAbsoluteTime sg_due;
+// SGKeyLockScreenTranslation, read at launch.
+static BOOL sg_translation;
 
 static NSString *textOf(NSArray<SGKaraokeWord *> *words) {
     SGKaraokeLine *line = [SGKaraokeLine new];
@@ -55,6 +58,22 @@ static NSArray<NSArray<SGKaraokeWord *> *> *piecesOf(SGKaraokeLine *line) {
     return pieces;
 }
 
+static char kTranslatedKey;
+
+// A line's translation as a line of its own, its words' times estimated over the line's, so piecesOf splits it
+// by its own length and its pieces turn over at the line's wakes. Made once for each translation the line has.
+static SGKaraokeLine *translatedLine(SGKaraokeLine *line) {
+    NSString *translation = line.translation;
+    if (!translation.length) return nil;
+    NSArray *made = objc_getAssociatedObject(line, &kTranslatedKey);
+    if (made.firstObject != translation) {
+        SGKaraokeLine *translated = SGKaraokeEstimatedLines(@[@(line.start), @(MAX(line.end, line.start))], @[translation, @""]).firstObject;
+        made = @[translation, translated ?: NSNull.null];
+        objc_setAssociatedObject(line, &kTranslatedKey, made, OBJC_ASSOCIATION_RETAIN);
+    }
+    return made.lastObject == NSNull.null ? nil : made.lastObject;
+}
+
 // Seconds into the track at `now`, run on from what Spotify last reported. A rate it left out runs at 1, as
 // playingBy counts it: read as 0, every line written pinned the lock screen's time to Spotify's last report.
 static double elapsedAt(NSDictionary *info, CFAbsoluteTime reportedAt, CFAbsoluteTime now) {
@@ -64,8 +83,9 @@ static double elapsedAt(NSDictionary *info, CFAbsoluteTime reportedAt, CFAbsolut
 }
 
 // nil between lines and for a track without synced lyrics, plain text included. Past a line's end by
-// SGKaraokeBreakMs, with the next line at least that far off, the artist comes back. `wait` is the playback
-// time in seconds until it can change: kTick while it cannot be worked out yet, negative for not again.
+// SGKaraokeBreakMs, with the next line at least that far off, the artist comes back. With translations on, a
+// line that has one shows it instead. `wait` is the playback time in seconds until it can change: kTick while it
+// cannot be worked out yet, negative for not again.
 static NSString *lineFor(NSDictionary *info, double elapsed, NSTimeInterval *wait) {
     *wait = kTick;
     SPTPlayerState *state = [(id<SPTPlayer>)SGKaraokePlayer() state];
@@ -89,8 +109,9 @@ static NSString *lineFor(NSDictionary *info, double elapsed, NSTimeInterval *wai
     if (index < 0) return nil;
     BOOL nextFarOff = index + 1 == (NSInteger)lines.count || lines[index + 1].start - position > SGKaraokeBreakMs;
     if (position > lines[index].end + SGKaraokeBreakMs && nextFarOff) return nil;
+    SGKaraokeLine *line = (sg_translation ? translatedLine(lines[index]) : nil) ?: lines[index];
     NSString *shown = nil;
-    for (NSArray<SGKaraokeWord *> *piece in piecesOf(lines[index])) {
+    for (NSArray<SGKaraokeWord *> *piece in piecesOf(line)) {
         if (!shown || piece.firstObject.start <= position) shown = textOf(piece);
     }
     return shown;
@@ -216,6 +237,7 @@ static void lookNow(void) {
 %ctor {
     if (!SGFlag(SGKeyLockScreenLyrics, NO)) return;
     sg_lock = [NSObject new];
+    sg_translation = SGFlag(SGKeyLockScreenTranslation, NO);
     %init;
     // Lines kept for a track, or replaced by better timed ones, can change the line at once.
     [NSNotificationCenter.defaultCenter addObserverForName:SGKaraokeLinesKeptNotification object:nil queue:nil usingBlock:^(NSNotification *note) {
@@ -234,5 +256,5 @@ static void lookNow(void) {
         dispatch_async(dispatch_get_main_queue(), ^{ lookNow(); });
     }];
     // The timer waits for Spotify to report a playing track; nothing before that has a line to show.
-    SGLog(@"lock screen lyrics: on");
+    SGLog(@"lock screen lyrics: on%@", sg_translation ? @", translations" : @"");
 }

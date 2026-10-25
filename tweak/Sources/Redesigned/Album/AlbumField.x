@@ -198,7 +198,8 @@ static void clearCards(UIView *cell) {
         @"ios-album-albumfeatureproperties-impl.share_in_action_row_enabled": @NO,
         // A row is a title and its artists. The video badge is neither.
         @"ios-creativeworkcommons-retrievalrow-impl.track_video_indicator_enabled": @NO,
-        // Spotify's cover square is concealed on both pages this covers, so there is nothing left to tilt.
+        // On the album page Spotify's cover square is always concealed, the redesign drawing its own; on the playlist
+        // page it is too unless Full bleed covers is off, and then it stays square and still, as in the Music app.
         @"ios-creativeworkcommons-cover-art-tilt-configuration-kit.album_playlist_and_podcast_pages_enabled": @NO,
     });
     if (!SGRedesignedUI()) return;

@@ -241,8 +241,10 @@ NSNotificationName const SGSingButtonDidChangeNotification = @"harness.singButto
 #import "Shared/AnimatedArtwork/AnimatedArtwork.h"
 NSArray<NSString *> *SGMotionSourceOrder(void) { return @[@"canvas", @"applemusic"]; }
 NSURL *SGMotionCanvasIn(NSDictionary *metadata) {
-    id address = metadata[@"canvas.url"];
-    return [metadata[@"canvas.type"] hasPrefix:@"VIDEO"] && [address isKindOfClass:NSString.class] ? [NSURL URLWithString:address] : nil;
+    // PlayerField.x moves the keys under SGMotionHiddenCanvas, as on the phone.
+    id type = metadata[@"canvas.type"] ?: metadata[SGMotionHiddenCanvas @"canvas.type"];
+    id address = metadata[@"canvas.url"] ?: metadata[SGMotionHiddenCanvas @"canvas.url"];
+    return [type hasPrefix:@"VIDEO"] && [address isKindOfClass:NSString.class] ? [NSURL URLWithString:address] : nil;
 }
 void SGMotionClipFor(NSString *uri, NSURL *canvas, NSString *artist, NSString *album, SGMotionShape shape, CGFloat pixels,
                      void (^done)(NSURL *file, NSString *source)) {

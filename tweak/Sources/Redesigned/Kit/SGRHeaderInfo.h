@@ -20,6 +20,12 @@
 extern const CGFloat SGRHeaderInfoBottom;     // 14, under the content
 extern const CGFloat SGRHeaderInfoTitleRise;  // 56, of the content over the picture
 
+// Full bleed covers (issue #98): the album's and the playlist's cover across the top of the page. Off, the cover
+// is the square Spotify lays out above the title, and only an album's animated cover still runs full bleed. On
+// until switched off (Appearance), read once, by the first album or playlist header.
+#define SGRKeyFullBleedCovers @"spotifyglass.redesign.fullBleedCovers"
+BOOL SGRFullBleedCovers(void);
+
 @interface SGRHeaderInfo : UIView
 // YES when anything shown changed. nil or empty hides that line.
 - (BOOL)showTitle:(NSString *)title creator:(NSString *)creator length:(NSString *)length about:(NSString *)about;
