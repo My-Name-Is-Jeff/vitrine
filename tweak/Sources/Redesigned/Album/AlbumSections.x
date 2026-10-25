@@ -64,9 +64,9 @@ static BOOL isKept(UIView *content) {
 
 // The content laid at `lead` down the cell, at the height it measured at, and the cell sized for both.
 // Kept on the cell so its own passes, which size the content to the cell again, do not undo it.
-static void settle(UICollectionViewCell *cell, CGFloat natural, CGFloat lead) {
+static void settle(UICollectionViewCell *cell, CGFloat natural, CGFloat lead, CGFloat width) {
     UIView *content = cell.contentView;
-    objc_setAssociatedObject(cell, &kSettledKey, @[@(natural), @(lead)], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(cell, &kSettledKey, @[@(natural), @(lead), @(width)], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     if (content.autoresizingMask & UIViewAutoresizingFlexibleHeight) content.autoresizingMask &= ~UIViewAutoresizingFlexibleHeight;
     CGRect frame = CGRectMake(0, lead, cell.bounds.size.width, natural);
     if (!CGRectEqualToRect(content.frame, frame)) content.frame = frame;
@@ -191,23 +191,30 @@ static void logOnce(NSString *what) {
     UICollectionViewCell *cell = (UICollectionViewCell *)self;
     UIView *content = cell.contentView.subviews.firstObject;
     // Cells are reused across kinds, and one settled before can hold a track row now.
+    NSArray<NSNumber *> *settled = objc_getAssociatedObject(cell, &kSettledKey);
     if (!isFooterContent(content) || !SGRAlbumPageOf(cell)) {
-        if (objc_getAssociatedObject(cell, &kSettledKey)) unsettle(cell);
+        if (settled) unsettle(cell);
         return %orig;
     }
+    if (settled && fabs(settled[2].doubleValue - attributes.size.width) < 1) {
+        UICollectionViewLayoutAttributes *fitted = [attributes copy];
+        CGFloat natural = settled[0].doubleValue, lead = settled[1].doubleValue;
+        fitted.size = CGSizeMake(attributes.size.width, lead > 0 ? natural + lead : 0);
+        return fitted;
+    }
+    if (settled) unsettle(cell);
     UICollectionViewLayoutAttributes *result = %orig;
-    CGFloat natural = MAX(1, result.size.height);
+    CGFloat natural = MAX(1, result.size.height), width = result.size.width;
     if (isKept(content)) {
         shown(cell, content, attributes.indexPath, YES);
-        settle(cell, natural, kLead);
-        result.size = CGSizeMake(result.size.width, natural + kLead);
+        settle(cell, natural, kLead, width);
+        result.size = CGSizeMake(width, natural + kLead);
         logOnce(@"the album's own line and its copyright kept under the tracks");
     } else if (shown(cell, content, attributes.indexPath, NO)) {
-        if (objc_getAssociatedObject(cell, &kSettledKey)) unsettle(cell);
         logOnce(@"a section under the tracks shown, its switch off");
     } else {
-        settle(cell, natural, 0);
-        result.size = CGSizeMake(result.size.width, 0);
+        settle(cell, natural, 0, width);
+        result.size = CGSizeMake(width, 0);
         logOnce(@"the sections under the tracks dropped");
     }
     return result;
@@ -217,7 +224,7 @@ static void logOnce(NSString *what) {
 - (void)layoutSubviews {
     %orig;
     NSArray<NSNumber *> *settled = objc_getAssociatedObject(self, &kSettledKey);
-    if (settled) settle((UICollectionViewCell *)self, settled[0].doubleValue, settled[1].doubleValue);
+    if (settled) settle((UICollectionViewCell *)self, settled[0].doubleValue, settled[1].doubleValue, settled[2].doubleValue);
 }
 
 - (void)prepareForReuse {
