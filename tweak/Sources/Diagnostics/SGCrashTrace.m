@@ -3,7 +3,7 @@
 // and SIGABRT the faulting thread's frames are walked from its registers by their frame pointers and written to a file
 // in Caches, each as image + offset; the next launch logs the file and removes it. The handler runs on a stack of its
 // own for the main thread, so a stack overflow (a recursion) is caught too, and hands the signal on to the handler
-// that was there before (Spotify's Crashlytics) or to the default.
+// that was there before it or to the default. Spotify's Crashlytics, set up after it, keeps it and calls it in turn.
 //
 // Threading: installed on the main thread. The handler only writes to a descriptor and reads tables filled before
 // it runs (the images, the main thread's stack), as nothing that takes a lock may run in it.
@@ -115,7 +115,7 @@ static void writeTrace(siginfo_t *info, void *context, int signal) {
         uintptr_t lr = strip((uintptr_t)arm_thread_state64_get_lr(uc->uc_mcontext->__ss));
         uintptr_t fp = (uintptr_t)arm_thread_state64_get_fp(uc->uc_mcontext->__ss);
         // A frame is followed only inside the crashed thread's stack: a frame pointer out of it faults again. The
-        // main thread's was read when armed; another thread's is read from its pthread, a field read with no lock.
+        // main thread's was read at install; another thread's is read from its pthread, a field read with no lock.
         pthread_t self = pthread_self();
         BOOL onMain = pthread_equal(self, sg_mainThread);
         uintptr_t top = onMain ? sg_mainTop : (uintptr_t)pthread_get_stackaddr_np(self);
@@ -139,29 +139,28 @@ static void writeTrace(siginfo_t *info, void *context, int signal) {
 }
 
 static void handler(int signal, siginfo_t *info, void *context) {
-    if (!sg_inHandler) {
-        sg_inHandler = 1;
-        writeTrace(info, context, signal);
+    // Handed back to by a handler this one handed on to, or a fault in this one: end it here.
+    if (sg_inHandler) {
+        struct sigaction fallback = {0};
+        fallback.sa_handler = SIG_DFL;
+        sigaction(signal, &fallback, NULL);
+        raise(signal);
+        return;
     }
-    // A handler installed in front of this one called it as the one before it (Spotify's crash reporter after it took
-    // the signal back): that one carries on from here. Handing on again would run it twice.
-    struct sigaction current;
-    if (sigaction(signal, NULL, &current) != 0 || !(current.sa_flags & SA_SIGINFO) || current.sa_sigaction != handler) return;
+    sg_inHandler = 1;
+    writeTrace(info, context, signal);
     // The handler that was there before, or the default, which ends the process with this signal.
     for (int i = 0; i < kSignalCount; i++) {
         if (kSignals[i] != signal) continue;
         struct sigaction previous = sg_previous[i];
-        // Back from it, the signal was one it got over: the next one is written again.
         if ((previous.sa_flags & SA_SIGINFO) && previous.sa_sigaction) {
             sigaction(signal, &previous, NULL);
             previous.sa_sigaction(signal, info, context);
-            sg_inHandler = 0;
             return;
         }
         if (previous.sa_handler != SIG_DFL && previous.sa_handler != SIG_IGN && previous.sa_handler) {
             sigaction(signal, &previous, NULL);
             previous.sa_handler(signal);
-            sg_inHandler = 0;
             return;
         }
     }
@@ -181,37 +180,6 @@ static void logLastCrash(NSString *path) {
     }
 }
 
-// Our handler for every signal that has lost it, the one there now kept as the one to hand on to. Spotify's crash
-// reporter sets its own after launch, and a crash on the phone left no trace though ours was in (2026-10-24), so this
-// runs again a few times while the launch settles (install).
-static int arm(void) {
-    int armed = 0;
-    for (int i = 0; i < kSignalCount; i++) {
-        struct sigaction current;
-        if (sigaction(kSignals[i], NULL, &current) == 0 && (current.sa_flags & SA_SIGINFO) && current.sa_sigaction == handler) continue;
-        struct sigaction action = {0};
-        action.sa_sigaction = handler;
-        action.sa_flags = SA_SIGINFO | SA_ONSTACK;
-        sigemptyset(&action.sa_mask);
-        struct sigaction previous;
-        if (sigaction(kSignals[i], &action, &previous) == 0) {
-            sg_previous[i] = previous;
-            armed++;
-        }
-    }
-    return armed;
-}
-
-// Armed again 5 s after install, then 10, 20, 40 and 80 s after that, and then left: by then Spotify's launch has set
-// up its crash reporter.
-static void armAgain(int64_t seconds) {
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, seconds * (int64_t)NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-        int armed = arm();
-        if (armed) SGLog(@"crash trace: another handler had taken %d signals, taken back", armed);
-        if (seconds < 80) armAgain(seconds * 2);
-    });
-}
-
 static void install(void) {
     static void *altStack;
     altStack = malloc(SIGSTKSZ * 4);
@@ -222,8 +190,11 @@ static void install(void) {
     sg_mainBottom = sg_mainTop - pthread_get_stacksize_np(sg_mainThread);
     // Called for every image already loaded, then for each one loaded later.
     _dyld_register_func_for_add_image(addImage);
-    arm();
-    armAgain(5);
+    struct sigaction action = {0};
+    action.sa_sigaction = handler;
+    action.sa_flags = SA_SIGINFO | SA_ONSTACK;
+    sigemptyset(&action.sa_mask);
+    for (int i = 0; i < kSignalCount; i++) sigaction(kSignals[i], &action, &sg_previous[i]);
 }
 
 __attribute__((constructor)) static void SGCrashTraceInit(void) {
@@ -232,8 +203,9 @@ __attribute__((constructor)) static void SGCrashTraceInit(void) {
     if (!path || path.length >= sizeof sg_path) return;
     strlcpy(sg_path, path.fileSystemRepresentation, sizeof sg_path);
     logLastCrash(path);
-    // At once, so a crash at launch is caught too; the re-arms take the signals back from Spotify's crash reporter
-    // once it has set itself up, so the trace goes first and hands on to it.
+    // Before Spotify sets up Crashlytics, which keeps the handlers it finds, puts them back on a crash and calls them.
+    // Installed after it, ours is reset to the default by its Mach exception handler before the signal comes (likely
+    // why a crash on the phone left no trace, 2026-10-24).
     install();
     SGLog(@"crash trace: watching for a crash");
 }

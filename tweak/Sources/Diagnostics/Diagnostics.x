@@ -15,8 +15,7 @@
 #endif
 static const uint16_t kTreePort = SG_TREE_PORT;
 
-NSString *SGHexColor(CGColorRef color) {
-    if (!color) return @"nil";
+static NSString *hexColor(CGColorRef color) {
     CGFloat r = 0, g = 0, b = 0, a = 0;
     [[UIColor colorWithCGColor:color] getRed:&r green:&g blue:&b alpha:&a];
     return [NSString stringWithFormat:@"#%02X%02X%02X@%.2f", (int)(r * 255), (int)(g * 255), (int)(b * 255), a];
@@ -25,7 +24,7 @@ NSString *SGHexColor(CGColorRef color) {
 static void appendTree(UIView *view, NSUInteger depth, NSMutableString *out) {
     NSMutableString *line = [NSMutableString stringWithFormat:@"%*s%@ %@", (int)depth * 2, "", NSStringFromClass(view.class), NSStringFromCGRect(view.frame)];
     CGColorRef bg = view.layer.backgroundColor;
-    if (bg && CGColorGetAlpha(bg) > 0) [line appendFormat:@" bg=%@", SGHexColor(bg)];
+    if (bg && CGColorGetAlpha(bg) > 0) [line appendFormat:@" bg=%@", hexColor(bg)];
     if (view.layer.cornerRadius > 0) [line appendFormat:@" r=%.1f", view.layer.cornerRadius];
     if (view.alpha < 1) [line appendFormat:@" a=%.2f", view.alpha];
     if (view.hidden) [line appendString:@" hidden"];
@@ -42,13 +41,11 @@ static void appendTree(UIView *view, NSUInteger depth, NSMutableString *out) {
     if (view.layer.shouldRasterize) [line appendString:@" raster"];
     if (![NSStringFromClass(view.layer.class) isEqualToString:@"CALayer"]) [line appendFormat:@" layer=%@", NSStringFromClass(view.layer.class)];
     NSMutableArray<NSString *> *loose = [NSMutableArray array];
-    // Only a layer with more sublayers than the view has subviews holds one that is not a view's.
-    NSArray<CALayer *> *sublayers = view.layer.sublayers.count > view.subviews.count ? view.layer.sublayers : nil;
-    NSSet<CALayer *> *viewLayers = sublayers ? [NSSet setWithArray:[view.subviews valueForKey:@"layer"]] : nil;
-    for (CALayer *sub in sublayers) {
+    NSSet<CALayer *> *viewLayers = [NSSet setWithArray:[view.subviews valueForKey:@"layer"]];
+    for (CALayer *sub in view.layer.sublayers) {
         if ([viewLayers containsObject:sub]) continue;
         NSMutableString *desc = [NSMutableString stringWithString:NSStringFromClass(sub.class)];
-        if (sub.backgroundColor && CGColorGetAlpha(sub.backgroundColor) > 0) [desc appendFormat:@" bg=%@", SGHexColor(sub.backgroundColor)];
+        if (sub.backgroundColor && CGColorGetAlpha(sub.backgroundColor) > 0) [desc appendFormat:@" bg=%@", hexColor(sub.backgroundColor)];
         if (sub.contents) [desc appendString:@" contents"];
         if ([sub isKindOfClass:CAGradientLayer.class] && ((CAGradientLayer *)sub).colors.count) [desc appendString:@" gradient"];
         if (sub.hidden) [desc appendString:@" hidden"];
@@ -64,7 +61,7 @@ static void appendTree(UIView *view, NSUInteger depth, NSMutableString *out) {
     }
     if ([view isKindOfClass:UILabel.class]) {
         UILabel *label = (UILabel *)view;
-        [line appendFormat:@" \"%@\" %.0fpt %@", label.text, label.font.pointSize, SGHexColor(label.textColor.CGColor)];
+        [line appendFormat:@" \"%@\" %.0fpt %@", label.text, label.font.pointSize, hexColor(label.textColor.CGColor)];
     }
     if ([view isKindOfClass:UIImageView.class] && ((UIImageView *)view).image) {
         CGSize size = ((UIImageView *)view).image.size;
