@@ -12,7 +12,11 @@
 // Below this a card's picture is a glyph or a placeholder, not a cover (HomeCards.x).
 static const CGFloat kCoverMinWidth = 80;
 
-static Class sg_madeForYou;
+@interface GLUEEntityCardView : UIView
+- (UIView *)imageContainerView;
+@end
+
+static char kOnPageKey;
 
 static void roundCorners(UIView *view, CGFloat radius) {
     CALayer *layer = view.layer;
@@ -21,40 +25,36 @@ static void roundCorners(UIView *view, CGFloat radius) {
     if (!layer.masksToBounds) layer.masksToBounds = YES;
 }
 
-// Whether the card is on the Made For You page: the first view controller up its responder chain.
+// Whether the card is on the Made For You page: the first view controller up its responder chain. Kept on the card once
+// a controller answers, so the chain is walked once; a card not yet in a controller's view asks again on its next pass.
 static BOOL onPage(UIView *card) {
+    NSNumber *kept = objc_getAssociatedObject(card, &kOnPageKey);
+    if (kept) return kept.boolValue;
     for (UIResponder *r = card.nextResponder; r; r = r.nextResponder) {
-        if ([r isKindOfClass:UIViewController.class]) return [r isKindOfClass:sg_madeForYou];
+        if (![r isKindOfClass:UIViewController.class]) continue;
+        BOOL on = [r isKindOfClass:%c(SPTMadeForYouHubViewController)];
+        objc_setAssociatedObject(card, &kOnPageKey, @(on), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return on;
     }
     return NO;
 }
 
-static void roundCover(UIView *card) {
-    if (!onPage(card)) return;
-    for (UIView *holder in card.subviews) {
-        // The text under the cover is the card's details view; the cover's holder is the plain view above it.
-        if (![holder isMemberOfClass:UIView.class] || holder.bounds.size.width < kCoverMinWidth) continue;
-        roundCorners(holder, SGRRadiusCover);
-        for (UIView *image in holder.subviews) {
-            if (image.bounds.size.width >= kCoverMinWidth) roundCorners(image, SGRRadiusCover);
-        }
-    }
+// The cover's holder clips (setupImageContainerView), so its corners cut the cover's too.
+static void roundCover(GLUEEntityCardView *card) {
+    UIView *holder = card.imageContainerView;
+    if (holder.bounds.size.width < kCoverMinWidth || !onPage(card)) return;
+    roundCorners(holder, SGRRadiusCover);
 }
 
-%hook SGRGlueCard
+%hook GLUEEntityCardView
 - (void)layoutSubviews {
     %orig;
-    roundCover((UIView *)self);
+    roundCover(self);
 }
 %end
 
 %ctor {
     if (!SGRedesignedUI()) return;
-    sg_madeForYou = NSClassFromString(@"SPTMadeForYouHubViewController");
-    Class card = NSClassFromString(@"GLUEEntityCardView");
-    if (!sg_madeForYou || !card) {
-        SGLog(@"class %@ not found, the covers on Made For You stay square", sg_madeForYou ? @"GLUEEntityCardView" : @"SPTMadeForYouHubViewController");
-        return;
-    }
-    %init(SGRGlueCard = card);
+    %init;
+    SGRequireClasses(@[@"GLUEEntityCardView", @"SPTMadeForYouHubViewController"]);
 }
