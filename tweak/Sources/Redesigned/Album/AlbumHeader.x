@@ -144,6 +144,7 @@ static void watch(UIView *view, const void *key, void (^laidOut)(UIView *view)) 
     AVQueuePlayer *_player;
     AVPlayerLooper *_looper;
     BOOL _motionOn;   // what the player was last asked, so a scroll's steps ask it nothing again
+    BOOL _motionSeen; // whether the hero was on screen when the player was last asked
     __weak UIScrollView *_list;   // the page's list, watched for the hero scrolling off the screen and back
 }
 
@@ -315,6 +316,9 @@ static void *kListContext = &kListContext;
 
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
     if (context == kListContext) {
+        // Only whether the hero is on screen moves while the list scrolls.
+        BOOL seen = [self sgr_seen];
+        if (seen == _motionSeen) return;
         [self sgr_updateMotion];
         return;
     }
@@ -357,10 +361,14 @@ static void *kListContext = &kListContext;
 // Video Previews on; otherwise it holds its frame. Off screen it stops: an album page left on the
 // navigation stack would otherwise keep decoding, and so would one scrolled down to its tracks, where the
 // hero is above the top of the screen. Scrolled back, the clip goes on from the frame it stopped on.
+- (BOOL)sgr_seen {
+    UIWindow *window = self.window;
+    return window && CGRectIntersectsRect([self convertRect:self.bounds toView:window], window.bounds);
+}
+
 - (void)sgr_updateMotion {
     BOOL front = UIApplication.sharedApplication.applicationState == UIApplicationStateActive;
-    UIWindow *window = self.window;
-    BOOL seen = window && CGRectIntersectsRect([self convertRect:self.bounds toView:window], window.bounds);
+    BOOL seen = _motionSeen = [self sgr_seen];
     BOOL may = seen && front && !SGRReduceMotion() && !NSProcessInfo.processInfo.lowPowerModeEnabled
             && UIAccessibilityIsVideoAutoplayEnabled();
     if (may == _motionOn) return;
