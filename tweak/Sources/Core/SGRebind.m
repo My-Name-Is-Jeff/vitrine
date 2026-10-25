@@ -201,6 +201,8 @@ BOOL SGJailbroken(void) {
 
 BOOL SGHookFunctionInline(void *function, void *replacement, void **original) {
     if (!SGJailbroken()) return NO;
+    // Finds Spotify's code now, not on the first hooked call, which can come on an audio thread.
+    SGCalledFromMainExecutable(NULL);
     hooker()(function, replacement, original);
     return *original != NULL;
 }
@@ -209,9 +211,11 @@ BOOL SGCalledFromMainExecutable(void *returnAddress) {
     static uintptr_t start, end;
     static dispatch_once_t once;
     dispatch_once(&once, ^{
-        // Image 0 is the main executable.
+        intptr_t slide = 0;
+        const struct mach_header_64 *header = spotifyImage(&slide);
+        if (!header) return;
         unsigned long size = 0;
-        start = (uintptr_t)getsegmentdata((const struct mach_header_64 *)_dyld_get_image_header(0), SEG_TEXT, &size);
+        start = (uintptr_t)getsegmentdata(header, SEG_TEXT, &size);
         end = start + size;
     });
     // A return address carries a pointer authentication code in its top bits on arm64e.

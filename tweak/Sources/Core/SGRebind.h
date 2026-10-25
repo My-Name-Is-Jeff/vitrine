@@ -23,5 +23,6 @@ BOOL SGHookFunctionInline(void *function, void *replacement, void **original);
 // Whether the hooker found is the jailbreak's, not one the app brought inside its bundle: a jailbroken phone, whatever
 // way Vitrine came onto it.
 BOOL SGJailbroken(void);
-// Whether `returnAddress` (__builtin_return_address(0) of a hooked function) is in the main executable's code.
+// Whether `returnAddress` (__builtin_return_address(0) of a hooked function) is in the code of Spotify's binary, the
+// one SGRebindImport rebinds.
 BOOL SGCalledFromMainExecutable(void *returnAddress);
