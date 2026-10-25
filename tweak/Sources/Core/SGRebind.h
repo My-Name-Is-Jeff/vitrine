@@ -15,9 +15,10 @@ BOOL SGRebindImport(const char *symbol, void *replacement, void **original);
 // Dopamine, iOS 17.5.1), the function itself is hooked with the jailbreak's own hooker, ElleKit's (Substrate's)
 // MSHookFunction, when it is in the process or can be loaded. Every caller then goes through `replacement`, the
 // system's frameworks too, so a replacement tells Spotify's calls by SGCalledFromMainExecutable and hands the rest to
-// `original`. NO when there is no hooker (any device without a jailbreak) or on iOS 26 and later.
+// `original`, which must be NULL before the call. NO unless SGJailbroken().
 BOOL SGHookFunctionInline(void *function, void *replacement, void **original);
-// Whether the jailbreak's hooker is in the process or can be loaded: a jailbroken phone, whatever way Vitrine came onto it.
+// Whether the hooker found is the jailbreak's, not one the app brought inside its bundle: a jailbroken phone, whatever
+// way Vitrine came onto it.
 BOOL SGJailbroken(void);
 // Whether `returnAddress` (__builtin_return_address(0) of a hooked function) is in the main executable's code.
 BOOL SGCalledFromMainExecutable(void *returnAddress);
