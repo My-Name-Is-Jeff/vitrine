@@ -105,15 +105,47 @@ static BOOL stripPrefix(NSString **text, NSString *prefix) {
     return YES;
 }
 
-static NSURL *spotifyURIForPieces(NSArray<NSString *> *raw) {
+static BOOL isTrackingParam(NSString *name) {
+    NSString *lower = name.lowercaseString;
+    return [lower isEqualToString:@"si"] || [lower isEqualToString:@"nd"] || [lower isEqualToString:@"pt"] ||
+           [lower isEqualToString:@"context"] || [lower hasPrefix:@"utm_"];
+}
+
+static NSString *unwrapEncodedWrapper(NSString *text) {
+    NSString *lower = text.lowercaseString;
+    for (NSString *prefix in @[@"spotify%3a%2f%2f", @"https%3a%2f%2f", @"http%3a%2f%2f",
+                               @"open.spotify.com%2f", @"spotify.app.link%2f", @"spotify.link%2f"]) {
+        if ([lower hasPrefix:prefix]) return text.stringByRemovingPercentEncoding ?: text;
+    }
+    return text;
+}
+
+static NSURL *spotifyURIForPieces(NSArray<NSString *> *raw, NSString *percentEncodedQuery) {
     NSMutableArray<NSString *> *path = [NSMutableArray array];
     for (NSString *piece in raw) {
-        if (piece.length) [path addObject:piece];
+        if (!piece.length) continue;
+        NSString *safe = [piece stringByReplacingOccurrencesOfString:@":" withString:@"%3A"];
+        [path addObject:safe];
     }
     if (path.count && [path.firstObject.lowercaseString hasPrefix:@"intl-"]) [path removeObjectAtIndex:0];
     if (path.count && [path.firstObject.lowercaseString isEqualToString:@"embed"]) [path removeObjectAtIndex:0];
     if (path.count < 2) return nil;
-    return [NSURL URLWithString:[@"spotify:" stringByAppendingString:[path componentsJoinedByString:@":"]]];
+    NSString *uriString = [@"spotify:" stringByAppendingString:[path componentsJoinedByString:@":"]];
+    if (percentEncodedQuery.length) {
+        NSURLComponents *qParts = [NSURLComponents new];
+        qParts.percentEncodedQuery = percentEncodedQuery;
+        NSMutableArray<NSURLQueryItem *> *kept = [NSMutableArray array];
+        for (NSURLQueryItem *item in qParts.percentEncodedQueryItems) {
+            if (item.name.length && !isTrackingParam(item.name)) [kept addObject:item];
+        }
+        if (kept.count) {
+            qParts.percentEncodedQueryItems = kept;
+            if (qParts.percentEncodedQuery.length) {
+                uriString = [NSString stringWithFormat:@"%@?%@", uriString, qParts.percentEncodedQuery];
+            }
+        }
+    }
+    return [NSURL URLWithString:uriString];
 }
 
 // Sideloaded builds have no associated-domains entitlement for open.spotify.com, so Safari
@@ -122,35 +154,34 @@ static NSURL *spotifyURIForPieces(NSArray<NSString *> *raw) {
 // links into spotify: URIs, and hand wrapped short links back as https://.
 static NSURL *rewrittenURI(NSString *raw) {
     if (!raw.length) return nil;
-    NSString *decoded = raw.stringByRemovingPercentEncoding;
-    if (decoded.length && ([decoded containsString:@"://"] || [decoded containsString:@"open.spotify.com"])) {
-        raw = decoded;
-    }
+    raw = unwrapEncodedWrapper(raw);
     NSString *rest = raw;
     if (stripPrefix(&rest, @"spotify://")) {
         stripPrefix(&rest, @"eevee/");
-        if (!stripPrefix(&rest, @"https://")) stripPrefix(&rest, @"http://");
+        rest = unwrapEncodedWrapper(rest);
+        BOOL hadHTTP = stripPrefix(&rest, @"https://") || stripPrefix(&rest, @"http://");
         if ([rest.lowercaseString hasPrefix:@"spotify.app.link/"] || [rest.lowercaseString hasPrefix:@"spotify.link/"]) {
             return [NSURL URLWithString:[@"https://" stringByAppendingString:rest]];
         }
-        stripPrefix(&rest, @"open.spotify.com/");
-        NSString *clean = [[rest componentsSeparatedByString:@"?"].firstObject componentsSeparatedByString:@"#"].firstObject;
-        NSURL *spotifyURI = spotifyURIForPieces([clean componentsSeparatedByString:@"/"]);
-        if (spotifyURI) return spotifyURI;
-        if ([rest.lowercaseString hasPrefix:@"intl-"] || [rest.lowercaseString hasPrefix:@"embed/"]) {
+        if (stripPrefix(&rest, @"open.spotify.com/") || !hadHTTP) {
             raw = [@"https://open.spotify.com/" stringByAppendingString:rest];
+        } else {
+            raw = [@"https://" stringByAppendingString:rest];
         }
     } else if (stripPrefix(&rest, @"spotify:")) {
         BOOL wrapped = stripPrefix(&rest, @"eevee:");
         if (stripPrefix(&rest, @"open.spotify.com:")) wrapped = YES;
         if (wrapped || [rest.lowercaseString hasPrefix:@"intl-"] || [rest.lowercaseString hasPrefix:@"embed:"]) {
-            NSString *clean = [[rest componentsSeparatedByString:@"?"].firstObject componentsSeparatedByString:@"#"].firstObject;
-            return spotifyURIForPieces([clean componentsSeparatedByString:@":"]);
+            NSString *withoutFragment = [rest componentsSeparatedByString:@"#"].firstObject;
+            NSRange q = [withoutFragment rangeOfString:@"?"];
+            NSString *clean = q.location == NSNotFound ? withoutFragment : [withoutFragment substringToIndex:q.location];
+            NSString *query = q.location == NSNotFound ? nil : [withoutFragment substringFromIndex:q.location + 1];
+            return spotifyURIForPieces([clean componentsSeparatedByString:@":"], query);
         }
     }
     NSURLComponents *parts = [NSURLComponents componentsWithString:raw];
-    if ([parts.scheme.lowercaseString hasPrefix:@"http"] && [parts.host.lowercaseString hasSuffix:@"open.spotify.com"]) {
-        return spotifyURIForPieces([parts.path componentsSeparatedByString:@"/"]) ?: [NSURL URLWithString:raw];
+    if ([parts.scheme.lowercaseString hasPrefix:@"http"] && [parts.host.lowercaseString isEqualToString:@"open.spotify.com"]) {
+        return spotifyURIForPieces([parts.percentEncodedPath componentsSeparatedByString:@"/"], parts.percentEncodedQuery);
     }
     return nil;
 }
