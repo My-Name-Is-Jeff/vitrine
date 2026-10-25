@@ -9,8 +9,12 @@ __weak UIView *sg_npvBackdropRoot = nil;
 
 %hook CALayer
 - (void)setBackgroundColor:(CGColorRef)color {
+    if (!color) {
+        %orig;
+        return;
+    }
     UIView *cardRoot = sg_lyricsCardRoot, *pageRoot = sg_lyricsPageRoot, *homeRoot = sg_homeRoot, *npvRoot = sg_npvBackdropRoot;
-    if (color && (cardRoot || pageRoot || homeRoot || npvRoot)) {
+    if (cardRoot || pageRoot || homeRoot || npvRoot) {
         UIView *view = (UIView *)self.delegate;
         if ([view isKindOfClass:UIView.class] && view.layer == self && !SGKeepsColor(view)) {
             // One walk answers SGIsInside for all four roots: each stops at the same first effect view.
