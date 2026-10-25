@@ -602,24 +602,12 @@ static CGPoint clampedOffset(UIScrollView *scroll, CGPoint offset) {
 // A view or layer's properties read and written live, so a guess about what draws something can be tried on the
 // phone without a build: `set --id sheet-view --path layer.sublayers.0.enabled --value false`.
 
-static NSString *driverHex(CGColorRef color) {
-    if (!color) return @"nil";
-    static CGColorSpaceRef srgb;
-    if (!srgb) srgb = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-    CGColorRef rgb = CGColorCreateCopyByMatchingToColorSpace(srgb, kCGRenderingIntentDefault, color, NULL);
-    if (!rgb) return @"?";
-    const CGFloat *c = CGColorGetComponents(rgb);
-    NSString *hex = [NSString stringWithFormat:@"#%02X%02X%02X@%.2f", (int)lround(c[0] * 255), (int)lround(c[1] * 255), (int)lround(c[2] * 255), CGColorGetAlpha(rgb)];
-    CGColorRelease(rgb);
-    return hex;
-}
-
 // What a value reads as in the answer: numbers and strings as they are, colours as hex, anything else its description.
 static id plainValue(id value) {
     if (!value || value == NSNull.null) return [NSNull null];
     if ([value isKindOfClass:NSNumber.class] || [value isKindOfClass:NSString.class]) return value;
-    if ([value isKindOfClass:UIColor.class]) return driverHex(((UIColor *)value).CGColor);
-    if (CFGetTypeID((__bridge CFTypeRef)value) == CGColorGetTypeID()) return driverHex((__bridge CGColorRef)value);
+    if ([value isKindOfClass:UIColor.class]) return SGHexColor(((UIColor *)value).CGColor);
+    if (CFGetTypeID((__bridge CFTypeRef)value) == CGColorGetTypeID()) return SGHexColor((__bridge CGColorRef)value);
     if ([value isKindOfClass:NSArray.class]) {
         NSMutableArray *items = [NSMutableArray array];
         for (id item in (NSArray *)value) [items addObject:[item isKindOfClass:NSNumber.class] || [item isKindOfClass:NSString.class] ? item : NSStringFromClass([item class])];
@@ -694,7 +682,7 @@ static NSString *layerLine(CALayer *layer) {
     if (layer.opaque) [line appendString:@" opaque"];
     if (layer.masksToBounds) [line appendString:@" clips"];
     if (layer.cornerRadius > 0) [line appendFormat:@" r=%.1f", layer.cornerRadius];
-    if (layer.backgroundColor && CGColorGetAlpha(layer.backgroundColor) > 0) [line appendFormat:@" bg=%@", driverHex(layer.backgroundColor)];
+    if (layer.backgroundColor && CGColorGetAlpha(layer.backgroundColor) > 0) [line appendFormat:@" bg=%@", SGHexColor(layer.backgroundColor)];
     if (layer.contents) [line appendString:@" contents"];
     if (layer.mask) [line appendFormat:@" mask=%@", NSStringFromClass(layer.mask.class)];
     if (layer.shouldRasterize) [line appendString:@" rasterized"];

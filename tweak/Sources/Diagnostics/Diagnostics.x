@@ -15,7 +15,8 @@
 #endif
 static const uint16_t kTreePort = SG_TREE_PORT;
 
-static NSString *hexColor(CGColorRef color) {
+NSString *SGHexColor(CGColorRef color) {
+    if (!color) return @"nil";
     CGFloat r = 0, g = 0, b = 0, a = 0;
     [[UIColor colorWithCGColor:color] getRed:&r green:&g blue:&b alpha:&a];
     return [NSString stringWithFormat:@"#%02X%02X%02X@%.2f", (int)(r * 255), (int)(g * 255), (int)(b * 255), a];
@@ -24,15 +25,16 @@ static NSString *hexColor(CGColorRef color) {
 static void appendTree(UIView *view, NSUInteger depth, NSMutableString *out) {
     NSMutableString *line = [NSMutableString stringWithFormat:@"%*s%@ %@", (int)depth * 2, "", NSStringFromClass(view.class), NSStringFromCGRect(view.frame)];
     CGColorRef bg = view.layer.backgroundColor;
-    if (bg && CGColorGetAlpha(bg) > 0) [line appendFormat:@" bg=%@", hexColor(bg)];
+    if (bg && CGColorGetAlpha(bg) > 0) [line appendFormat:@" bg=%@", SGHexColor(bg)];
     if (view.layer.cornerRadius > 0) [line appendFormat:@" r=%.1f", view.layer.cornerRadius];
     if (view.alpha < 1) [line appendFormat:@" a=%.2f", view.alpha];
     if (view.hidden) [line appendString:@" hidden"];
     if (view.layer.mask) [line appendString:@" masked"];
     if (view.clipsToBounds) [line appendString:@" clips"];
-    // What draws black without a background colour: an opaque view with no fill, a layer's own opacity, filters and
-    // a picture in the layer itself, and sublayers that are not views (their fill, their picture, a gradient).
-    if (view.opaque || view.layer.opaque) [line appendString:@" opaque"];
+    // What draws black without a background colour: an opaque layer with no fill, a layer's own opacity, filters and
+    // a picture in the layer itself, and sublayers that are not views (their fill, their picture, a gradient). Not
+    // view.opaque, which is YES on nearly every view.
+    if (view.layer.opaque) [line appendString:@" opaque"];
     if (view.layer.opacity < 1) [line appendFormat:@" op=%.2f", view.layer.opacity];
     if (view.layer.filters.count) [line appendFormat:@" filters=%lu", (unsigned long)view.layer.filters.count];
     if (view.layer.compositingFilter) [line appendFormat:@" comp=%@", view.layer.compositingFilter];
@@ -40,11 +42,13 @@ static void appendTree(UIView *view, NSUInteger depth, NSMutableString *out) {
     if (view.layer.shouldRasterize) [line appendString:@" raster"];
     if (![NSStringFromClass(view.layer.class) isEqualToString:@"CALayer"]) [line appendFormat:@" layer=%@", NSStringFromClass(view.layer.class)];
     NSMutableArray<NSString *> *loose = [NSMutableArray array];
-    NSSet<CALayer *> *viewLayers = [NSSet setWithArray:[view.subviews valueForKey:@"layer"]];
-    for (CALayer *sub in view.layer.sublayers) {
+    // Only a layer with more sublayers than the view has subviews holds one that is not a view's.
+    NSArray<CALayer *> *sublayers = view.layer.sublayers.count > view.subviews.count ? view.layer.sublayers : nil;
+    NSSet<CALayer *> *viewLayers = sublayers ? [NSSet setWithArray:[view.subviews valueForKey:@"layer"]] : nil;
+    for (CALayer *sub in sublayers) {
         if ([viewLayers containsObject:sub]) continue;
         NSMutableString *desc = [NSMutableString stringWithString:NSStringFromClass(sub.class)];
-        if (sub.backgroundColor && CGColorGetAlpha(sub.backgroundColor) > 0) [desc appendFormat:@" bg=%@", hexColor(sub.backgroundColor)];
+        if (sub.backgroundColor && CGColorGetAlpha(sub.backgroundColor) > 0) [desc appendFormat:@" bg=%@", SGHexColor(sub.backgroundColor)];
         if (sub.contents) [desc appendString:@" contents"];
         if ([sub isKindOfClass:CAGradientLayer.class] && ((CAGradientLayer *)sub).colors.count) [desc appendString:@" gradient"];
         if (sub.hidden) [desc appendString:@" hidden"];
@@ -60,7 +64,7 @@ static void appendTree(UIView *view, NSUInteger depth, NSMutableString *out) {
     }
     if ([view isKindOfClass:UILabel.class]) {
         UILabel *label = (UILabel *)view;
-        [line appendFormat:@" \"%@\" %.0fpt %@", label.text, label.font.pointSize, hexColor(label.textColor.CGColor)];
+        [line appendFormat:@" \"%@\" %.0fpt %@", label.text, label.font.pointSize, SGHexColor(label.textColor.CGColor)];
     }
     if ([view isKindOfClass:UIImageView.class] && ((UIImageView *)view).image) {
         CGSize size = ((UIImageView *)view).image.size;

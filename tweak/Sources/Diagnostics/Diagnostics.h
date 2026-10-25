@@ -4,6 +4,8 @@
 
 BOOL SGIsDebugBuild(void);
 NSString *SGScreenTree(void);
+// A colour as #RRGGBB@alpha, as the tree dump and the phone driver print it; "nil" for none.
+NSString *SGHexColor(CGColorRef color);
 void SGDumpScreen(NSString *reason);
 // Runs `block` on the main thread and waits for it at most `timeout` seconds; for any thread but main,
 // where it just runs the block. NO when main did not get to it in time (the block still runs later).
