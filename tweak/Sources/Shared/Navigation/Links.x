@@ -98,30 +98,209 @@ SGLinkRoute SGSpotifyURIRoute(NSURL *uri, NSString **via) {
     }
 }
 
+static BOOL stripPrefix(NSString **text, NSString *prefix) {
+    NSRange r = [*text rangeOfString:prefix options:NSCaseInsensitiveSearch | NSAnchoredSearch];
+    if (r.location == NSNotFound) return NO;
+    *text = [*text substringFromIndex:r.length];
+    return YES;
+}
+
+static NSURL *spotifyURIForPieces(NSArray<NSString *> *raw) {
+    NSMutableArray<NSString *> *path = [NSMutableArray array];
+    for (NSString *piece in raw) {
+        if (piece.length) [path addObject:piece];
+    }
+    if (path.count && [path.firstObject.lowercaseString hasPrefix:@"intl-"]) [path removeObjectAtIndex:0];
+    if (path.count && [path.firstObject.lowercaseString isEqualToString:@"embed"]) [path removeObjectAtIndex:0];
+    if (path.count < 2) return nil;
+    return [NSURL URLWithString:[@"spotify:" stringByAppendingString:[path componentsJoinedByString:@":"]]];
+}
+
+// Sideloaded builds have no associated-domains entitlement for open.spotify.com, so Safari
+// extensions open the app via spotify:// with the web link or path inside (spotify://eevee/…,
+// spotify://open.spotify.com/…, spotify://intl-xx/…). Unwrap those and open.spotify.com share
+// links into spotify: URIs, and hand wrapped short links back as https://.
+static NSURL *rewrittenURI(NSString *raw) {
+    if (!raw.length) return nil;
+    NSString *decoded = raw.stringByRemovingPercentEncoding;
+    if (decoded.length && ([decoded containsString:@"://"] || [decoded containsString:@"open.spotify.com"])) {
+        raw = decoded;
+    }
+    NSString *rest = raw;
+    if (stripPrefix(&rest, @"spotify://")) {
+        stripPrefix(&rest, @"eevee/");
+        if (!stripPrefix(&rest, @"https://")) stripPrefix(&rest, @"http://");
+        if ([rest.lowercaseString hasPrefix:@"spotify.app.link/"] || [rest.lowercaseString hasPrefix:@"spotify.link/"]) {
+            return [NSURL URLWithString:[@"https://" stringByAppendingString:rest]];
+        }
+        stripPrefix(&rest, @"open.spotify.com/");
+        NSString *clean = [[rest componentsSeparatedByString:@"?"].firstObject componentsSeparatedByString:@"#"].firstObject;
+        NSURL *spotifyURI = spotifyURIForPieces([clean componentsSeparatedByString:@"/"]);
+        if (spotifyURI) return spotifyURI;
+        if ([rest.lowercaseString hasPrefix:@"intl-"] || [rest.lowercaseString hasPrefix:@"embed/"]) {
+            raw = [@"https://open.spotify.com/" stringByAppendingString:rest];
+        }
+    } else if (stripPrefix(&rest, @"spotify:")) {
+        BOOL wrapped = stripPrefix(&rest, @"eevee:");
+        if (stripPrefix(&rest, @"open.spotify.com:")) wrapped = YES;
+        if (wrapped || [rest.lowercaseString hasPrefix:@"intl-"] || [rest.lowercaseString hasPrefix:@"embed:"]) {
+            NSString *clean = [[rest componentsSeparatedByString:@"?"].firstObject componentsSeparatedByString:@"#"].firstObject;
+            return spotifyURIForPieces([clean componentsSeparatedByString:@":"]);
+        }
+    }
+    NSURLComponents *parts = [NSURLComponents componentsWithString:raw];
+    if ([parts.scheme.lowercaseString hasPrefix:@"http"] && [parts.host.lowercaseString hasSuffix:@"open.spotify.com"]) {
+        return spotifyURIForPieces([parts.path componentsSeparatedByString:@"/"]) ?: [NSURL URLWithString:raw];
+    }
+    return nil;
+}
+
 NSURL *SGSpotifyURIFromText(NSString *text) {
     NSString *trimmed = [text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     if (!trimmed.length) return nil;
-    NSURLComponents *parts = [NSURLComponents componentsWithString:trimmed];
-    NSString *host = parts.host.lowercaseString;
-    if ([parts.scheme.lowercaseString hasPrefix:@"http"] && [host isEqualToString:@"open.spotify.com"]) {
-        NSMutableArray<NSString *> *path = [NSMutableArray array];
-        for (NSString *piece in [parts.path componentsSeparatedByString:@"/"]) {
-            if (piece.length) [path addObject:piece];
-        }
-        if (path.count && [path.firstObject hasPrefix:@"intl-"]) [path removeObjectAtIndex:0];
-        if (path.count >= 2) return [NSURL URLWithString:[@"spotify:" stringByAppendingString:[path componentsJoinedByString:@":"]]];
-    }
-    return [NSURL URLWithString:trimmed];
+    return rewrittenURI(trimmed) ?: [NSURL URLWithString:trimmed];
 }
+
+@interface NSURL (SpotifyLinkCategory)
+- (NSURL *)spt_normalizedSpotifyURI;
+- (NSURL *)spt_normalizedURI;
+- (BOOL)sptparse_isSpotifyURI;
+@end
+
+%hook NSURL
+- (NSURL *)spt_normalizedSpotifyURI {
+    NSURL *orig = %orig();
+    if ([orig isKindOfClass:NSURL.class]) return orig;
+    NSURL *rewritten = rewrittenURI(self.absoluteString);
+    if (rewritten) {
+        SGLog(@"links: spt_normalizedSpotifyURI rewriting %@ -> %@", self, rewritten);
+        return rewritten;
+    }
+    if ([self.scheme.lowercaseString isEqualToString:@"spotify"]) return self;
+    return nil;
+}
+
+- (NSURL *)spt_normalizedURI {
+    NSURL *orig = %orig();
+    if ([orig isKindOfClass:NSURL.class]) return orig;
+    NSURL *rewritten = rewrittenURI(self.absoluteString);
+    if (rewritten) {
+        SGLog(@"links: spt_normalizedURI rewriting %@ -> %@", self, rewritten);
+        return rewritten;
+    }
+    if ([self.scheme.lowercaseString isEqualToString:@"spotify"]) return self;
+    return nil;
+}
+
+- (BOOL)sptparse_isSpotifyURI {
+    BOOL orig = %orig();
+    if (orig) return YES;
+    if ([self.scheme.lowercaseString isEqualToString:@"spotify"]) return YES;
+    return rewrittenURI(self.absoluteString) != nil;
+}
+%end
+
+@interface SPTURISchemeDispatcher : NSObject
+- (BOOL)handleURI:(NSURL *)uri context:(id)context;
+@end
+
+@interface SPTSpotifyLinkHandler : NSObject
+- (long long)handleSpotifyURL:(NSURL *)url context:(id)context;
+@end
+
+@interface _TtC24MusicApp_ContainerWiring18SpotifyAppDelegate : UIResponder <UIApplicationDelegate>
+- (BOOL)application:(id)application openURL:(NSURL *)url options:(id)options;
+@end
+
+%hook _TtC24MusicApp_ContainerWiring18SpotifyAppDelegate
+- (BOOL)application:(id)application openURL:(NSURL *)url options:(id)options {
+    NSURL *rewritten = rewrittenURI(url.absoluteString);
+    if (rewritten) SGLog(@"links: app openURL rewriting %@ -> %@", url, rewritten);
+    return %orig(application, rewritten ?: url, options);
+}
+%end
+
+%hook SPTURISchemeDispatcher
+- (BOOL)handleURI:(NSURL *)uri context:(id)context {
+    NSURL *rewritten = rewrittenURI(uri.absoluteString);
+    if (rewritten) SGLog(@"links: scheme dispatcher rewriting %@ -> %@", uri, rewritten);
+    BOOL res = %orig(rewritten ?: uri, context);
+    if (!res && rewritten) {
+        SGLog(@"links: scheme dispatcher returned NO for %@, dispatching directly", rewritten);
+        return SGOpenSpotifyURI(rewritten);
+    }
+    return res;
+}
+%end
+
+%hook SPTSpotifyLinkHandler
+- (long long)handleSpotifyURL:(NSURL *)url context:(id)context {
+    NSURL *rewritten = rewrittenURI(url.absoluteString);
+    if (rewritten) SGLog(@"links: spotify link handler rewriting %@ -> %@", url, rewritten);
+    long long res = %orig(rewritten ?: url, context);
+    if (res == 0 && rewritten) {
+        SGLog(@"links: spotify link handler returned 0 for %@, dispatching directly", rewritten);
+        if (SGOpenSpotifyURI(rewritten)) return 3;
+    }
+    return res;
+}
+%end
+
+%hook UIOpenURLContext
+- (NSURL *)URL {
+    NSURL *url = %orig;
+    NSURL *rewritten = rewrittenURI(url.absoluteString);
+    if (rewritten) SGLog(@"links: UIOpenURLContext rewriting %@ -> %@", url, rewritten);
+    return rewritten ?: url;
+}
+%end
 
 %hook SPTLinkDispatcherImplementation
 - (void)setMainUILoaded:(BOOL)loaded {
     %orig;
     sg_linkDispatcher = (SPTLinkDispatcherImplementation *)self;
 }
+
+- (void)navigateToURI:(NSURL *)uri options:(long long)options reason:(id)reason completionHandler:(id)completionHandler resultHandler:(id)resultHandler {
+    sg_linkDispatcher = (SPTLinkDispatcherImplementation *)self;
+    NSURL *rewritten = rewrittenURI(uri.absoluteString);
+    if (rewritten) SGLog(@"links: navigateToURI rewriting %@ -> %@", uri, rewritten);
+    %orig(rewritten ?: uri, options, reason, completionHandler, resultHandler);
+}
+
+- (BOOL)navigateToInternalURI:(NSURL *)uri options:(long long)options reason:(id)reason resultHandler:(id)resultHandler {
+    sg_linkDispatcher = (SPTLinkDispatcherImplementation *)self;
+    NSURL *rewritten = rewrittenURI(uri.absoluteString);
+    if (rewritten) SGLog(@"links: navigateToInternalURI rewriting %@ -> %@", uri, rewritten);
+    return %orig(rewritten ?: uri, options, reason, resultHandler);
+}
+
+- (void)URISchemeDispatcher:(id)dispatcher showInvalidSpotifyLinkMessageForURI:(NSURL *)uri {
+    sg_linkDispatcher = (SPTLinkDispatcherImplementation *)self;
+    NSURL *rewritten = rewrittenURI(uri.absoluteString);
+    if (rewritten && SGOpenSpotifyURI(rewritten)) {
+        SGLog(@"links: intercepted invalid spotify link alert for %@, opened %@", uri, rewritten);
+        return;
+    }
+    %orig;
+}
+
+- (void)URISchemeDispatcher:(id)dispatcher showInvalidLinkMessageForURI:(NSURL *)uri {
+    sg_linkDispatcher = (SPTLinkDispatcherImplementation *)self;
+    NSURL *rewritten = rewrittenURI(uri.absoluteString);
+    if (rewritten && SGOpenSpotifyURI(rewritten)) {
+        SGLog(@"links: intercepted invalid link alert for %@, opened %@", uri, rewritten);
+        return;
+    }
+    %orig;
+}
 %end
 
 %ctor {
     %init;
-    SGRequireClasses(@[@"SPTLinkDispatcherImplementation"]);
+    SGRequireClasses(@[
+        @"SPTLinkDispatcherImplementation",
+        @"SPTURISchemeDispatcher",
+        @"SPTSpotifyLinkHandler",
+    ]);
 }
