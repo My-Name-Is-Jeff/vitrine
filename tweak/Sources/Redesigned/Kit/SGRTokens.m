@@ -66,9 +66,19 @@ UIColor *SGRElevated(UIColor *field) {
 UIFont *SGRFont(UIFontTextStyle style, UIFontWeight weight, UIContentSizeCategory largest) {
     UIContentSizeCategory current = UIApplication.sharedApplication.preferredContentSizeCategory;
     if (largest && UIContentSizeCategoryCompareToCategory(current, largest) == NSOrderedDescending) current = largest;
+    // Asked for on every layout pass of the Search and Library headers. A font is immutable and the same inputs
+    // give the same one, so each is kept per input; the live category above and Bold Text are read on every call,
+    // so a Dynamic Type change is a new key at once.
+    static NSMutableDictionary<NSArray *, UIFont *> *fonts;
+    if (!fonts) fonts = [NSMutableDictionary dictionary];
+    NSArray *key = @[style, @(weight), largest ?: @"", current ?: @"", @(UIAccessibilityIsBoldTextEnabled())];
+    UIFont *font = fonts[key];
+    if (font) return font;
     UITraitCollection *traits = [UITraitCollection traitCollectionWithPreferredContentSizeCategory:current];
     CGFloat size = [UIFont preferredFontForTextStyle:style compatibleWithTraitCollection:traits].pointSize;
-    return [UIFont systemFontOfSize:size weight:weight];
+    font = [UIFont systemFontOfSize:size weight:weight];
+    fonts[key] = font;
+    return font;
 }
 
 UIFont *SGRMonospacedDigitsFont(UIFont *font) {
