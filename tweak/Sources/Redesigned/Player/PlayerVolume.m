@@ -1,7 +1,8 @@
-// Player redesign: a volume slider under the controls, as the Music app has. It is MPVolumeView, as the HIG asks
-// (sliders.md, playing-audio.md), so it is the system's volume: the hardware buttons move it, and while Spotify plays
-// on a Connect device it is that device's, which Spotify hands iOS through its remote volume. No route button: the
-// footer's Connect glyph is the route.
+// Player redesign: a volume slider under the controls, as the Music app has. The row draws its own pill: it grows while
+// held, its glyphs move out, a drag anywhere on the row moves the volume by the finger's travel, and VoiceOver steps it.
+// Under it sits a hidden MPVolumeView whose slider the row reads and moves, so it is the system's volume: the hardware
+// buttons move it, and while Spotify plays on a Connect device it is that device's, which Spotify hands iOS through its
+// remote volume. No route button: the footer's Connect glyph is the route.
 //
 // It sits in Spotify's bottom stack, outside its arranged views, between the controls and the footer row, so the
 // lyrics fade it with the rest of the stack (PlayerLyrics.x) and its touches stay inside the stack. The footer's
@@ -38,6 +39,21 @@ static UIImageView *glyph(NSString *symbol) {
 }
 
 @interface SGRVolumeRow : UIControl
+- (UISlider *)systemSlider;
+@end
+
+// MPVolumeView makes its slider when it lays out and may make another later, for example after a route change, so the
+// row looks for it again after each of its layouts.
+@interface SGRVolumeView : MPVolumeView
+@end
+
+@implementation SGRVolumeView
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    [(SGRVolumeRow *)self.superview systemSlider];
+}
+
 @end
 
 @implementation SGRVolumeRow {
@@ -47,7 +63,6 @@ static UIImageView *glyph(NSString *symbol) {
     UIImageView *_quiet, *_loud;
     CGFloat _value, _startValue, _startX, _trackMin, _trackMax;
     BOOL _held;
-    NSTimer *_poll;
     CFTimeInterval _lastPush;
     NSHashTable<UIGestureRecognizer *> *_suspended;
 }
@@ -55,7 +70,7 @@ static UIImageView *glyph(NSString *symbol) {
 - (instancetype)initWithFrame:(CGRect)frame {
     if (!(self = [super initWithFrame:frame])) return nil;
     // Only plumbing: the slider inside moves the system's volume, nobody sees or touches the view.
-    _system = [MPVolumeView new];
+    _system = [SGRVolumeView new];
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
     _system.showsRouteButton = NO;
@@ -92,33 +107,30 @@ static UIImageView *glyph(NSString *symbol) {
 }
 
 - (void)dealloc {
-    [_poll invalidate];
     [self restoreAncestorGestures];
     [NSNotificationCenter.defaultCenter removeObserver:self];
     [AVAudioSession.sharedInstance removeObserver:self forKeyPath:@"outputVolume" context:&kSessionContext];
     [_systemSlider removeObserver:self forKeyPath:@"value" context:&kSliderContext];
 }
 
-// The volume view builds its slider itself, so it is looked for until it is there.
+// The volume view builds its slider itself and may replace it, so the one it has now is looked for each time.
 - (UISlider *)systemSlider {
-    if (!_systemSlider) {
-        for (UIView *view in _system.subviews) {
-            if (![view isKindOfClass:UISlider.class]) continue;
-            _systemSlider = (UISlider *)view;
-            [_systemSlider addObserver:self
-                            forKeyPath:@"value"
-                               options:NSKeyValueObservingOptionNew
-                               context:&kSliderContext];
-            break;
-        }
+    UISlider *current = nil;
+    for (UIView *view in _system.subviews) {
+        if (![view isKindOfClass:UISlider.class]) continue;
+        current = (UISlider *)view;
+        break;
     }
+    if (current == _systemSlider) return current;
 
+    [_systemSlider removeObserver:self forKeyPath:@"value" context:&kSliderContext];
+    _systemSlider = current;
+    [current addObserver:self forKeyPath:@"value" options:NSKeyValueObservingOptionNew context:&kSliderContext];
     // Hide the system slider's visible artwork.
-    _systemSlider.thumbTintColor = UIColor.clearColor;
-    _systemSlider.minimumTrackTintColor = UIColor.clearColor;
-    _systemSlider.maximumTrackTintColor = UIColor.clearColor;
-
-    return _systemSlider;
+    current.thumbTintColor = UIColor.clearColor;
+    current.minimumTrackTintColor = UIColor.clearColor;
+    current.maximumTrackTintColor = UIColor.clearColor;
+    return current;
 }
 
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
@@ -135,6 +147,14 @@ static UIImageView *glyph(NSString *symbol) {
     UISlider *slider = [self systemSlider];
     CGFloat system = slider ? slider.value : AVAudioSession.sharedInstance.outputVolume;
     if (fabs(system - _value) > 0.002) [self setValue:system fromUser:NO];
+}
+
+// The KVO the system sends as it settles falls inside the guard above, so the row reads it once the guard has passed.
+- (void)refreshAfterPush {
+    __weak SGRVolumeRow *weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.65 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [weakSelf refreshFromSystem];
+    });
 }
 
 - (void)pushVolume {
@@ -201,18 +221,12 @@ static UIImageView *glyph(NSString *symbol) {
 - (void)didMoveToWindow {
     [super didMoveToWindow];
     if (!self.window) {
-        [_poll invalidate];
-        _poll = nil;
-        [self restoreAncestorGestures];
+        // A lock or a call can take the row off screen mid-drag, and then end or cancel tracking may not come.
+        [self setHeld:NO];
         return;
     }
     [self systemSlider];
     [self refreshFromSystem];
-    if (_poll) return;
-    __weak SGRVolumeRow *weakSelf = self;
-    _poll = [NSTimer timerWithTimeInterval:0.25 repeats:YES block:^(NSTimer *timer) { [weakSelf refreshFromSystem]; }];
-    _poll.tolerance = 0.1;
-    [NSRunLoop.mainRunLoop addTimer:_poll forMode:NSRunLoopCommonModes];
 }
 
 // Prevent the player from stealing volume swipe gesture.
@@ -250,7 +264,12 @@ static UIImageView *glyph(NSString *symbol) {
 - (void)setHeld:(BOOL)held {
     if (_held == held) return;
     _held = held;
-    if (held) [self suspendAncestorGestures]; else [self restoreAncestorGestures];
+    if (held) {
+        [self suspendAncestorGestures];
+    } else {
+        [self restoreAncestorGestures];
+        [self refreshAfterPush];
+    }
     void (^apply)(void) = ^{ [self syncTrack]; [self syncStyle]; };
     UIViewAnimationOptions options = UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction;
     if (held) {
@@ -280,8 +299,15 @@ static UIImageView *glyph(NSString *symbol) {
 - (void)cancelTrackingWithEvent:(UIEvent *)event { [self setHeld:NO]; }
 
 - (NSString *)accessibilityValue { return [NSString stringWithFormat:@"%d%%", (int)round(_value * 100)]; }
-- (void)accessibilityIncrement { [self setValue:_value + 0.0625 fromUser:YES]; }
-- (void)accessibilityDecrement { [self setValue:_value - 0.0625 fromUser:YES]; }
+- (void)accessibilityIncrement {
+    [self setValue:_value + 0.0625 fromUser:YES];
+    [self refreshAfterPush];
+}
+
+- (void)accessibilityDecrement {
+    [self setValue:_value - 0.0625 fromUser:YES];
+    [self refreshAfterPush];
+}
 
 @end
 
