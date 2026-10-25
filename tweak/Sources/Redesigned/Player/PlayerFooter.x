@@ -408,19 +408,19 @@ void SGRPlayerLowerRow(UIView *row) {
     CGFloat width = host.bounds.size.width, middleY = CGRectGetMidY(host.bounds);
     BOOL rtl = host.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft;
 
-    UIView *share = SGRFindByIdentifier(host, @"ShareButtonNowPlayingView", &kShareKey);
-    // The arranged view goes too: a view that takes touches swallows them even with nothing on it.
-    SGRPlayerVanish(share);
-    SGRPlayerVanish(arrangedAround(share, host));
-    // Spotify's clip button, hidden in every clean tree, would turn up where the queue moves to.
-    UIView *trimmer = SGRFindByIdentifier(host, @"nowplaying-npv-media-trimmer-navigation-button", &kTrimmerKey);
-    SGRPlayerVanish(trimmer);
-    SGRPlayerVanish(arrangedAround(trimmer, host));
-    // "From <friend>" on a track a friend shared sits in the middle of the row, over Connect, which the
-    // row moves there; the Music app has no such chip.
-    UIView *sharedBy = SGRFindByIdentifier(host, @"Components.UI.SharedByChip", &kSharedByKey);
-    SGRPlayerVanish(sharedBy);
-    SGRPlayerVanish(arrangedAround(sharedBy, host));
+    // Share; Spotify's clip button, hidden in every clean tree, which would turn up where the queue moves to; and
+    // "From <friend>" on a track a friend shared, which sits in the middle of the row, over Connect, which the row
+    // moves there (the Music app has no such chip). Found in one walk: nothing between them touches the tree.
+    static const void *const goneKeys[] = {&kShareKey, &kTrimmerKey, &kSharedByKey};
+    UIView *gone[3];
+    SGRFindByIdentifiers(host, @[@"ShareButtonNowPlayingView", @"nowplaying-npv-media-trimmer-navigation-button", @"Components.UI.SharedByChip"],
+                         goneKeys, gone);
+    UIView *share = gone[0];
+    for (NSUInteger i = 0; i < 3; i++) {
+        SGRPlayerVanish(gone[i]);
+        // The arranged view goes too: a view that takes touches swallows them even with nothing on it.
+        SGRPlayerVanish(arrangedAround(gone[i], host));
+    }
 
     SGRGlyphButton *lyrics = SGRPlayerLyricsGlyphIn(host);
     lyrics.bounds = CGRectMake(0, 0, 44, 44);

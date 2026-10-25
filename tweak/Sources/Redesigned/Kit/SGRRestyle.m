@@ -277,6 +277,12 @@ UIView *SGRFindByIdentifier(UIView *root, NSString *identifier, const void *cach
     return SGFindRemembered(root, cacheKey, ^BOOL(UIView *v) { return identifierMatches(v.accessibilityIdentifier, identifier); });
 }
 
+void SGRFindByIdentifiers(UIView *root, NSArray<NSString *> *identifiers, const void *const cacheKeys[], UIView *__strong found[]) {
+    SGFindRememberedAll(root, identifiers.count, cacheKeys, ^BOOL(NSUInteger i, UIView *v) {
+        return identifierMatches(v.accessibilityIdentifier, identifiers[i]);
+    }, found);
+}
+
 @implementation SGRShadowPlate {
     CGRect _pathBounds;
 }
