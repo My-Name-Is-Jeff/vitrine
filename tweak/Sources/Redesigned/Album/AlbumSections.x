@@ -196,21 +196,22 @@ static void logOnce(NSString *what) {
         if (settled) unsettle(cell);
         return %orig;
     }
-    if (settled && fabs(settled[2].doubleValue - attributes.size.width) < 1) {
+    BOOL kept = isKept(content);
+    BOOL visible = !kept && shown(cell, content, attributes.indexPath, NO);
+    if (!kept && !visible && settled && settled[1].doubleValue == 0 && fabs(settled[2].doubleValue - attributes.size.width) < 1) {
         UICollectionViewLayoutAttributes *fitted = [attributes copy];
-        CGFloat natural = settled[0].doubleValue, lead = settled[1].doubleValue;
-        fitted.size = CGSizeMake(attributes.size.width, lead > 0 ? natural + lead : 0);
+        fitted.size = CGSizeMake(attributes.size.width, 0);
         return fitted;
     }
     if (settled) unsettle(cell);
     UICollectionViewLayoutAttributes *result = %orig;
     CGFloat natural = MAX(1, result.size.height), width = result.size.width;
-    if (isKept(content)) {
+    if (kept) {
         shown(cell, content, attributes.indexPath, YES);
         settle(cell, natural, kLead, width);
         result.size = CGSizeMake(width, natural + kLead);
         logOnce(@"the album's own line and its copyright kept under the tracks");
-    } else if (shown(cell, content, attributes.indexPath, NO)) {
+    } else if (visible) {
         logOnce(@"a section under the tracks shown, its switch off");
     } else {
         settle(cell, natural, 0, width);
