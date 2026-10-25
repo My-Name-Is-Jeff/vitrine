@@ -275,6 +275,11 @@ Shared:
                   block stays out of it unless the sheet itself is shown (SGPlayerMenuReplaced). Switch to video,
                   the chip over the title of a song with a music video, is hidden under either look on request
                   (VideoSwitch.x, spotifyglass.hide.videoSwitch), by its identifier in FloatingElementsUnit.
+                  Full screen cover hidden (spotifyglass.hide.fullScreenCover) stops a tap on the cover from opening
+                  Spotify's full screen cover, under either look: each look's handleTap hook on CoverArtTiltView
+                  (PlayerGestures.x) returns before Spotify's, as it does while Gestures is on. Spotify's own flag
+                  (cover_art_tilt_enabled) is left alone: with it off the cover is built without CoverArtTiltView,
+                  and every hook on that view (the redesign's rounding and shadow, the hold to 2x) has nothing to reach.
                   The sleep timer (SleepTimer.m, set from the Live Activity) pauses Spotify at a time, at the end of
                   the track or at the end of the album or playlist, the last track of it found by the tracks to come
                   that are neither queued by hand nor autoplay's (SPTPlayerTrack's provider), or by the next one
