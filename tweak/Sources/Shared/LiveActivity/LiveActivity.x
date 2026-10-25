@@ -195,6 +195,15 @@ static NSString *lyricsLine(NSString *trackID, NSString **next, NSString **trans
     *next = index + 1 < (NSInteger)lines.count ? SGKaraokeLineText(lines[index + 1]) : @"";
     if (index < 0) return @"♪";
     SGKaraokeLine *current = lines[index];
+    if (SGFlag(SGKeyLyricsRomanised, NO) && SGFlag(SGKeyLyricsRomanisedReplace, NO)) {
+        BOOL japanese = SGLyricsLooksJapanese(lines);
+        SGKaraokeLine *rom = SGLyricsRomanisedLine(current, japanese);
+        if (rom) current = rom;
+        if (index + 1 < (NSInteger)lines.count) {
+            SGKaraokeLine *nextRom = SGLyricsRomanisedLine(lines[index + 1], japanese);
+            if (nextRom) *next = SGKaraokeLineText(nextRom);
+        }
+    }
     BOOL nextFarOff = index + 1 == (NSInteger)lines.count || lines[index + 1].start - position > kBreakMs;
     if (position > current.end + kBreakMs && nextFarOff) return @"♪";
     *translation = current.translation;
