@@ -61,6 +61,8 @@ id SGKaraokePlayer(void) { return sg_player; }
 NSString *SGKaraokePlayingTrack(void) { return @"track"; }
 NSArray<SGKaraokeLine *> *SGKaraokeLinesForTrack(NSString *trackID) { return sg_lines; }
 void SGKaraokeRequestLyrics(NSString *trackID) {}
+// The lines are there from the start, so nothing is posted under it.
+NSNotificationName const SGKaraokeLinesKeptNotification = @"harness.karaokeLinesKept";
 NSInteger SGKaraokeDelayMs(void) { return [NSUserDefaults.standardUserDefaults integerForKey:SGKeyLyricsDelay]; }
 
 static SGKaraokeLine *lineOf(NSString *text, NSInteger start, NSInteger end) {

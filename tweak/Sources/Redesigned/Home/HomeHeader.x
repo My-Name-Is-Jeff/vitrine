@@ -333,7 +333,10 @@ static void rise(UIView *part, CGAffineTransform transform, CGFloat alpha) {
 
 // The pill's glass takes no alpha (SGRGlass.h): it rises with the row, and its material goes off once the row is
 // half faded and comes back with it.
+static const NSTimeInterval kGlassFade = 0.15;
 static BOOL sg_glassShown = YES;
+// When the material's last change ends: until then the glass keeps rising after the row has faded.
+static CFTimeInterval sg_glassFadeEnds;
 static void riseGlass(UIView *glass, CGAffineTransform transform, CGFloat alpha) {
     if (!glass) return;
     if (!CGAffineTransformEqualToTransform(glass.transform, transform)) glass.transform = transform;
@@ -341,17 +344,21 @@ static void riseGlass(UIView *glass, CGAffineTransform transform, CGFloat alpha)
     UIView *shape = objc_getAssociatedObject(glass, &kPillGlassKey);
     if (!shape || shown == sg_glassShown) return;
     sg_glassShown = shown;
-    [UIView animateWithDuration:0.15 animations:^{ SGRShowGlass(shape, shown); }];
+    sg_glassFadeEnds = CACurrentMediaTime() + kGlassFade;
+    [UIView animateWithDuration:kGlassFade animations:^{ SGRShowGlass(shape, shown); }];
 }
 
 static void followScroll(UIScrollView *scroll) {
     UILabel *title = sg_header ? objc_getAssociatedObject(sg_header, &kTitleKey) : nil;
     if (!title || !scroll) return;
-    CGFloat scrolled = MAX(0, scroll.contentOffset.y + scroll.adjustedContentInset.top);
-    CGAffineTransform up = CGAffineTransformMakeTranslation(0, -scrolled);
-    CGFloat alpha = 1 - MIN(1, scrolled / MAX(1, title.bounds.size.height));
+    CGFloat scrolled = MAX(0, scroll.contentOffset.y + scroll.adjustedContentInset.top), faded = MAX(1, title.bounds.size.height);
+    CGFloat alpha = 1 - MIN(1, scrolled / faded);
+    // Past the title's height the row has faded out, so it stops rising there and nothing is written again until it
+    // comes back; the glass keeps rising while its material is still going off.
+    CGAffineTransform up = CGAffineTransformMakeTranslation(0, -MIN(scrolled, faded));
+    BOOL glassFading = CACurrentMediaTime() < sg_glassFadeEnds || (alpha > 0.5) != sg_glassShown;
     rise(title, up, alpha);
-    riseGlass(objc_getAssociatedObject(sg_header, &kGlassKey), up, alpha);
+    riseGlass(objc_getAssociatedObject(sg_header, &kGlassKey), glassFading ? CGAffineTransformMakeTranslation(0, -scrolled) : up, alpha);
     rise(objc_getAssociatedObject(sg_header, &kButtonsKey), up, alpha);
     if ([sg_face isDescendantOfView:sg_header]) rise(sg_face, up, alpha);
 }

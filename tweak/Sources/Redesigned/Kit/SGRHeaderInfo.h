@@ -52,6 +52,10 @@ extern const CGFloat SGRHeaderInfoTitleRise;  // 56, of the content over the pic
 // Where the content starts, from the top; 0 keeps it on the bottom edge. Content that would then run past the
 // bottom goes back on the bottom edge.
 @property (nonatomic) CGFloat pinnedTop;
+// Kept for the page, which reads them back to tell whether a pass has anything new to hand over: the play color
+// it last handed over, and whether it has found Spotify's buttons' row. The info itself never reads them.
+@property (nonatomic, strong) UIColor *handedPlayColor;
+@property (nonatomic) BOOL rowFound;
 @end
 
 // The image view of the leading face on Spotify's creator line `root` -- the playlist header's collaborators

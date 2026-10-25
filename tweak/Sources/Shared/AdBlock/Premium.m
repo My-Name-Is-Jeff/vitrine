@@ -357,6 +357,17 @@ static const SGRule rules[] = {
     {"ios-jam-queueintegrationimpl", "enable_jam_capped_premium_queue_banner", SGRuleForce, NO, NULL},
     {"ios-jam-jam", "suppress_add_to_queue_snackbar_for_free_hosted_jams", SGRuleForce, NO, NULL},
     {"ios-sociallistening-configuration-impl", "free_user_enabled_to_host_in_person_jam", SGRuleForce, YES, NULL},
+    // Premium's shuffle settings (smart shuffle can be turned off) and Reshuffle in the queue; Free gets none of them.
+    {"core-player", "enable_shuffle_settings", SGRuleForce, YES, NULL},
+    {"core-player", "enable_user_settings_can_disable_smart_shuffle", SGRuleForce, YES, NULL},
+    {"core-player", "enable_reshuffle_signal", SGRuleForce, YES, NULL},
+    {"ios-feature-queue", "is_reshuffle_enabled", SGRuleForce, YES, NULL},
+    // Smart shuffle stays on in a Jam, as on Premium.
+    {"ios-system-smartshuffle", "allow_smart_shuffle_in_jams", SGRuleForce, YES, NULL},
+    {"core-player", "disable_smart_shuffle_when_in_jam", SGRuleForce, NO, NULL},
+    // Automix: blended transitions between songs, off for Free.
+    {"core-automix", "automix_enabled", SGRuleForce, YES, NULL},
+    {"ios-feature-settings", "automix_enabled", SGRuleForce, YES, NULL},
 };
 static const size_t ruleCount = sizeof(rules) / sizeof(rules[0]);
 
