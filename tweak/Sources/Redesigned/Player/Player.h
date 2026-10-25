@@ -112,8 +112,6 @@ static inline Class SGRDJClass(NSString *name) {
 #define SGRKeyPlayerVolume @"spotifyglass.redesign.player.volume"
 BOOL SGRPlayerVolumeOn(void);
 // YES when the row shows; NO when it is off, has no controls to sit under or no room between them and the footer.
-// The footer's row of a stack that holds the volume row, so a layout of the stack can place the volume row again.
-UIView *SGRPlayerVolumeFooter(UIView *stack);
 BOOL SGRPlayerPlaceVolume(UIView *stack, UIView *controls, UIView *row, CGFloat margin);
 
 // Follow the cover (PlayerCoverAccent.x): the player's lit controls painted in the cover's color instead of the accent.

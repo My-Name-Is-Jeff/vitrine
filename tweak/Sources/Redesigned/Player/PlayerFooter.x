@@ -314,23 +314,6 @@ void SGRPlayerLowerRow(UIView *row) {
 }
 %end
 
-// The footer's own layout is the only one that places the volume row, and it does not run when the stack moves the
-// arranged views around (the lyrics, a track whose title wraps, a row that comes or goes), so the row stayed where the
-// stack once had them, over the controls (continuous/1.txt: the row at 188 of a stack whose controls end at 212).
-// The stack's layout places it again. The re-entry guard covers the row's first addSubview, which lays the stack out.
-%hook UIStackView
-- (void)layoutSubviews {
-    %orig;
-    UIView *row = SGRPlayerVolumeFooter(self);
-    if (!row) return;
-    static BOOL placing;
-    if (placing) return;
-    placing = YES;
-    SGRPlayerLowerRow(row);
-    placing = NO;
-}
-%end
-
 // The Connect button lays itself out again when the device changes (its name comes or goes, another device's glyph,
 // the button's width with them),
 // with no pass of the footer around it: the glyph moved inside it while the footer's transform, worked out from where
@@ -351,11 +334,12 @@ static char kGlyphSeenKey;
     CGRect seen = [glyph convertRect:glyph.bounds toView:connect];
     seen.size = connect.bounds.size;
     NSValue *was = objc_getAssociatedObject(connect, &kGlyphSeenKey);
+    if (was && CGRectEqualToRect(was.CGRectValue, seen)) return;
     objc_setAssociatedObject(connect, &kGlyphSeenKey, [NSValue valueWithCGRect:seen], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    if (!was || CGRectEqualToRect(was.CGRectValue, seen)) return;
+    if (!was) return;
     // The footer unit's view: the first ancestor a controller owns.
     for (UIView *v = connect.superview; v; v = v.superview) {
-        if (![v.nextResponder isKindOfClass:UIViewController.class]) continue;
+        if (!unitOf(v)) continue;
         [v setNeedsLayout];
         break;
     }

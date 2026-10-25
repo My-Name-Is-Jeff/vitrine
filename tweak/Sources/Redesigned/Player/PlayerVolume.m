@@ -6,6 +6,9 @@
 // It sits in Spotify's bottom stack, outside its arranged views, between the controls and the footer row, so the
 // lyrics fade it with the rest of the stack (PlayerLyrics.x) and its touches stay inside the stack. The footer's
 // lowerRow (PlayerFooter.x) places it after the moves, and keeps the controls where Spotify put them to make the room.
+// The stack's own layout places it again (SGRObserveLayout): the stack moves its arranged views around with no pass
+// of the footer (the lyrics, a track whose title wraps, a row that comes or goes), and the row stayed where the stack
+// once had them, over the controls (continuous/1.txt: the row at 188 of a stack whose controls end at 212).
 #import <MediaPlayer/MediaPlayer.h>
 #import <objc/runtime.h>
 #import "Core/SGCore.h"
@@ -42,6 +45,9 @@ static const CGFloat kGlyphsHalf = 14;
 @end
 
 @interface SGRVolumeRow : UIView
+// The controls and the footer row it was last placed between, for the stack's layout; nil while it does not show.
+// Weak: the stack owns them.
+@property (nonatomic, weak) UIView *controls, *footer;
 @end
 
 @implementation SGRVolumeRow {
@@ -119,7 +125,7 @@ static UIImageView *glyph(NSString *symbol) {
 
 @end
 
-static char kVolumeKey, kPlayKey, kSettleKey, kRowKey;
+static char kVolumeKey, kPlayKey, kSettleKey;
 // Passes the footer's layout is asked for again while the row's place keeps changing, at most.
 static const NSUInteger kSettlePasses = 6;
 
@@ -153,24 +159,23 @@ static void settle(UIView *stack, UIView *row, BOOL moved, CGRect frame) {
     });
 }
 
-// The footer's row of the stack that holds a volume row, nil for any other stack. Weak: the stack does not own it.
-UIView *SGRPlayerVolumeFooter(UIView *stack) {
-    UIView *row = objc_getAssociatedObject(stack, &kRowKey);
-    return row.superview == stack ? row : nil;
-}
-
 BOOL SGRPlayerPlaceVolume(UIView *stack, UIView *controls, UIView *row, CGFloat margin) {
     SGRVolumeRow *volume = objc_getAssociatedObject(stack, &kVolumeKey);
     if (!SGRPlayerVolumeOn() || !controls) {
+        volume.controls = nil;
         if (volume) volume.alpha = 0;
         return NO;
     }
     if (!volume) {
         volume = [SGRVolumeRow new];
         objc_setAssociatedObject(stack, &kVolumeKey, volume, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        SGRObserveLayout(stack, ^(UIView *laidOut) {
+            SGRVolumeRow *placed = objc_getAssociatedObject(laidOut, &kVolumeKey);
+            UIView *above = placed.controls, *footer = placed.footer;
+            if (above.superview == laidOut && footer.superview == laidOut) SGRPlayerPlaceVolume(laidOut, above, footer, margin);
+        });
     }
     if (volume.superview != stack) [stack addSubview:volume];
-    objc_setAssociatedObject(stack, &kRowKey, row, OBJC_ASSOCIATION_ASSIGN);
     // Halfway between the play button's bottom and the footer glyphs' top, each where it is drawn (convertRect: takes
     // the moves' transforms in). Without the button there is nothing to stand under: a guess from the controls' unit
     // put the row across the buttons on an iPhone 13 Pro with iOS 17 (issue #32) and took their taps, so no row.
@@ -181,9 +186,12 @@ BOOL SGRPlayerPlaceVolume(UIView *stack, UIView *controls, UIView *row, CGFloat 
             logged = YES;
             SGLog(@"redesign player: no play button in %@, so no volume row", NSStringFromClass(controls.class));
         }
+        volume.controls = nil;
         volume.alpha = 0;
         return NO;
     }
+    volume.controls = controls;
+    volume.footer = row;
     CGFloat above = CGRectGetMaxY([play convertRect:play.bounds toView:stack]);
     CGFloat below = [row convertPoint:CGPointMake(CGRectGetMidX(row.bounds), CGRectGetMidY(row.bounds)) toView:stack].y - kGlyphsHalf;
     CGFloat height = kRowHeight, room = below - above;
