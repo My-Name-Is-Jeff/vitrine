@@ -10,8 +10,8 @@ NSString *SGURIString(id uri) {
 
 static NSHashTable<id<SGPlayerStateObserver>> *sg_stateObservers;
 static SPTPlayerState *sg_playerState;
-static NSString *sg_stateKey;
-// What sg_stateKey was formatted from, so a report that moved none of them is told apart without the format.
+// What the last change was told from, so a report that moved none of them tells observers nothing.
+static BOOL sg_stateSeen;
 static NSString *sg_stateTrack, *sg_stateContext;
 static int sg_stateBits;
 // Set once the now playing platform has reported; the mod's own observer on the player stands down.
@@ -43,11 +43,8 @@ static void publish(SPTPlayerState *state) {
     BOOL loading = [state respondsToSelector:@selector(isLoading)] && state.isLoading;
     BOOL shuffling = [options respondsToSelector:@selector(shufflingContext)] && options.shufflingContext;
     int bits = paused | playing << 1 | loading << 2 | shuffling << 3;
-    // Equal inputs format to an equal key, so the key is only built once one of them moved.
-    if (sg_stateKey && bits == sg_stateBits && sameURI(track, sg_stateTrack) && sameURI(context, sg_stateContext)) return;
-    NSString *key = [NSString stringWithFormat:@"%@|%@|%d%d%d%d", track, context, paused, playing, loading, shuffling];
-    if ([key isEqualToString:sg_stateKey]) return;
-    sg_stateKey = key;
+    if (sg_stateSeen && bits == sg_stateBits && sameURI(track, sg_stateTrack) && sameURI(context, sg_stateContext)) return;
+    sg_stateSeen = YES;
     sg_stateTrack = track;
     sg_stateContext = context;
     sg_stateBits = bits;
