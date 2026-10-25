@@ -571,9 +571,9 @@ Redesigned:
                   clip plays: the cover stays over Fluid. A black gradient dims the clip by its brightness (the 75th
                   percentile of the linear luminance of three frames), so white text keeps 4.5:1 (7:1 with Increase
                   Contrast), from 0.10 to 0.80, only where text is: a band under the header and from above the title
-                  down; behind the lyrics it covers the whole clip, 0.15 darker (issue #101). A track that changes while the player
-                  cannot be seen (no window, or the app not in front) takes the last clip away at once. Checked in the simulator against
-                  harness/player/ (`motion`). The Visualizer
+                  down; behind the lyrics it covers the whole clip, 0.15 darker (issue #101). A track that changes
+                  while the player cannot be seen (no window, or the app not in front) takes the last clip away at
+                  once. Checked in the simulator against harness/player/ (`motion`). The Visualizer
                   (PlayerVisualiser.m) draws two soft hills of the song's spectrum across the foot of the player, the kick
                   a mound in the middle (the two bands under 80 Hz are left out, and the kick's bands stand at least as
                   tall as the bands beside them, so the middle is never a notch), as light in the cover's flow colors
