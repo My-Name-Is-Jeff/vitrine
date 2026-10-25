@@ -1,4 +1,5 @@
-// Spotify's App Groups, redirected into whichever group the sideload signature really has.
+// Spotify's App Groups and its extension-credentials keychain group, redirected into groups the
+// sideload signature really has.
 //
 // The main app hands the home screen widget everything it shows through UserDefaults suites named
 // group.com.spotify.client.widget, .widget.data and .widget.lifecycle. Those groups belong to
@@ -6,13 +7,13 @@
 // (group.<hash>.N from a paid certificate service, something else from AltStore), each process
 // then gets a private, empty suite, and the widget stays on its "Open Spotify and play" placeholder.
 //
-// This dylib is loaded by both Spotify and WidgetExtension.appex (scripts/pipeline.sh adds the load
-// command to the extension). In each it maps every group.* identifier the process is not entitled
-// to onto a folder inside one group it is entitled to, the same folder in both processes, so the
-// suites and container files meet again. It is plain runtime swizzling, no Substrate, because the
-// extension carries nothing else of the tweak.
+// This dylib is loaded by Spotify and its Widget, Intents and NotificationService extensions
+// (scripts/pipeline.sh adds the load command to each extension). In each it maps every group.*
+// identifier the process is not entitled to onto a folder inside one group it is entitled to, the
+// same folder in every process, so the suites and container files meet again. It is plain runtime
+// swizzling, no Substrate, because the extensions carry nothing else of the tweak.
 //
-// Keychain: the app saves the login the Siri, notification and widget extensions sign in with under
+// Keychain: the app saves the login the Siri and notification extensions sign in with under
 // the access group 8W66MEA7DD.com.spotify.client.extension-credentials, built from Spotify's team id
 // in SpotifyShared. A re-signed process is not entitled to it (errSecMissingEntitlement), so Siri asks
 // to verify the account (issue #60). Every SPTKeychainManager call builds its query in

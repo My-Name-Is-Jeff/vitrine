@@ -161,23 +161,28 @@ if [ -n "$KEEP_WATCH" ]; then
 fi
 # The widget reads the App Group suites; Siri (IntentsExtension) and the notification service sign in
 # with the credentials the app keeps in the keychain (extension/AppGroups/AppGroups.m, issue #60).
+PATCH="$(mktemp -d)"
+EXT_BINS=()
 for EXT in WidgetExtension IntentsExtension NotificationServiceExtension; do
   echo "==> loading the App Group shim in $EXT"
   EXT_BIN="${APP_DIR}PlugIns/$EXT.appex/$EXT"
   if unzip -l "$OUT" "$EXT_BIN" >/dev/null 2>&1; then
-    PATCH="$(mktemp -d)"
     unzip -q "$OUT" "$EXT_BIN" -d "$PATCH"
     "$ROOT/scripts/insert-dylib.py" "$PATCH/$EXT_BIN" @rpath/SpotifyGlassAppGroups.dylib
     # Fakesigned again with its own entitlements, the way cyan -s left it, for TrollStore.
     ldid -e "$PATCH/$EXT_BIN" > "$PATCH/ents.plist"
     ldid -S"$PATCH/ents.plist" "$PATCH/$EXT_BIN"
-    OUT_ABS="$(cd "$(dirname "$OUT")" && pwd)/$(basename "$OUT")"
-    (cd "$PATCH" && zip -q "$OUT_ABS" "$EXT_BIN")
-    rm -rf "$PATCH"
+    EXT_BINS+=("$EXT_BIN")
   else
     echo "    no $EXT.appex in this IPA"
   fi
 done
+# One zip pass: each update rewrites the whole IPA.
+if [ ${#EXT_BINS[@]} -gt 0 ]; then
+  OUT_ABS="$(cd "$(dirname "$OUT")" && pwd)/$(basename "$OUT")"
+  (cd "$PATCH" && zip -q "$OUT_ABS" "${EXT_BINS[@]}")
+fi
+rm -rf "$PATCH"
 
 shopt -s nullglob
 ICONS=("$ROOT"/icons/*.png)
