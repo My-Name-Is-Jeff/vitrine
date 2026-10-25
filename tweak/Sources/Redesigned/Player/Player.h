@@ -103,8 +103,8 @@ static inline Class SGRDJClass(NSString *name) {
 }
 // What fades a few seconds after the last touch while the lyrics play, as the lines grow into the room
 // (PlayerLyrics.x): nothing, everything but the lines, or the controls under the title row alone. A scroll
-// through the lines hides the same views, everything when the choice is Off. The key was a switch first: its
-// NO and YES are the first two indexes, and unset reads as the switch did.
+// on through the lines hides the same views, everything when the choice is Off, and a scroll back brings them
+// back. The key was a switch first: its NO and YES are the first two indexes, and unset reads as the switch did.
 #define SGRKeyLyricsAutoHide @"spotifyglass.redesign.lyrics.autoHide"
 typedef NS_ENUM(NSInteger, SGRLyricsHide) { SGRLyricsHideOff, SGRLyricsHideAll, SGRLyricsHideControls };
 SGRLyricsHide SGRLyricsHideMode(void);

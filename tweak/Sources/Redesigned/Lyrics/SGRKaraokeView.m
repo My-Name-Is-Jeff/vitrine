@@ -1485,6 +1485,8 @@ typedef struct {
         return;
     }
     if (_plain) return;   // a line with no time has nowhere to seek to
+    CGFloat y = [tap locationInView:self].y;
+    if (_seeksAbove > 0 && (y > _seeksAbove || y < _seeksBelow)) return;   // the host's, where its controls were
     for (SGRKaraokeLineView *view in _shown.allValues) {
         if (!CGRectContainsPoint(CGRectInset(view.frame, -_margin, -_lineGap / 2), point)) continue;
         [self seekToLine:view.line];
@@ -1549,7 +1551,7 @@ typedef struct {
         _browseBreak = _openBreak;
     }
     _browsing = YES;
-    if (self.browsingBegan) self.browsingBegan();
+    if (self.browsingBegan) self.browsingBegan([scrollView.panGestureRecognizer translationInView:scrollView].y < 0);
     for (SGRKaraokeLineView *view in _shown.allValues) view.blur = 0;
 }
 
