@@ -203,7 +203,14 @@ static void logOnce(NSString *what) {
         fitted.size = CGSizeMake(attributes.size.width, 0);
         return fitted;
     }
-    if (settled) unsettle(cell);
+    // A kept cell is measured from the top and settled again below: content settle() moved down its lead measures
+    // that much taller on every pass, and the collection view asks again until the answer holds still. Only the
+    // lead is undone; a dropped cell's content is never squeezed to the cell's 0 (see the top of the file).
+    if (settled[1].doubleValue > 0) {
+        CGRect frame = cell.contentView.frame;
+        frame.origin.y = 0;
+        cell.contentView.frame = frame;
+    }
     UICollectionViewLayoutAttributes *result = %orig;
     CGFloat natural = MAX(1, result.size.height), width = result.size.width;
     if (kept) {
@@ -212,6 +219,7 @@ static void logOnce(NSString *what) {
         result.size = CGSizeMake(width, natural + kLead);
         logOnce(@"the album's own line and its copyright kept under the tracks");
     } else if (visible) {
+        if (settled) unsettle(cell);
         logOnce(@"a section under the tracks shown, its switch off");
     } else {
         settle(cell, natural, 0, width);
