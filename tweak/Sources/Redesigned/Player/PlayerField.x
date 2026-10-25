@@ -180,15 +180,15 @@ static void publishCover(void) {
 #pragma mark - Canvas
 
 // The artwork is the picture; Spotify's Canvas video would cover the field and the corners. The player makes
-// its Canvas cell (CanvasNowPlayingCell) only for a track whose metadata names a Canvas (canvas.url,
-// canvas.type, ...), so the redesign's tracks keep those keys under SGMotionHiddenCanvas, where the player
-// does not look and Vitrine's moving artwork still does, and no Canvas video is fetched or decoded for it. ios-feature-canvas.canvas_enabled stays on: forced off, it also took the Canvas off the share sheet's
-// story card (issue #87), which finds it without these keys.
+// its Canvas cell (CanvasNowPlayingCell) only for a track whose metadata names a Canvas, so the keys move under
+// SGMotionHiddenCanvas. ios-feature-canvas.canvas_enabled stays on: forced off, it also took the Canvas off the
+// share sheet's story card (issue #87), which finds it without these keys.
 static char kTrackMetadataKey;
 
 %hook SPTPlayerTrack
 - (NSDictionary *)metadata {
     NSDictionary *metadata = %orig;
+    if (!metadata) return nil;
     // Read for every track many times a second, so the stripped copy is kept beside the dictionary it copies,
     // as LyricsHook.x does. A local file's edit (LocalFileInfo.x) hands out a new one, which is looked at again.
     NSArray *cached = objc_getAssociatedObject(self, &kTrackMetadataKey);
@@ -200,7 +200,6 @@ static char kTrackMetadataKey;
         stripped[[SGMotionHiddenCanvas stringByAppendingString:key]] = metadata[key];
         [stripped removeObjectForKey:key];
     }
-    if (!metadata) return nil;
     NSDictionary *result = stripped ? [stripped copy] : metadata;   // handed out again, so unchangeable
     objc_setAssociatedObject(self, &kTrackMetadataKey, @[metadata, result], OBJC_ASSOCIATION_RETAIN);
     return result;
