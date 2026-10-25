@@ -1467,31 +1467,44 @@ typedef struct {
     return _sample ?: SGKaraokeLinesForTrack(track);
 }
 
-- (void)tapped:(UITapGestureRecognizer *)tap {
-    [self stir];
-    if (_extrasBox && !_extrasBox.hidden && CGRectContainsPoint(_extrasBox.frame, [tap locationInView:self])) return;
-    if (_sing.userInteractionEnabled && [_sing pointInside:[tap locationInView:_sing] withEvent:nil]) return;
+// What a tap at point (in the view) lands on: the credit, a line's explain bubble (*explains), a line to seek
+// to, or nothing.
+- (UIView *)tapTargetAt:(CGPoint)point explains:(BOOL *)explains {
+    *explains = NO;
+    if (_extrasBox && !_extrasBox.hidden && CGRectContainsPoint(_extrasBox.frame, point)) return nil;
+    if (_sing.userInteractionEnabled && [_sing pointInside:[self convertPoint:point toView:_sing] withEvent:nil]) return nil;
+    CGPoint inScroll = [self convertPoint:point toView:_scroll];
     if (_creditLinks.count && !_credit.hidden
-        && CGRectContainsPoint(CGRectInset(_credit.frame, -kCreditSlop, -MAX(kCreditSlop, (44 - _credit.frame.size.height) / 2)),
-                               [tap locationInView:_scroll])) {
-        SGLyricsOpenCreditLinks(_creditLinks, _credit);
-        return;
+        && CGRectContainsPoint(CGRectInset(_credit.frame, -kCreditSlop, -MAX(kCreditSlop, (44 - _credit.frame.size.height) / 2)), inScroll)) {
+        return _credit;
     }
-    CGPoint point = [tap locationInView:_scroll];
     for (SGRKaraokeLineView *view in _shown.allValues) {
         CGRect target = view.bubbleTarget;
-        if (CGRectIsNull(target) || !CGRectContainsPoint(target, [_scroll convertPoint:point toView:view])) continue;
-        [self explainLine:view];
-        return;
+        if (CGRectIsNull(target) || !CGRectContainsPoint(target, [_scroll convertPoint:inScroll toView:view])) continue;
+        *explains = YES;
+        return view;
     }
-    if (_plain) return;   // a line with no time has nowhere to seek to
-    CGFloat y = [tap locationInView:self].y;
-    if (_seeksAbove > 0 && (y > _seeksAbove || y < _seeksBelow)) return;   // the host's, where its controls were
+    if (_plain) return nil;   // a line with no time has nowhere to seek to
+    if (_seeksAbove > 0 && (point.y > _seeksAbove || point.y < _seeksBelow)) return nil;   // the host's, where its controls were
     for (SGRKaraokeLineView *view in _shown.allValues) {
-        if (!CGRectContainsPoint(CGRectInset(view.frame, -_margin, -_lineGap / 2), point)) continue;
-        [self seekToLine:view.line];
-        return;
+        if (CGRectContainsPoint(CGRectInset(view.frame, -_margin, -_lineGap / 2), inScroll)) return view;
     }
+    return nil;
+}
+
+- (BOOL)tapSeeksAt:(CGPoint)point {
+    BOOL explains;
+    UIView *target = [self tapTargetAt:point explains:&explains];
+    return target && target != _credit && !explains;
+}
+
+- (void)tapped:(UITapGestureRecognizer *)tap {
+    [self stir];
+    BOOL explains;
+    UIView *target = [self tapTargetAt:[tap locationInView:self] explains:&explains];
+    if (target == _credit) SGLyricsOpenCreditLinks(_creditLinks, _credit);
+    else if (explains) [self explainLine:(SGRKaraokeLineView *)target];
+    else if (target) [self seekToLine:((SGRKaraokeLineView *)target).line];
 }
 
 // A tap on a line, or VoiceOver activating it.

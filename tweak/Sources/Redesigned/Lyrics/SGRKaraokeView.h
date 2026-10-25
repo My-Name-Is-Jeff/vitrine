@@ -27,4 +27,7 @@
 // seeksBelow, the tap is the host's (the player's lines on their own, over the controls that faded).
 @property (nonatomic) CGFloat seeksAbove;
 @property (nonatomic) CGFloat seeksBelow;
+// Whether a tap at point, in the view, seeks: on a timed line, inside the seeking band, and not on the credit
+// or a line's explain bubble.
+- (BOOL)tapSeeksAt:(CGPoint)point;
 @end

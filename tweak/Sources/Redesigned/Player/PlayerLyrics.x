@@ -334,7 +334,7 @@ static CGFloat thumbRadius(SGRLyricsLayout l, BOOL open) {
 // UIKit gives a control its tap over a tap recognizer above it. A faded view takes no touch (UIKit's hit
 // test skips it), so a tap where the thumbnail or a button was only wakes. A drag or a second finger fails
 // it. While they are alone the lines' own tap, the one that seeks, keeps to where they were with the rest up
-// (seeksBelow to seeksAbove), and the recognizer takes no touch there.
+// (seeksBelow to seeksAbove), and the recognizer takes no touch where that tap seeks (tapSeeksAt:).
 
 // What fades: every view of Spotify's bottom stack but the chips (gone while the lines are up), which is the
 // title row, the progress bar, the buttons, the footer and a volume row where the phone has one; the header
@@ -511,15 +511,13 @@ static void restartRest(void) {
     return YES;
 }
 // Sing's mic and its slider stay while the lines are alone, and a touch on them is theirs alone. So is a touch
-// on the lines where they were with the controls up: a tap there seeks and brings nothing back.
+// on a line the lines' own tap would seek to: it seeks and brings nothing back.
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)recognizer shouldReceiveTouch:(UITouch *)touch {
     SGRPlayerLyricsOverlay *overlay = objc_getAssociatedObject(sg_host, &kOverlayKey);
     SGRKaraokeView *lines = overlay.lyrics;
     for (UIView *v = touch.view; v; v = v.superview) {
         if ([v isKindOfClass:SGRSingButton.class]) return NO;
-        if (v != lines) continue;
-        CGFloat y = [touch locationInView:lines].y;
-        return lines.seeksAbove > 0 && (y > lines.seeksAbove || y < lines.seeksBelow);
+        if (v == lines) return ![lines tapSeeksAt:[touch locationInView:lines]];
     }
     return YES;
 }
