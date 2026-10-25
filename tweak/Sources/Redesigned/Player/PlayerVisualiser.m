@@ -457,7 +457,9 @@ BOOL SGRPlayerVisualiserShowing(void) {
 }
 
 UIView *SGRPlayerVisualiserPreview(void) {
-    return [[SGRVisualiserView alloc] initWithFrame:CGRectZero];
+    static SGRVisualiserView *preview;
+    if (!preview) preview = [[SGRVisualiserView alloc] initWithFrame:CGRectZero];
+    return preview;
 }
 
 // The hills from the top of the field to the foot of its bleed, standing on the screen's foot.
