@@ -68,7 +68,8 @@ static NSTimer *sg_rest;
 static __weak UIGestureRecognizer *sg_wake; // on the player, on while alone: the tap that brings the controls back
 
 SGRLyricsHide SGRLyricsHideMode(void) {
-    return SGInt(SGRKeyLyricsAutoHide, SGEnabled(SGRKeyLyricsAutoHide) ? SGRLyricsHideAll : SGRLyricsHideOff);
+    NSInteger stored = SGInt(SGRKeyLyricsAutoHide, -1);
+    return stored >= 0 ? stored : SGEnabled(SGRKeyLyricsAutoHide) ? SGRLyricsHideAll : SGRLyricsHideOff;
 }
 
 // Alone, the lines leave the header row, the thumbnail and the title row where they are, the way the Music
@@ -115,7 +116,8 @@ static BOOL keepsTitle(void) {
 }
 
 - (void)sgr_thumbTapped {
-    if (SGRPlayerLyricsOpen() && !sg_moving) SGRPlayerToggleLyrics();
+    // Left on screen while the lines are alone (keepsTitle), a tap on it only wakes the controls (SGRPlayerWake).
+    if (SGRPlayerLyricsOpen() && !sg_moving && !sg_alone) SGRPlayerToggleLyrics();
 }
 
 - (UIView *)thumb { return _thumb; }
@@ -128,8 +130,8 @@ static BOOL keepsTitle(void) {
 // What it hands them to instead is the title row. Translated to the top of the player it is drawn well
 // outside the stack view it is arranged in, and UIKit stops looking at a view whose bounds the touch is
 // not in, so the add button and the menu that rode up with it are past Spotify's own reach. Asked here
-// directly, the row answers for where it is drawn. Not while the lines are alone: the row is faded then,
-// and a tap where its add button was is the player's, which brings everything back.
+// directly, the row answers for where it is drawn. Not while the lines are alone, unless the title is kept: the
+// row is faded then, and a tap where its add button was is the player's, which brings everything back.
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
     UIView *hit = [super hitTest:point withEvent:event];
     if (hit != self) return hit;
@@ -365,9 +367,9 @@ static NSArray<UIView *> *fadingViews(void) {
     SGForEachView(sg_host, ^(UIView *view) {
         UIResponder *owner = view.nextResponder;
         if (![owner isKindOfClass:UIViewController.class] || ((UIViewController *)owner).viewIfLoaded != view) return;
+        if (view == info) return;
         NSString *name = NSStringFromClass(owner.class);
         for (NSString *unit in names) {
-            if (view == info) continue;
             if ([name hasSuffix:unit] && !view.hidden && view.alpha > 0.01) [views addObject:view];
         }
     });

@@ -103,16 +103,6 @@ UIViewController *SGNavbarPage(void) {
     return SGRedesignedUIStored() ? SGRNavbarSettingsPage() : SGNavbarSettingsPage();
 }
 
-// The order is the stored index, which a switch's NO and YES were first (Player.h). Unset, it falls back the
-// way the switch did, off after a reset.
-static SGModRow *hideControlsRow(void) {
-    SGModRow *row = SGChoiceRow(@"Hide the controls", @"A few seconds after the last touch, the lyrics take the room",
-                                SGRKeyLyricsAutoHide, @[@"Off", @"Everything", @"Keep the title"],
-                                SGEnabled(SGRKeyLyricsAutoHide) ? SGRLyricsHideAll : SGRLyricsHideOff);
-    row.choiceNotes = @[@"The controls stay", @"The lyrics take the whole player", @"The cover, the title and the top row stay"];
-    return row;
-}
-
 // Pronunciation, romanized lines, translation, word sweeping and line meanings exist only in the redesign's lyrics view.
 static UIViewController *lyricsPage(void) {
     BOOL redesigned = SGRedesignedUIStored();
@@ -127,7 +117,7 @@ static UIViewController *lyricsPage(void) {
     if (redesigned) {
         [sections addObjectsFromArray:@[
             SGSection(@"Display", @[SGRLyricsTextSizesRow(), SGLyricsWordTimingRow(), SGLyricsRomanisedRow(),
-                hideControlsRow(),
+                SGRLyricsHideRow(),
                 SGSwitchRow(@"Landscape lyrics", @"Turn the phone with the lyrics open", SGRKeyLyricsLandscape)]),
             timing,
             SGSection(@"Translation", [[[@[SGLyricsTranslationLanguageRow(), SGTranslateEverySongRow()] arrayByAddingObjectsFromArray:SGOnDeviceTranslatorRows()]

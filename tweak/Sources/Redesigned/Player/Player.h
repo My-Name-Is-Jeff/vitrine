@@ -102,13 +102,15 @@ static inline Class SGRDJClass(NSString *name) {
     return NSClassFromString(mangled) ?: NSClassFromString([NSString stringWithFormat:@"%@.%@", module, name]);
 }
 // What fades a few seconds after the last touch while the lyrics play, as the lines grow into the room
-// (PlayerLyrics.x): nothing, everything but the lines, or the controls under the title row alone. Stored as
-// the index of the Lyrics page's choice; the key was a switch first, and its NO and YES are the first two
-// indexes, so the switch someone flipped still reads the same. Unset reads like the switch did. A scroll
-// through the lines hides the same views either way, everything when the choice is Off.
+// (PlayerLyrics.x): nothing, everything but the lines, or the controls under the title row alone. A scroll
+// through the lines hides the same views, everything when the choice is Off. The key was a switch first: its
+// NO and YES are the first two indexes, and unset reads as the switch did.
 #define SGRKeyLyricsAutoHide @"spotifyglass.redesign.lyrics.autoHide"
 typedef NS_ENUM(NSInteger, SGRLyricsHide) { SGRLyricsHideOff, SGRLyricsHideAll, SGRLyricsHideControls };
 SGRLyricsHide SGRLyricsHideMode(void);
+@class SGModRow;
+// The Lyrics page's choice of it (PlayerSettings.m).
+SGModRow *SGRLyricsHideRow(void);
 
 // A volume slider under the controls (PlayerVolume.m), the system's: this iPhone's, or the Connect device's.
 // On until switched off. Placed by the footer's layout, between the controls (`controls`) and the footer row
