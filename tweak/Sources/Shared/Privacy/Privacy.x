@@ -34,6 +34,7 @@ static const size_t kRuleCount = sizeof(kRules) / sizeof(kRules[0]);
 
 static NSString *const kCounts = @"spotifyglass.privacy.counts";
 static NSMutableDictionary<NSString *, NSNumber *> *sg_counts;
+static BOOL sg_unsaved;
 
 @interface SGBlockProtocol : NSURLProtocol
 @end
@@ -56,7 +57,7 @@ static void countOne(NSString *label) {
     @synchronized (SGBlockProtocol.class) {
         NSMutableDictionary<NSString *, NSNumber *> *counts = countsLocked();
         counts[label] = @(counts[label].unsignedIntegerValue + 1);
-        [NSUserDefaults.standardUserDefaults setObject:counts forKey:kCounts];
+        sg_unsaved = YES;
     }
 }
 
@@ -95,6 +96,7 @@ NSUInteger SGBlockedCount(NSString *label) {
 void SGResetBlocked(void) {
     @synchronized (SGBlockProtocol.class) {
         sg_counts = [NSMutableDictionary dictionary];
+        sg_unsaved = NO;
         [NSUserDefaults.standardUserDefaults removeObjectForKey:kCounts];
     }
 }
@@ -148,6 +150,14 @@ static NSURLSessionConfiguration *carryingProtocol(NSURLSessionConfiguration *co
 %ctor {
     if (SGEnabled(SGKeyBlockTelemetry)) {
         [NSURLProtocol registerClass:SGBlockProtocol.class];
+        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:nil
+                                                    usingBlock:^(NSNotification *note) {
+            @synchronized (SGBlockProtocol.class) {
+                if (!sg_unsaved) return;
+                [NSUserDefaults.standardUserDefaults setObject:countsLocked() forKey:kCounts];
+                sg_unsaved = NO;
+            }
+        }];
         %init;
     }
 }
