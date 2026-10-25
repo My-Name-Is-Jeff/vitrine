@@ -501,12 +501,10 @@ NSArray<NSString *> *SGAITranslationsIn(NSString *provider, id root, NSInteger s
     NSString *says = string(dig(reply, @[@"error", @"message"])) ?: string(reply[@"error"]);
     if (error) {
         *problem = error.code == NSURLErrorTimedOut
-            ? ([p->tag isEqualToString:@"gemini"]
-                ? [NSString stringWithFormat:@"%@ took too long to respond. Try lowering Thinking or increasing Timeout in Mod Settings > Lyrics.", who]
-                : [NSString stringWithFormat:@"%@ took too long to respond. Try increasing Timeout in Mod Settings > Lyrics.", who])
+            ? [NSString stringWithFormat:@"%@ timed out. Try a longer timeout on the Lyrics page.", who]
             : [NSString stringWithFormat:@"%@ could not be reached.", who];
     } else if (status == 401 || status == 403 || (status == 400 && [says localizedCaseInsensitiveContainsString:@"API key"])) {
-        *problem = [NSString stringWithFormat:@"%@ rejected the API key. Check it in Mod Settings > Lyrics.", who];
+        *problem = [NSString stringWithFormat:@"%@ turned the key down. Check it on the Lyrics page.", who];
     } else if (status == 400 || status == 404) {
         *problem = says.length ? [NSString stringWithFormat:@"%@ did not take the request: %@", who, says]
                                : [NSString stringWithFormat:@"%@ did not take the request (%ld).", who, (long)status];
@@ -766,13 +764,16 @@ static void scanCompletedSongsInStream(NSString *accumulated,
                 NSMutableArray<NSString *> *clean = [NSMutableArray arrayWithCapacity:[parsed count]];
                 for (id l in parsed) [clean addObject:[l isKindOfClass:NSString.class] ? l : [l description]];
                 [emitted addObject:trackKey];
-                streamedResults[trackKey] = clean;
-                streamedResults[bareID] = clean;
-                if (onSong) {
-                    NSArray<NSString *> *copyLines = [clean copy];
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        onSong(trackKey, copyLines);
-                    });
+                NSArray<NSString *> *expected = songs[trackKey];
+                if (expected && clean.count == expected.count) {
+                    streamedResults[trackKey] = clean;
+                    streamedResults[bareID] = clean;
+                    if (onSong) {
+                        NSArray<NSString *> *copyLines = [clean copy];
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            onSong(trackKey, copyLines);
+                        });
+                    }
                 }
             }
         }
@@ -784,7 +785,7 @@ static void scanCompletedSongsInStream(NSString *accumulated,
 @property (nonatomic, copy) NSDictionary<NSString *, NSArray<NSString *> *> *songs;
 @property (nonatomic, copy) void (^onPhase)(NSString *phase);
 @property (nonatomic, copy) void (^onSong)(NSString *trackKey, NSArray<NSString *> *lines);
-@property (nonatomic, copy) void (^completion)(NSData *rawData, NSString *accumulatedText, NSDictionary<NSString *, NSArray<NSString *> *> *streamedResults, NSInteger status, NSError *error);
+@property (nonatomic, copy) void (^completion)(NSData *rawData, NSString *accumulatedText, NSDictionary<NSString *, NSArray<NSString *> *> *streamedResults, NSString *stopReason, NSInteger status, NSError *error);
 @end
 
 @implementation SGAIBatchStreamDelegate {
@@ -793,6 +794,7 @@ static void scanCompletedSongsInStream(NSString *accumulated,
     NSMutableString *_accumulatedText;
     NSMutableSet<NSString *> *_emittedSongs;
     NSMutableDictionary<NSString *, NSArray<NSString *> *> *_streamedResults;
+    NSString *_stopReason;
     NSInteger _statusCode;
     BOOL _reportedThinking;
     BOOL _reportedWriting;
@@ -831,8 +833,12 @@ didReceiveResponse:(NSURLResponse *)response
     NSString *tag = self.provider->tag;
     
     if ([tag isEqualToString:@"gemini"]) {
+        NSString *blocked = string(dig(json, @[@"promptFeedback", @"blockReason"]));
+        if (blocked.length) _stopReason = blocked;
         NSArray *candidates = json[@"candidates"];
         NSDictionary *first = [candidates isKindOfClass:NSArray.class] ? candidates.firstObject : nil;
+        NSString *finish = [first isKindOfClass:NSDictionary.class] ? string(first[@"finishReason"]) : nil;
+        if (finish.length && ![finish isEqualToString:@"STOP"]) _stopReason = finish;
         NSArray *parts = [first isKindOfClass:NSDictionary.class] ? first[@"content"][@"parts"] : nil;
         if ([parts isKindOfClass:NSArray.class]) {
             for (NSDictionary *part in parts) {
@@ -847,6 +853,8 @@ didReceiveResponse:(NSURLResponse *)response
     } else if ([tag isEqualToString:@"openai"]) {
         NSArray *choices = json[@"choices"];
         NSDictionary *first = [choices isKindOfClass:NSArray.class] ? choices.firstObject : nil;
+        NSString *finish = [first isKindOfClass:NSDictionary.class] ? string(first[@"finish_reason"]) : nil;
+        if (finish.length && ![finish isEqualToString:@"stop"]) _stopReason = finish;
         NSDictionary *delta = [first isKindOfClass:NSDictionary.class] ? first[@"delta"] : nil;
         if ([delta isKindOfClass:NSDictionary.class]) {
             if ([delta[@"reasoning_content"] isKindOfClass:NSString.class] || [delta[@"reasoning"] isKindOfClass:NSString.class]) {
@@ -858,6 +866,8 @@ didReceiveResponse:(NSURLResponse *)response
         }
     } else if ([tag isEqualToString:@"anthropic"]) {
         NSDictionary *delta = json[@"delta"];
+        NSString *stop = ([delta isKindOfClass:NSDictionary.class] ? string(delta[@"stop_reason"]) : nil) ?: string(json[@"stop_reason"]);
+        if (stop.length && ![stop isEqualToString:@"end_turn"]) _stopReason = stop;
         if ([delta isKindOfClass:NSDictionary.class]) {
             NSString *type = delta[@"type"];
             if ([type isEqualToString:@"thinking_delta"] || [delta[@"thinking"] isKindOfClass:NSString.class]) {
@@ -920,7 +930,7 @@ didReceiveResponse:(NSURLResponse *)response
         [_utf8Buffer setLength:0];
     }
     if (self.completion) {
-        self.completion(_rawBuffer, _accumulatedText, _streamedResults, _statusCode, error);
+        self.completion(_rawBuffer, _accumulatedText, _streamedResults, _stopReason, _statusCode, error);
     }
 }
 
@@ -933,13 +943,13 @@ static void sendBatchStream(const SGAIProvider *p,
                             NSUInteger attempt,
                             void (^onPhase)(NSString *phase),
                             void (^onSong)(NSString *trackKey, NSArray<NSString *> *lines),
-                            void (^done)(NSData *rawData, NSString *accumulatedText, NSDictionary<NSString *, NSArray<NSString *> *> *streamedResults, NSInteger status, NSError *error)) {
+                            void (^done)(NSData *rawData, NSString *accumulatedText, NSDictionary<NSString *, NSArray<NSString *> *> *streamedResults, NSString *stopReason, NSInteger status, NSError *error)) {
     SGAIBatchStreamDelegate *del = [SGAIBatchStreamDelegate new];
     del.provider = p;
     del.songs = songs;
     del.onPhase = onPhase;
     del.onSong = onSong;
-    del.completion = ^(NSData *rawData, NSString *accumulatedText, NSDictionary<NSString *, NSArray<NSString *> *> *streamedResults, NSInteger status, NSError *error) {
+    del.completion = ^(NSData *rawData, NSString *accumulatedText, NSDictionary<NSString *, NSArray<NSString *> *> *streamedResults, NSString *stopReason, NSInteger status, NSError *error) {
         NSString *reply = status == 400 && rawData ? [[NSString alloc] initWithData:rawData encoding:NSUTF8StringEncoding] : nil;
         for (NSUInteger i = 0; plain && reply && i < 4 && p->plainWhen[i]; i++) {
             if (![reply localizedCaseInsensitiveContainsString:p->plainWhen[i]]) continue;
@@ -956,7 +966,7 @@ static void sendBatchStream(const SGAIProvider *p,
             });
             return;
         }
-        done(rawData, accumulatedText, streamedResults, status, error);
+        done(rawData, accumulatedText, streamedResults, stopReason, status, error);
     };
     NSURLSessionConfiguration *config = [NSURLSessionConfiguration ephemeralSessionConfiguration];
     config.timeoutIntervalForRequest = aiTimeout();
@@ -997,9 +1007,9 @@ void SGLyricsTranslateBatchWithAI(NSDictionary<NSString *, NSArray<NSString *> *
         return;
     }
     SGLog(@"ai batch: asking %@ %@ (%lu songs, streaming) into %@, prompt %@", p->tag, modelID, (unsigned long)songs.count, languageTag, fingerprint(template));
-    sendBatchStream(p, request, plain, songs, 0, onPhase, onSong, ^(NSData *data, NSString *accumulatedText, NSDictionary<NSString *, NSArray<NSString *> *> *streamedResults, NSInteger status, NSError *error) {
+    sendBatchStream(p, request, plain, songs, 0, onPhase, onSong, ^(NSData *data, NSString *accumulatedText, NSDictionary<NSString *, NSArray<NSString *> *> *streamedResults, NSString *streamStopped, NSInteger status, NSError *error) {
         NSString *who = speaker(p);
-        NSString *stopped = nil;
+        NSString *stopped = streamStopped;
         NSDictionary *rawDict = nil;
         if (status == 200) {
             if (accumulatedText.length > 0) {
@@ -1038,8 +1048,11 @@ void SGLyricsTranslateBatchWithAI(NSDictionary<NSString *, NSArray<NSString *> *
                 if ([rawLines isKindOfClass:NSArray.class]) {
                     NSMutableArray<NSString *> *clean = [NSMutableArray array];
                     for (id l in rawLines) [clean addObject:[l isKindOfClass:NSString.class] ? l : [l description]];
-                    results[trackKey] = clean;
-                    results[bareID] = clean;
+                    NSArray<NSString *> *expected = songs[trackKey];
+                    if (expected && clean.count == expected.count) {
+                        results[trackKey] = clean;
+                        results[bareID] = clean;
+                    }
                 }
                 songIndex++;
             }
@@ -1065,6 +1078,8 @@ void SGLyricsTranslateBatchWithAI(NSDictionary<NSString *, NSArray<NSString *> *
             problem = [NSString stringWithFormat:@"%@ stopped early", who];
         } else if (!answered) {
             problem = @"Could not read reply";
+        } else {
+            problem = [NSString stringWithFormat:@"%@ translated %lu of %lu songs", who, (unsigned long)answered, (unsigned long)songs.count];
         }
         
         SGLog(@"ai batch: %@ answered %lu of %lu songs into %@: %@", p->tag, (unsigned long)answered, (unsigned long)songs.count, languageTag, problem ?: @"ok");

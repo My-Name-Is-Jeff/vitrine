@@ -22,21 +22,38 @@
 @implementation SGBatchCandidateSong
 @end
 
-static char kURIKey, kRowKey;
+static char kURIKey, kRowKey, kSeenKey;
 static NSString *sg_pendingURI;
-static NSString *sg_lastActiveEntityURI;
 static CFTimeInterval sg_markedAt;
 static BOOL sg_translating;
 
-static NSString *SGExtractEntityURI(id object) {
-    if (!object) return nil;
-    if ([object isKindOfClass:UIView.class]) {
-        NSString *ident = ((UIView *)object).accessibilityIdentifier;
-        if ([ident hasPrefix:@"Components.UI.ContextMenuButton-"]) {
-            NSString *sub = [ident substringFromIndex:@"Components.UI.ContextMenuButton-".length];
-            if (sub.length == 22) return [@"spotify:album:" stringByAppendingString:sub];
+static UIWindow *normalAppWindow(UIWindow *preferred) {
+    if (preferred && !preferred.hidden && preferred.windowLevel == UIWindowLevelNormal &&
+        ![NSStringFromClass(preferred.class) isEqualToString:@"SGRSheetWindow"]) {
+        return preferred;
+    }
+    for (UIWindow *w in preferred.windowScene.windows) {
+        if (!w.hidden && w.windowLevel == UIWindowLevelNormal &&
+            ![NSStringFromClass(w.class) isEqualToString:@"SGRSheetWindow"]) {
+            return w;
         }
     }
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+        if (scene.activationState != UISceneActivationStateForegroundActive &&
+            scene.activationState != UISceneActivationStateForegroundInactive) continue;
+        if (![scene isKindOfClass:UIWindowScene.class]) continue;
+        for (UIWindow *w in ((UIWindowScene *)scene).windows) {
+            if (!w.hidden && w.windowLevel == UIWindowLevelNormal &&
+                ![NSStringFromClass(w.class) isEqualToString:@"SGRSheetWindow"]) {
+                return w;
+            }
+        }
+    }
+    return preferred;
+}
+
+static NSString *SGExtractEntityURI(id object) {
+    if (!object || [object isKindOfClass:UIView.class]) return nil;
     Class entityPage = NSClassFromString(@"SGEntityPage");
     if (entityPage && [entityPage respondsToSelector:@selector(entityURI:)]) {
         NSString *str = [entityPage performSelector:@selector(entityURI:) withObject:object];
@@ -57,10 +74,12 @@ static NSString *SGExtractEntityURI(id object) {
 
 static NSString *SGResolveEntityURIForView(UIView *view) {
     for (UIResponder *r = view; r; r = r.nextResponder) {
-        NSString *uri = SGExtractEntityURI(r);
+        if (![r isKindOfClass:UIViewController.class]) continue;
+        UIViewController *vc = (UIViewController *)r;
+        NSString *uri = SGExtractEntityURI(vc);
         if (uri) return uri;
-        if ([r isKindOfClass:UIViewController.class] && ((UIViewController *)r).parentViewController) {
-            uri = SGExtractEntityURI(((UIViewController *)r).parentViewController);
+        if (vc.parentViewController) {
+            uri = SGExtractEntityURI(vc.parentViewController);
             if (uri) return uri;
         }
     }
@@ -69,10 +88,36 @@ static NSString *SGResolveEntityURIForView(UIView *view) {
 
 void SGBatchTranslationMarkSource(UIView *view) {
     NSString *resolved = SGResolveEntityURIForView(view);
-    if (resolved) {
+    if (!SGIsValidEntityURI(resolved)) {
+        sg_pendingURI = nil;
+        return;
+    }
+    NSString *entityID = [resolved componentsSeparatedByString:@":"].lastObject;
+    NSString *expectedIdent = entityID.length ? [SGAlbumQueueButtonPrefix stringByAppendingString:entityID] : nil;
+    BOOL isEntitySource = ![view isKindOfClass:UIControl.class];
+    if (!isEntitySource && expectedIdent && [view.accessibilityIdentifier isEqualToString:expectedIdent]) {
+        isEntitySource = YES;
+    }
+    if (!isEntitySource) {
+        BOOL inCell = NO, inHeader = NO;
+        for (UIView *v = view; v; v = v.superview) {
+            if ([v isKindOfClass:UITableViewCell.class] || [v isKindOfClass:UICollectionViewCell.class]) {
+                inCell = YES;
+                break;
+            }
+            if ([v.accessibilityIdentifier isEqualToString:@"CreativeWorkPlatform.Header"] ||
+                [v.accessibilityIdentifier isEqualToString:@"PL.Header"]) {
+                inHeader = YES;
+                break;
+            }
+        }
+        if (inHeader && !inCell) isEntitySource = YES;
+    }
+    if (isEntitySource) {
         sg_pendingURI = resolved;
-        sg_lastActiveEntityURI = resolved;
         sg_markedAt = CACurrentMediaTime();
+    } else {
+        sg_pendingURI = nil;
     }
 }
 
@@ -98,9 +143,9 @@ static void resolveTracks(NSString *uri, void (^completion)(NSArray<NSString *> 
             return;
         }
         NSMutableArray<NSString *> *collected = [NSMutableArray array];
-        void (^fetchPage)(NSString *);
-        __block void (^weakFetchPage)(NSString *);
-        weakFetchPage = fetchPage = ^(NSString *address) {
+        NSMutableSet<NSString *> *seen = [NSMutableSet set];
+        __block void (^fetchPage)(NSString *);
+        fetchPage = ^(NSString *address) {
             NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:address]];
             req.timeoutInterval = 15;
             req.allHTTPHeaderFields = headers;
@@ -109,9 +154,9 @@ static void resolveTracks(NSString *uri, void (^completion)(NSArray<NSString *> 
                 NSInteger status = [response isKindOfClass:NSHTTPURLResponse.class] ? ((NSHTTPURLResponse *)response).statusCode : 0;
                 id json = (status == 200 && data.length) ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
                 if (![json isKindOfClass:NSDictionary.class]) {
+                    fetchPage = nil;
                     dispatch_async(dispatch_get_main_queue(), ^{
-                        if (collected.count) completion(collected, nil);
-                        else completion(nil, @"Could not load songs");
+                        completion(nil, @"Could not load songs");
                     });
                     return;
                 }
@@ -129,34 +174,34 @@ static void resolveTracks(NSString *uri, void (^completion)(NSArray<NSString *> 
                             NSString *tURI = entry[@"uri"];
                             if ([tURI hasPrefix:@"spotify:track:"]) {
                                 NSString *tID = [tURI substringFromIndex:@"spotify:track:".length];
-                                if (tID.length == 22 && ![collected containsObject:tID]) {
+                                if (tID.length == 22 && ![seen containsObject:tID]) {
+                                    [seen addObject:tID];
                                     [collected addObject:tID];
-                                    if (collected.count >= 500) { nextURL = nil; break; }
                                 }
                             }
                         }
                     }
                 }
-                if (nextURL && collected.count < 500) {
-                    weakFetchPage(nextURL);
+                if (nextURL) {
+                    fetchPage(nextURL);
                 } else {
+                    fetchPage = nil;
                     dispatch_async(dispatch_get_main_queue(), ^{
                         completion(collected, nil);
                     });
                 }
             }] resume];
         };
-        weakFetchPage([@"https://spclient.wg.spotify.com/context-resolve/v1/" stringByAppendingString:uri]);
+        fetchPage([@"https://spclient.wg.spotify.com/context-resolve/v1/" stringByAppendingString:uri]);
     });
 }
 
 #pragma mark - Lyrics fetching for candidates
 
-static void fetchLyricsForTrack(NSString *trackID, NSDictionary<NSString *, NSString *> *headers,
-                                void (^completion)(NSArray<SGKaraokeLine *> *lines)) {
-    NSArray *cached = SGKaraokeLinesForTrack(trackID);
-    if (cached.count) {
-        completion(cached);
+static void fetchSpotifyColorLyrics(NSString *trackID, NSDictionary<NSString *, NSString *> *headers,
+                                    void (^completion)(NSArray<SGKaraokeLine *> *lines)) {
+    if (!headers) {
+        completion(nil);
         return;
     }
     NSString *address = [NSString stringWithFormat:@"https://spclient.wg.spotify.com/color-lyrics/v2/track/%@?format=json&vocalRemoval=false&market=from_token", trackID];
@@ -165,10 +210,48 @@ static void fetchLyricsForTrack(NSString *trackID, NSDictionary<NSString *, NSSt
     [req setValue:@"application/json" forHTTPHeaderField:@"Accept"];
     [NSURLProtocol setProperty:@YES forKey:SGLyricsOwnRequestKey inRequest:req];
     [[NSURLSession.sharedSession dataTaskWithRequest:req completionHandler:^(NSData *body, NSURLResponse *response, NSError *error) {
-        NSArray<SGKaraokeLine *> *lines = SGKaraokeLinesFromBody(body);
-        if (lines.count) SGKaraokeKeepLines(trackID, lines);
-        completion(lines);
+        completion(SGKaraokeLinesFromBody(body));
     }] resume];
+}
+
+static void fetchLyricsForTrack(NSString *trackID, NSDictionary<NSString *, NSString *> *headers,
+                                void (^completion)(NSArray<SGKaraokeLine *> *lines)) {
+    NSArray *cached = SGKaraokeLinesForTrack(trackID);
+    if (cached.count) {
+        completion(cached);
+        return;
+    }
+    if (SGLyricsEnabled()) {
+        SGLyricsFetch(trackID, ^(SGLyricsResult *result) {
+            NSArray<SGKaraokeLine *> *providerLines = result.karaokeLines;
+            if (providerLines.count && SGKaraokeLinesTiming(providerLines) != SGKaraokeTimingNone) {
+                SGKaraokeKeepLines(trackID, providerLines);
+                if (result.provider) SGLyricsSetCredit(trackID, result.provider);
+                completion(providerLines);
+                return;
+            }
+            fetchSpotifyColorLyrics(trackID, headers, ^(NSArray<SGKaraokeLine *> *spotifyLines) {
+                if (spotifyLines.count && SGKaraokeLinesTiming(spotifyLines) != SGKaraokeTimingNone) {
+                    SGKaraokeKeepLines(trackID, spotifyLines);
+                    completion(spotifyLines);
+                } else if (providerLines.count) {
+                    SGKaraokeKeepLines(trackID, providerLines);
+                    if (result.provider) SGLyricsSetCredit(trackID, result.provider);
+                    completion(providerLines);
+                } else if (spotifyLines.count) {
+                    SGKaraokeKeepLines(trackID, spotifyLines);
+                    completion(spotifyLines);
+                } else {
+                    completion(nil);
+                }
+            });
+        });
+        return;
+    }
+    fetchSpotifyColorLyrics(trackID, headers, ^(NSArray<SGKaraokeLine *> *spotifyLines) {
+        if (spotifyLines.count) SGKaraokeKeepLines(trackID, spotifyLines);
+        completion(spotifyLines);
+    });
 }
 
 static void filterCandidateSongs(NSArray<NSString *> *trackIDs, NSString *targetLang,
@@ -188,7 +271,6 @@ static void filterCandidateSongs(NSArray<NSString *> *trackIDs, NSString *target
             dispatch_group_enter(group);
             fetchLyricsForTrack(trackID, headers, ^(NSArray<SGKaraokeLine *> *lines) {
                 if (lines.count) {
-                    // Check if instrumental only (only ♪ or empty)
                     BOOL hasActualWords = NO;
                     for (SGKaraokeLine *l in lines) {
                         NSString *t = SGKaraokeLineText(l);
@@ -223,6 +305,7 @@ static void filterCandidateSongs(NSArray<NSString *> *trackIDs, NSString *target
 #pragma mark - Batch translation execution
 
 void SGBatchTranslateURI(NSString *uri, SGBatchTranslationEngine engine, UIWindow *window) {
+    window = normalAppWindow(window);
     if (sg_translating) {
         [SGAlbumQueueNotice showIn:window title:@"Already Translating" detail:@"Wait for this batch" symbol:@"exclamationmark.circle" persistent:NO];
         return;
@@ -231,11 +314,11 @@ void SGBatchTranslateURI(NSString *uri, SGBatchTranslationEngine engine, UIWindo
     BOOL isAlbum = SGAlbumQueueIsAlbumURI(uri);
     NSString *entityName = isAlbum ? @"Album" : @"Playlist";
     NSString *targetLang = SGLyricsTranslationTarget();
-    
+
     [SGAlbumQueueNotice showIn:window title:[NSString stringWithFormat:@"Translating %@", entityName] detail:@"Resolving songs…" symbol:@"translate" persistent:YES];
-    
+
     resolveTracks(uri, ^(NSArray<NSString *> *trackIDs, NSString *resolveError) {
-        if (!trackIDs.count) {
+        if (resolveError || !trackIDs.count) {
             sg_translating = NO;
             [SGAlbumQueueNotice showIn:window title:[NSString stringWithFormat:@"Could Not Load %@", entityName] detail:resolveError ?: @"No songs found" symbol:@"exclamationmark.circle" persistent:NO];
             return;
@@ -258,27 +341,27 @@ void SGBatchTranslateURI(NSString *uri, SGBatchTranslationEngine engine, UIWindo
             }
             NSUInteger total = candidates.count;
             __block NSUInteger completed = 0;
-            
+
             if (engine == SGBatchTranslationEngineAI) {
                 NSUInteger batchSize = SGLyricsBatchSize();
-                if (batchSize == 0) batchSize = total; // All at once
-                
+                if (batchSize == 0) batchSize = total;
+
                 NSMutableArray<NSArray<SGBatchCandidateSong *> *> *chunks = [NSMutableArray array];
                 for (NSUInteger i = 0; i < total; i += batchSize) {
                     NSUInteger len = MIN(batchSize, total - i);
                     [chunks addObject:[candidates subarrayWithRange:NSMakeRange(i, len)]];
                 }
-                
+
                 NSMutableSet<NSString *> *savedTrackIDs = [NSMutableSet set];
                 SGTranslationSource *source = SGAITranslatorSource();
                 NSString *providerName = SGAITranslatorName() ?: @"AI";
                 NSString *translatingTitle = [NSString stringWithFormat:@"Translating %@", entityName];
-                
+
                 void (^saveSongTranslation)(SGBatchCandidateSong *, NSArray<NSString *> *) = ^(SGBatchCandidateSong *song, NSArray<NSString *> *trans) {
-                    if (!song || !trans.count || [savedTrackIDs containsObject:song.trackID]) return;
+                    if (!song || trans.count != song.lines.count || [savedTrackIDs containsObject:song.trackID]) return;
                     for (NSUInteger idx = 0; idx < song.lines.count; idx++) {
                         SGKaraokeLine *line = song.lines[idx];
-                        NSString *t = (idx < trans.count) ? trans[idx] : nil;
+                        NSString *t = trans[idx];
                         if (t.length) {
                             line.translation = t;
                             line.translationMade = YES;
@@ -288,11 +371,11 @@ void SGBatchTranslateURI(NSString *uri, SGBatchTranslationEngine engine, UIWindo
                     [savedTrackIDs addObject:song.trackID];
                     completed++;
                 };
-                
-                void (^processChunk)(NSUInteger);
-                __block void (^weakProcessChunk)(NSUInteger);
-                weakProcessChunk = processChunk = ^(NSUInteger chunkIndex) {
+
+                __block void (^processChunk)(NSUInteger);
+                processChunk = ^(NSUInteger chunkIndex) {
                     if (chunkIndex >= chunks.count) {
+                        processChunk = nil;
                         sg_translating = NO;
                         NSString *detail = completed == 1 ? @"1 song saved" : [NSString stringWithFormat:@"%lu songs saved", (unsigned long)completed];
                         [SGAlbumQueueNotice showIn:window title:[NSString stringWithFormat:@"%@ Translated", entityName] detail:detail symbol:@"checkmark.circle" persistent:NO];
@@ -311,7 +394,7 @@ void SGBatchTranslateURI(NSString *uri, SGBatchTranslationEngine engine, UIWindo
                         ? [NSString stringWithFormat:@"%lu of %lu songs…", (unsigned long)completed, (unsigned long)total]
                         : [NSString stringWithFormat:@"Asking %@…", providerName];
                     [SGAlbumQueueNotice showIn:window title:translatingTitle detail:askDetail symbol:@"sparkles" persistent:YES];
-                    
+
                     SGLyricsTranslateBatchWithAI(songsMap, targetLang, ^(NSString *phase) {
                         if (!sg_translating) return;
                         if ([phase isEqualToString:@"Thinking…"]) {
@@ -335,7 +418,7 @@ void SGBatchTranslateURI(NSString *uri, SGBatchTranslationEngine engine, UIWindo
                                 }
                             }
                         }
-                        if (song && ![savedTrackIDs containsObject:song.trackID]) {
+                        if (song && lines.count == song.lines.count && ![savedTrackIDs containsObject:song.trackID]) {
                             saveSongTranslation(song, lines);
                             NSString *progressDetail = [NSString stringWithFormat:@"%lu of %lu songs…", (unsigned long)MIN(completed + 1, total), (unsigned long)total];
                             [SGAlbumQueueNotice showIn:window title:translatingTitle detail:progressDetail symbol:@"sparkles" persistent:YES];
@@ -344,12 +427,13 @@ void SGBatchTranslateURI(NSString *uri, SGBatchTranslationEngine engine, UIWindo
                         if (results.count) {
                             for (SGBatchCandidateSong *song in chunk) {
                                 NSArray<NSString *> *trans = results[song.trackURI] ?: results[song.trackID];
-                                if (trans.count) {
+                                if (trans.count == song.lines.count) {
                                     saveSongTranslation(song, trans);
                                 }
                             }
                         }
                         if (error || !results.count) {
+                            processChunk = nil;
                             sg_translating = NO;
                             NSString *title = completed > 0
                                 ? [NSString stringWithFormat:@"Translated %lu of %lu", (unsigned long)completed, (unsigned long)total]
@@ -361,30 +445,41 @@ void SGBatchTranslateURI(NSString *uri, SGBatchTranslationEngine engine, UIWindo
                             }
                             return;
                         }
-                        weakProcessChunk(chunkIndex + 1);
+                        processChunk(chunkIndex + 1);
                     });
                 };
-                weakProcessChunk(0);
+                processChunk(0);
             } else {
                 BOOL isAI = (engine == SGBatchTranslationEngineAppleIntelligence);
                 NSString *symbol = isAI ? @"apple.intelligence" : @"translate";
                 NSString *by = isAI ? SGTranslatedByAppleIntelligence : SGTranslatedOnDevice;
-                void (^translateNext)(NSUInteger);
-                __block void (^weakTranslateNext)(NSUInteger);
-                weakTranslateNext = translateNext = ^(NSUInteger idx) {
+                __block NSString *lastError = nil;
+                __block void (^translateNext)(NSUInteger);
+                translateNext = ^(NSUInteger idx) {
                     if (idx >= total) {
+                        translateNext = nil;
                         sg_translating = NO;
-                        NSString *detail = completed == 1 ? @"1 song saved" : [NSString stringWithFormat:@"%lu songs saved", (unsigned long)completed];
-                        [SGAlbumQueueNotice showIn:window title:[NSString stringWithFormat:@"%@ Translated", entityName] detail:detail symbol:@"checkmark.circle" persistent:NO];
-                        [NSNotificationCenter.defaultCenter postNotificationName:SGLyricsTranslationsDidChangeNotification object:nil];
+                        if (completed == total) {
+                            NSString *detail = completed == 1 ? @"1 song saved" : [NSString stringWithFormat:@"%lu songs saved", (unsigned long)completed];
+                            [SGAlbumQueueNotice showIn:window title:[NSString stringWithFormat:@"%@ Translated", entityName] detail:detail symbol:@"checkmark.circle" persistent:NO];
+                        } else if (completed > 0) {
+                            NSString *title = [NSString stringWithFormat:@"Translated %lu of %lu", (unsigned long)completed, (unsigned long)total];
+                            NSString *detail = lastError ?: [NSString stringWithFormat:@"%lu songs saved", (unsigned long)completed];
+                            [SGAlbumQueueNotice showIn:window title:title detail:detail symbol:@"exclamationmark.circle" persistent:NO];
+                        } else {
+                            [SGAlbumQueueNotice showIn:window title:@"Translation Failed" detail:lastError ?: @"Could not translate songs" symbol:@"exclamationmark.circle" persistent:NO];
+                        }
+                        if (completed > 0) {
+                            [NSNotificationCenter.defaultCenter postNotificationName:SGLyricsTranslationsDidChangeNotification object:nil];
+                        }
                         return;
                     }
                     SGBatchCandidateSong *song = candidates[idx];
                     [SGAlbumQueueNotice showIn:window title:[NSString stringWithFormat:@"Translating %@", entityName] detail:[NSString stringWithFormat:@"%lu of %lu songs…", (unsigned long)(idx + 1), (unsigned long)total] symbol:symbol persistent:YES];
                     void (^onDone)(NSArray<NSString *> *, NSString *) = ^(NSArray<NSString *> *translations, NSString *err) {
-                        if (translations.count) {
+                        if (!err && translations.count == song.lines.count) {
                             for (NSUInteger lIdx = 0; lIdx < song.lines.count; lIdx++) {
-                                NSString *t = (lIdx < translations.count) ? translations[lIdx] : nil;
+                                NSString *t = translations[lIdx];
                                 if (t.length) {
                                     song.lines[lIdx].translation = t;
                                     song.lines[lIdx].translationMade = YES;
@@ -392,13 +487,32 @@ void SGBatchTranslateURI(NSString *uri, SGBatchTranslationEngine engine, UIWindo
                             }
                             SGLyricsSaveTranslation(song.trackID, targetLang, song.lines, [SGTranslationSource by:by model:nil made:nil]);
                             completed++;
+                        } else if (err.length) {
+                            lastError = err;
+                            if ([err hasPrefix:@"Download "] ||
+                                [err containsString:@"needs iOS 26"] ||
+                                [err containsString:@"does not work in this language"]) {
+                                translateNext = nil;
+                                sg_translating = NO;
+                                NSString *title = completed > 0
+                                    ? [NSString stringWithFormat:@"Translated %lu of %lu", (unsigned long)completed, (unsigned long)total]
+                                    : @"Translation Failed";
+                                [SGAlbumQueueNotice showIn:window title:title detail:err symbol:@"exclamationmark.circle" persistent:NO];
+                                if (completed > 0) {
+                                    [NSNotificationCenter.defaultCenter postNotificationName:SGLyricsTranslationsDidChangeNotification object:nil];
+                                }
+                                return;
+                            }
                         }
-                        weakTranslateNext(idx + 1);
+                        translateNext(idx + 1);
                     };
-                    if (isAI) [SGOnDeviceTranslation translateWithAppleIntelligence:song.texts to:targetLang song:SGLyricsSongName(song.trackID) progress:nil done:onDone];
-                    else [SGOnDeviceTranslation translate:song.texts to:targetLang from:window done:onDone];
+                    if (isAI) {
+                        [SGOnDeviceTranslation translateWithAppleIntelligence:song.texts to:targetLang song:SGLyricsSongName(song.trackID) progress:^(NSArray<NSString *> *soFar) {} done:onDone];
+                    } else {
+                        [SGOnDeviceTranslation translate:song.texts to:targetLang from:window done:onDone];
+                    }
                 };
-                weakTranslateNext(0);
+                translateNext(0);
             }
         });
     });
@@ -424,15 +538,15 @@ void SGBatchTranslateURI(NSString *uri, SGBatchTranslationEngine engine, UIWindo
     _title.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
     _title.adjustsFontForContentSizeCategory = YES;
     _title.textColor = UIColor.whiteColor;
-    
+
     _icon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"translate"]];
     _icon.tintColor = [UIColor colorWithWhite:1 alpha:0.65];
     _icon.contentMode = UIViewContentModeScaleAspectFit;
-    
+
     _chevron = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"chevron.right"]];
     _chevron.tintColor = [UIColor colorWithWhite:1 alpha:0.35];
     _chevron.contentMode = UIViewContentModeScaleAspectFit;
-    
+
     for (UIView *v in @[_title, _icon, _chevron]) {
         v.userInteractionEnabled = NO;
         [self addSubview:v];
@@ -463,18 +577,18 @@ void SGBatchTranslateURI(NSString *uri, SGBatchTranslationEngine engine, UIWindo
     _title.text = rowTitle;
     self.accessibilityLabel = rowTitle;
     self.accessibilityIdentifier = @"spotifyglass.batchTranslate";
-    
-    UIWindow *window = menu.viewIfLoaded.window;
-    
+
+    UIWindow *window = normalAppWindow(menu.viewIfLoaded.window);
+
     NSString *targetLang = SGLyricsTranslationTarget();
     BOOL onDevice = SGFlag(SGKeyLyricsTranslateOnDevice, YES) && SGOnDeviceTranslation.translationAvailable;
     BOOL intelligence = SGFlag(SGKeyLyricsAppleIntelligence, YES) && [SGOnDeviceTranslation appleIntelligenceAvailable:targetLang];
     BOOL ai = SGAITranslatorReady();
-    
+
     NSMutableArray<UIMenuElement *> *items = [NSMutableArray array];
     __weak UIViewController *weakMenu = menu;
     UIWindow *strongWindow = window;
-    
+
     if (onDevice) {
         UIAction *action = [UIAction actionWithTitle:@"Translate on iPhone" image:[UIImage systemImageNamed:@"translate"] identifier:nil handler:^(UIAction *a) {
             [weakMenu dismissViewControllerAnimated:YES completion:nil];
@@ -524,62 +638,40 @@ static UITableView *tableInView(UIView *view, NSUInteger depth) {
 
 void SGBatchTranslationInstall(UIViewController *menu) {
     NSString *uri = objc_getAssociatedObject(menu, &kURIKey);
-    if (!uri) {
-        if (CACurrentMediaTime() - sg_markedAt <= 3.0 && SGIsValidEntityURI(sg_pendingURI)) {
+    if (!uri && !objc_getAssociatedObject(menu, &kSeenKey)) {
+        objc_setAssociatedObject(menu, &kSeenKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if (CACurrentMediaTime() - sg_markedAt <= 1.5 && SGIsValidEntityURI(sg_pendingURI)) {
             uri = SGSanitizeEntityURI(sg_pendingURI);
         }
-    }
-    if (!uri) {
-        // Resolve from presenter hierarchy
-        UIViewController *presenter = menu.presentingViewController ?: menu.navigationController.presentingViewController;
-        while (presenter && !uri) {
-            if ([presenter isKindOfClass:UINavigationController.class]) {
-                UINavigationController *nav = (UINavigationController *)presenter;
-                for (UIViewController *child in nav.viewControllers.reverseObjectEnumerator) {
-                    uri = SGExtractEntityURI(child) ?: SGResolveEntityURIForView(child.viewIfLoaded);
-                    if (uri) break;
-                }
-            } else {
-                uri = SGExtractEntityURI(presenter) ?: SGResolveEntityURIForView(presenter.viewIfLoaded);
-            }
-            if (uri) break;
-            presenter = presenter.presentingViewController;
+        sg_pendingURI = nil;
+        if (!uri) {
+            typedef UIView *(*RecentPageFn)(void);
+            RecentPageFn recentPage = (RecentPageFn)dlsym(RTLD_DEFAULT, "SGRPinnedMoreRecentPage");
+            UIView *page = recentPage ? recentPage() : nil;
+            if (page) uri = SGResolveEntityURIForView(page);
+        }
+        if (SGIsValidEntityURI(uri)) {
+            uri = SGSanitizeEntityURI(uri);
+            objc_setAssociatedObject(menu, &kURIKey, uri, OBJC_ASSOCIATION_COPY_NONATOMIC);
         }
     }
-    if (!uri) {
-        typedef UIView *(*RecentPageFn)(void);
-        RecentPageFn recentPage = (RecentPageFn)dlsym(RTLD_DEFAULT, "SGRPinnedMoreRecentPage");
-        UIView *page = recentPage ? recentPage() : nil;
-        if (page) uri = SGResolveEntityURIForView(page);
-    }
-    if (!uri && SGIsValidEntityURI(sg_lastActiveEntityURI)) {
-        uri = SGSanitizeEntityURI(sg_lastActiveEntityURI);
-    }
-    if (!uri) {
-        UIViewController *top = SGTopController();
-        if (top) uri = SGExtractEntityURI(top) ?: SGResolveEntityURIForView(top.viewIfLoaded);
-    }
-    if (uri) {
-        uri = SGSanitizeEntityURI(uri);
-        objc_setAssociatedObject(menu, &kURIKey, uri, OBJC_ASSOCIATION_COPY_NONATOMIC);
-    }
     if (!SGIsValidEntityURI(uri)) return;
-    
+
     UITableView *table = tableInView(menu.viewIfLoaded, 0);
     if (!table) return;
-    
+
     SGBatchTranslateRow *row = objc_getAssociatedObject(menu, &kRowKey);
     if (!row) {
         row = [[SGBatchTranslateRow alloc] initWithFrame:CGRectZero];
         objc_setAssociatedObject(menu, &kRowKey, row, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     [row configureForURI:uri menuController:menu];
-    
+
     CGFloat rowHeight = MAX(56, [UIFont preferredFontForTextStyle:UIFontTextStyleBody].lineHeight + 24);
     CGFloat width = table.bounds.size.width;
     if (width <= 0) width = menu.viewIfLoaded.bounds.size.width;
     if (width <= 0) width = UIScreen.mainScreen.bounds.size.width;
-    
+
     UIView *existingFooter = table.tableFooterView;
     if (existingFooter == row) {
         if (!CGSizeEqualToSize(row.bounds.size, CGSizeMake(width, rowHeight))) {
@@ -592,40 +684,33 @@ void SGBatchTranslationInstall(UIViewController *menu) {
         }
         return;
     }
-    
-    // If tableFooterView already contains a stack or another mod view (e.g. SGAlbumQueueRow)
-    if (existingFooter && [existingFooter.subviews containsObject:row]) {
+
+    if (existingFooter && ![existingFooter isKindOfClass:UIControl.class] && [existingFooter.subviews containsObject:row]) {
         return;
     }
     if (existingFooter && existingFooter.bounds.size.height > 0) {
-        // Container view stacking existing rows + our row
-        if (![existingFooter.subviews containsObject:row]) {
-            UIView *container = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, existingFooter.bounds.size.height + rowHeight)];
-            container.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
-            CGFloat y = 0;
-            for (UIView *sub in existingFooter.subviews) {
-                sub.frame = CGRectMake(0, y, width, sub.bounds.size.height);
-                y += sub.bounds.size.height;
-                [container addSubview:sub];
-            }
-            if (existingFooter.subviews.count == 0 && [existingFooter isKindOfClass:UIControl.class]) {
-                existingFooter.frame = CGRectMake(0, y, width, existingFooter.bounds.size.height);
-                y += existingFooter.bounds.size.height;
-                [container addSubview:existingFooter];
-            }
-            row.frame = CGRectMake(0, y, width, rowHeight);
-            [container addSubview:row];
-            container.frame = CGRectMake(0, 0, width, y + rowHeight);
-            [UIView performWithoutAnimation:^{
-                table.tableFooterView = container;
-                [table invalidateIntrinsicContentSize];
-                [table layoutIfNeeded];
-            }];
+        NSArray<UIView *> *existingRows = [existingFooter isKindOfClass:UIControl.class] ? @[existingFooter] : [existingFooter.subviews copy];
+        UIView *container = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, existingFooter.bounds.size.height + rowHeight)];
+        container.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+        CGFloat y = 0;
+        for (UIView *sub in existingRows) {
+            if (sub == row) continue;
+            sub.frame = CGRectMake(0, y, width, sub.bounds.size.height);
+            y += sub.bounds.size.height;
+            [container addSubview:sub];
         }
+        row.frame = CGRectMake(0, y, width, rowHeight);
+        y += rowHeight;
+        [container addSubview:row];
+        container.frame = CGRectMake(0, 0, width, y);
+        [UIView performWithoutAnimation:^{
+            table.tableFooterView = container;
+            [table invalidateIntrinsicContentSize];
+            [table layoutIfNeeded];
+        }];
         return;
     }
-    
-    // Set row directly as footer view
+
     [UIView performWithoutAnimation:^{
         row.frame = CGRectMake(0, 0, width, rowHeight);
         table.tableFooterView = row;
@@ -634,30 +719,11 @@ void SGBatchTranslationInstall(UIViewController *menu) {
     }];
 }
 
-%hook _TtC35ListUXPlatform_FreeTierPlaylistImpl17FTPViewController
-- (void)viewWillAppear:(BOOL)animated {
-    %orig;
-    NSString *uri = SGExtractEntityURI(self) ?: SGResolveEntityURIForView(((UIViewController *)self).viewIfLoaded);
-    if (uri) sg_lastActiveEntityURI = [uri copy];
-}
-- (void)viewDidLayoutSubviews {
-    %orig;
-    if (!sg_lastActiveEntityURI) {
-        NSString *uri = SGExtractEntityURI(self) ?: SGResolveEntityURIForView(((UIViewController *)self).viewIfLoaded);
-        if (uri) sg_lastActiveEntityURI = [uri copy];
-    }
-}
-%end
-
-%hook _TtC28CreativeWorkPlatform_PageKit24CreativeWorkTemplateView
-- (void)layoutSubviews {
-    %orig;
-    NSString *uri = SGResolveEntityURIForView((UIView *)self);
-    if (uri) sg_lastActiveEntityURI = [uri copy];
-}
-%end
-
 %hook _TtC24ContextMenu_InternalImpl25ContextMenuViewController
+- (void)viewWillAppear:(BOOL)animated {
+    SGBatchTranslationInstall((UIViewController *)self);
+    %orig;
+}
 - (void)viewDidLayoutSubviews {
     %orig;
     SGBatchTranslationInstall((UIViewController *)self);

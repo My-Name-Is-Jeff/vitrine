@@ -447,23 +447,20 @@ void SGAlbumQueueInstall(UIViewController *menu) {
         }
         return;
     }
-    if (existing && [existing.subviews containsObject:row]) return;
+    if (existing && ![existing isKindOfClass:UIControl.class] && [existing.subviews containsObject:row]) return;
     if (existing && existing.bounds.size.height > 0) {
+        NSArray<UIView *> *existingRows = [existing isKindOfClass:UIControl.class] ? @[existing] : [existing.subviews copy];
         UIView *container = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, existing.bounds.size.height + height)];
         container.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
         CGFloat y = 0;
         row.frame = CGRectMake(0, y, width, height);
         y += height;
         [container addSubview:row];
-        for (UIView *sub in existing.subviews) {
+        for (UIView *sub in existingRows) {
+            if (sub == row) continue;
             sub.frame = CGRectMake(0, y, width, sub.bounds.size.height);
             y += sub.bounds.size.height;
             [container addSubview:sub];
-        }
-        if (existing.subviews.count == 0 && [existing isKindOfClass:UIControl.class]) {
-            existing.frame = CGRectMake(0, y, width, existing.bounds.size.height);
-            y += existing.bounds.size.height;
-            [container addSubview:existing];
         }
         container.frame = CGRectMake(0, 0, width, y);
         [UIView performWithoutAnimation:^{
