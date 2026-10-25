@@ -331,9 +331,9 @@ void SGBatchTranslateURI(NSString *uri, SGBatchTranslationEngine engine, UIWindo
                     NSString *detail = savedCount == 1 ? @"1 song saved" : [NSString stringWithFormat:@"%lu songs saved", (unsigned long)savedCount];
                     [SGAlbumQueueNotice showIn:window title:@"Already Translated" detail:detail symbol:@"checkmark.circle" persistent:NO];
                 } else if (sameLangCount > 0 && savedCount == 0) {
-                    [SGAlbumQueueNotice showIn:window title:@"Nothing to Translate" detail:@"Already in your language" symbol:@"checkmark.circle" persistent:NO];
+                    [SGAlbumQueueNotice showIn:window title:@"Already in Your Language" detail:nil symbol:@"checkmark.circle" persistent:NO];
                 } else if (savedCount > 0) {
-                    [SGAlbumQueueNotice showIn:window title:@"Nothing to Translate" detail:@"Already translated" symbol:@"checkmark.circle" persistent:NO];
+                    [SGAlbumQueueNotice showIn:window title:@"Already Translated" detail:nil symbol:@"checkmark.circle" persistent:NO];
                 } else {
                     [SGAlbumQueueNotice showIn:window title:@"No Lyrics Found" detail:nil symbol:@"exclamationmark.circle" persistent:NO];
                 }
