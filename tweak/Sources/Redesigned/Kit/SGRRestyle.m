@@ -349,7 +349,7 @@ static const CGFloat kPaintedShare = 0.75;
 // same way, and its photo is not to fade (device 2026-10-08).
 static char kRowFadeKey;
 static BOOL isFooter(UIView *view) {
-    return [NSStringFromClass(view.class) containsString:@"ListSectionFooter"];
+    return SGClassNamed(view.class, @"ListSectionFooter");
 }
 
 static void fadeRowsAbove(UIView *gradient) {
