@@ -69,9 +69,10 @@ UIFont *SGRFont(UIFontTextStyle style, UIFontWeight weight, UIContentSizeCategor
     // Asked for on every layout pass of the Search and Library headers. A font is immutable and the same inputs
     // give the same one, so each is kept per input; the live category above and Bold Text are read on every call,
     // so a Dynamic Type change is a new key at once.
-    static NSMutableDictionary<NSArray *, UIFont *> *fonts;
+    // A string key: an array's hash is its count, so array keys would all collide.
+    static NSMutableDictionary<NSString *, UIFont *> *fonts;
     if (!fonts) fonts = [NSMutableDictionary dictionary];
-    NSArray *key = @[style, @(weight), largest ?: @"", current ?: @"", @(UIAccessibilityIsBoldTextEnabled())];
+    NSString *key = [NSString stringWithFormat:@"%@|%g|%@|%@|%d", style, weight, largest ?: @"", current ?: @"", UIAccessibilityIsBoldTextEnabled()];
     UIFont *font = fonts[key];
     if (font) return font;
     UITraitCollection *traits = [UITraitCollection traitCollectionWithPreferredContentSizeCategory:current];
