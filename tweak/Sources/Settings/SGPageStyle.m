@@ -1,7 +1,8 @@
 #import "SGPageStyle.h"
 #import "Core/SGCore.h"
 
-static UIFont *sg_spotifyFont;
+// The rows' title font of Spotify's settings list ([0]) and of its side drawer ([1]).
+static UIFont *sg_spotifyFont[2];
 
 // The dark appearance's secondary label, fixed rather than dynamic so a view that is not set dark reads it too.
 UIColor *SGGrey(void) { return [UIColor colorWithRed:0xEB / 255.0 green:0xEB / 255.0 blue:0xF5 / 255.0 alpha:0.6]; }
@@ -62,7 +63,7 @@ CGFloat SGLayOutSliderText(UILabel *title, UILabel *value, UILabel *subtitle, CG
     return y;
 }
 
-UIFont *SGSpotifyListFont(void) { return sg_spotifyFont ?: [UIFont systemFontOfSize:13 weight:UIFontWeightBold]; }
+UIFont *SGSpotifyListFont(BOOL drawer) { return sg_spotifyFont[drawer] ?: [UIFont systemFontOfSize:13 weight:UIFontWeightBold]; }
 
 UIImageView *SGSymbolView(NSString *name, CGFloat size, UIImageSymbolWeight weight, CGFloat box) {
     UIImage *image = [UIImage systemImageNamed:name withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:size weight:weight]];
@@ -267,27 +268,23 @@ UITableViewCell *SGDequeueCell(UITableView *table, NSString *identifier) {
         ?: [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:identifier];
 }
 
-// Spotify's list titles carry its typeface at 13pt.
-// The rows' titles are the font most of the list's labels between 14 and 18 pt have (16 pt in Spotify 9.1): the first
-// 13 pt label it once took was the drawer's "Eevee" badge, bold, and the row read smaller and heavier than its
-// neighbours (the phone, 2026-10-23). A list with no such label keeps the old 13 pt rule.
-void SGAdoptFonts(UIView *list, UIView *row) {
-    if (sg_spotifyFont) return;
+// The rows' titles are the font most of the list's labels between 13 and 18 pt have: 13 pt in the settings list
+// (App/ModSettings.x), larger in the drawer. The first 13 pt label, which it once took, was in the drawer a badge
+// another tweak adds, bold, and the row read smaller and heavier than its neighbours (the phone, 2026-10-23).
+BOOL SGAdoptFonts(UIView *list, UIView *row, BOOL drawer) {
+    if (sg_spotifyFont[drawer]) return NO;
     NSCountedSet<UIFont *> *titles = [NSCountedSet set];
-    __block UIFont *small = nil;
+    __block UIFont *best = nil;
     SGForEachView(list, ^(UIView *v) {
         if (![v isKindOfClass:UILabel.class] || SGIsInside(v, row)) return;
         UILabel *label = (UILabel *)v;
-        if (label.text.length < 2) return;
         CGFloat size = label.font.pointSize;
-        if (size >= 14 && size <= 18) [titles addObject:label.font];
-        else if (!small && size == 13) small = label.font;
+        if (label.text.length < 2 || size < 13 || size > 18) return;
+        [titles addObject:label.font];
+        if (!best || [titles countForObject:label.font] > [titles countForObject:best]) best = label.font;
     });
-    UIFont *best = nil;
-    for (UIFont *font in titles) {
-        if (!best || [titles countForObject:font] > [titles countForObject:best]) best = font;
-    }
-    sg_spotifyFont = best ?: small;
+    sg_spotifyFont[drawer] = best;
+    return best != nil;
 }
 
 UIViewController *SGTopController(void) {
