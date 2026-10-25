@@ -283,7 +283,8 @@ static CGFloat height(float rms) {
     [super didMoveToWindow];
     [self stopTimer];
     if (!self.window) return;
-    [self startTimer];
+    // Pushed while in the background, the timer waits for WillEnterForeground.
+    if (UIApplication.sharedApplication.applicationState != UIApplicationStateBackground) [self startTimer];
     _track = nil;
     [self refresh];
 }
