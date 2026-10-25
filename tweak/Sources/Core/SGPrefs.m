@@ -7,8 +7,11 @@
 static os_unfair_lock memoLock = OS_UNFAIR_LOCK_INIT;
 static NSMutableDictionary<NSString *, id> *memo;
 static NSUInteger memoGeneration;
+// Set on the thread inside SGPrefsWriteUnmemoized, whose write changes nothing the memo holds.
+static _Thread_local BOOL writingUnmemoized;
 
 void SGPrefsChanged(void) {
+    if (writingUnmemoized) return;
     os_unfair_lock_lock(&memoLock);
     [memo removeAllObjects];
     memoGeneration++;
@@ -34,6 +37,13 @@ static id stored(NSString *key) {
     if (generation == memoGeneration) memo[key] = value ?: NSNull.null;
     os_unfair_lock_unlock(&memoLock);
     return value;
+}
+
+void SGPrefsWriteUnmemoized(void (^write)(void)) {
+    BOOL was = writingUnmemoized;
+    writingUnmemoized = YES;
+    write();
+    writingUnmemoized = was;
 }
 
 BOOL SGFlag(NSString *key, BOOL fallback) {

@@ -71,7 +71,7 @@ static void countOne(NSString *label) {
     @synchronized (SGBlockProtocol.class) {
         NSMutableDictionary<NSString *, NSNumber *> *counts = countsLocked();
         counts[label] = @(counts[label].unsignedIntegerValue + 1);
-        [NSUserDefaults.standardUserDefaults setObject:counts forKey:kCounts];
+        SGPrefsWriteUnmemoized(^{ [NSUserDefaults.standardUserDefaults setObject:counts forKey:kCounts]; });
     }
 }
 
