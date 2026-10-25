@@ -296,7 +296,7 @@ UIView *SGRPlayerConnectGlyphIn(UIView *host, UIView *connect) {
         dispatch_async(dispatch_get_main_queue(), ^{ [weakHost setNeedsLayout]; });
     }
     SGForEachView(connect, ^(UIView *view) {
-        if ([view isKindOfClass:UILabel.class] || [NSStringFromClass(view.class) containsString:@"MarqueeLabel"]) SGRPlayerVanish(view);
+        if ([view isKindOfClass:UILabel.class] || SGClassNamed(view.class, @"MarqueeLabel")) SGRPlayerVanish(view);
     });
     if (glyph) standInForConnect((UIImageView *)glyph);
     return glyph;
@@ -360,8 +360,8 @@ void SGRPlayerLowerRow(UIView *row) {
     // Only the controls, and only straight above: a volume row between them keeps its place and theirs.
     UIView *above = rowAbove(row);
     // The ordinary player's controls unit, or the AI DJ's head unit (DJPlayer.x), which holds the same buttons.
-    NSString *unit = NSStringFromClass(unitOf(above).class);
-    BOOL controls = [unit containsString:@"PlaybackControlsElementsUnit"] || [unit containsString:@"DJMHeadUnitViewController"];
+    Class unit = unitOf(above).class;
+    BOOL controls = SGClassNamed(unit, @"PlaybackControlsElementsUnit") || SGClassNamed(unit, @"DJMHeadUnitViewController");
     // With the volume row, the controls stay where Spotify put them and the row takes the room the footer leaves.
     // The volume row is placed against the controls where they would stand for it; one that does not show leaves them
     // following the footer as they do without it.

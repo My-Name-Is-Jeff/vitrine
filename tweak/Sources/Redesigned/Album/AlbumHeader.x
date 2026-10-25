@@ -617,11 +617,11 @@ static UIColor *washColorOf(UIView *gradient) {
 // on Home, Search and Library.
 static void applyWash(UIView *page) {
     for (UIView *sub in page.subviews) {
-        NSString *name = NSStringFromClass(sub.class);
-        if (![name containsString:@"HeaderView"] && ![name containsString:@"HeaderNavigationBar"]) continue;
-        BOOL wash = ![name containsString:@"NavigationBar"];
+        Class cls = sub.class;
+        if (!SGClassNamed(cls, @"HeaderView") && !SGClassNamed(cls, @"HeaderNavigationBar")) continue;
+        BOOL wash = !SGClassNamed(cls, @"NavigationBar");
         for (UIView *v in sub.subviews) {
-            if (![NSStringFromClass(v.class) containsString:@"GradientView"]) continue;
+            if (!SGClassNamed(v.class, @"GradientView")) continue;
             if (wash) {
                 UIColor *color = washColorOf(v);
                 static BOOL logged;
