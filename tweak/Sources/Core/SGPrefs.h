@@ -21,6 +21,8 @@ void SGSetInt(NSString *key, NSInteger value);
 // What -stringForKey: answers (a string as it is, a number as its stringValue, else nil), kept like the switches.
 // A writer of such a key calls SGPrefsChanged() after its write, as SGSetInt does.
 NSString *SGString(NSString *key);
+// What -arrayForKey: answers (an array as it is, else nil), kept like the switches; same rule for its writers.
+NSArray *SGArray(NSString *key);
 
 // The accessors keep what they read until the defaults change. An observer of NSUserDefaultsDidChangeNotification
 // that reads them calls this first, as observers are not called in a set order.

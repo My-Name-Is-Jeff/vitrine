@@ -76,6 +76,11 @@ NSString *SGString(NSString *key) {
     return [value isKindOfClass:NSNumber.class] ? [value stringValue] : nil;
 }
 
+NSArray *SGArray(NSString *key) {
+    id value = stored(key);
+    return [value isKindOfClass:NSArray.class] ? value : nil;
+}
+
 void SGSetInt(NSString *key, NSInteger value) {
     [NSUserDefaults.standardUserDefaults setInteger:value forKey:key];
     SGPrefsChanged();

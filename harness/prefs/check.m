@@ -81,6 +81,15 @@ int main(void) {
         [store setObject:@[@"a"] forKey:text];
         CHECK(SGString(text) == nil);
 
+        // SGArray answers as -arrayForKey: does, through the memo, and a writer's SGPrefsChanged() shows the write.
+        CHECK([SGArray(text) isEqualToArray:@[@"a"]] && SGArray(text) == SGArray(text));
+        [store setObject:@"Recents" forKey:text];
+        CHECK(SGArray(text) == nil);
+        CFPreferencesSetAppValue((__bridge CFStringRef)text, (__bridge CFPropertyListRef)@[@"b"], kCFPreferencesCurrentApplication);
+        CHECK(SGArray(text) == nil);
+        SGPrefsChanged();
+        CHECK([SGArray(text) isEqualToArray:@[@"b"]]);
+
         for (NSString *key in @[flag, choice, counter, text]) [store removeObjectForKey:key];
         puts("prefs: ok");
     }
