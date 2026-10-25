@@ -71,7 +71,17 @@ int main(void) {
         [store setObject:@{@"a": @4} forKey:counter];
         CHECK(posts == 6 && SGInt(choice, 7) == 5);
 
-        for (NSString *key in @[flag, choice, counter]) [store removeObjectForKey:key];
+        // SGString answers as -stringForKey: does, through the memo.
+        NSString *text = @"spotifyglass.test.text";
+        CHECK(SGString(text) == nil);
+        [store setObject:@"Recents" forKey:text];
+        CHECK([SGString(text) isEqualToString:@"Recents"] && SGString(text) == SGString(text));
+        [store setInteger:12 forKey:text];
+        CHECK([SGString(text) isEqualToString:@"12"]);
+        [store setObject:@[@"a"] forKey:text];
+        CHECK(SGString(text) == nil);
+
+        for (NSString *key in @[flag, choice, counter, text]) [store removeObjectForKey:key];
         puts("prefs: ok");
     }
     return 0;

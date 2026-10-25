@@ -70,6 +70,12 @@ NSInteger SGInt(NSString *key, NSInteger fallback) {
     return value ? [value integerValue] : fallback;
 }
 
+NSString *SGString(NSString *key) {
+    id value = stored(key);
+    if ([value isKindOfClass:NSString.class]) return value;
+    return [value isKindOfClass:NSNumber.class] ? [value stringValue] : nil;
+}
+
 void SGSetInt(NSString *key, NSInteger value) {
     [NSUserDefaults.standardUserDefaults setInteger:value forKey:key];
     SGPrefsChanged();
