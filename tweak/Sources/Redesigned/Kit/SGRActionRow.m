@@ -215,6 +215,11 @@ static BOOL indicatorOn(UIView *button, BOOL *found) {
     [self addTarget:self action:@selector(sgr_down) forControlEvents:UIControlEventTouchDown];
     [self addTarget:self action:@selector(sgr_up) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
     [self addTarget:self action:@selector(sgr_tap) forControlEvents:UIControlEventTouchUpInside];
+    // Spotify in the background plays on with the page in its window, so the state is not read there: the
+    // poll goes with the app and the way back in reads again, as the way into the window does.
+    NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+    [center addObserver:self selector:@selector(sgr_stopFollowing) name:UIApplicationWillResignActiveNotification object:nil];
+    [center addObserver:self selector:@selector(sgr_readAgain) name:UIApplicationDidBecomeActiveNotification object:nil];
     return self;
 }
 
@@ -234,14 +239,23 @@ static BOOL indicatorOn(UIView *button, BOOL *found) {
 
 - (void)didMoveToWindow {
     [super didMoveToWindow];
+    [self sgr_readAgain];
+}
+
+// Read again on the way in -- the state may have moved on while the page was away -- and not at all
+// while out of the window.
+- (void)sgr_readAgain {
     if (!_download && _stateShown < 0 && !self.readState) return;
-    // Read again on the way in -- the state may have moved on while the page was away -- and not at all
-    // while out of the window.
     if (self.window && self.source) [self feedFrom:self.source];
     else [self sgr_followDownload:0];
 }
 
+- (void)sgr_stopFollowing {
+    [self sgr_followDownload:0];
+}
+
 - (void)dealloc {
+    [NSNotificationCenter.defaultCenter removeObserver:self];
     [_downloadTimer invalidate];
 }
 
@@ -273,7 +287,7 @@ static BOOL indicatorOn(UIView *button, BOOL *found) {
 
     // Spotify lays nothing out that the page hears as a download moves on, so the state is read again:
     // twice a second while one runs, for the ring, and now and then otherwise, for one started or removed
-    // from elsewhere (the ⋯ sheet). Only while the button is on screen.
+    // from elsewhere (the ⋯ sheet). Only while the button is on screen and the app is active.
     BOOL running = state == SGRDownloadWaiting || state == SGRDownloadDownloading;
     [self sgr_followDownload:self.window ? (running ? 0.5 : 2) : 0];
     return YES;
