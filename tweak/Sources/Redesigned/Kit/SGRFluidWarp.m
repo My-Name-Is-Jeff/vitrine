@@ -73,19 +73,42 @@ static void whenCompiled(dispatch_block_t ready) {
     }];
 }
 
+static void makeDevice(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        sDevice = MTLCreateSystemDefaultDevice();
+        sQueue = [sDevice newCommandQueue];
+    });
+}
+
+id<MTLTexture> SGRFluidWarpTexture(CGImageRef picture) {
+    size_t width = CGImageGetWidth(picture), height = CGImageGetHeight(picture);
+    if (!width || !height) return nil;
+    makeDevice();
+    NSMutableData *pixels = [NSMutableData dataWithLength:width * height * 4];
+    CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+    CGContextRef bitmap = CGBitmapContextCreate(pixels.mutableBytes, width, height, 8, width * 4, space,
+                                                kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+    CGColorSpaceRelease(space);
+    if (!bitmap) return nil;
+    CGContextDrawImage(bitmap, CGRectMake(0, 0, width, height), picture);
+    CGContextRelease(bitmap);
+    MTLTextureDescriptor *descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
+                                                                                         width:width height:height mipmapped:NO];
+    descriptor.usage = MTLTextureUsageShaderRead;
+    id<MTLTexture> texture = [sDevice newTextureWithDescriptor:descriptor];
+    [texture replaceRegion:MTLRegionMake2D(0, 0, width, height) mipmapLevel:0 withBytes:pixels.bytes bytesPerRow:width * 4];
+    return texture;
+}
+
 @implementation SGRFluidWarpLayer {
-    id<MTLTexture> _texture;
     double _time;
     BOOL _stale;   // a frame was asked for while it could not be drawn
 }
 
 - (instancetype)init {
     if (!(self = [super init])) return nil;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        sDevice = MTLCreateSystemDefaultDevice();
-        sQueue = [sDevice newCommandQueue];
-    });
+    makeDevice();
     self.device = sDevice;
     self.pixelFormat = MTLPixelFormatBGRA8Unorm;
     self.opaque = YES;
@@ -109,23 +132,8 @@ static void whenCompiled(dispatch_block_t ready) {
     if (_stale) [self drawAt:_time];
 }
 
-- (void)setPicture:(CGImageRef)picture {
-    size_t width = CGImageGetWidth(picture), height = CGImageGetHeight(picture);
-    if (!width || !height) return;
-    NSMutableData *pixels = [NSMutableData dataWithLength:width * height * 4];
-    CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-    CGContextRef bitmap = CGBitmapContextCreate(pixels.mutableBytes, width, height, 8, width * 4, space,
-                                                kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
-    CGColorSpaceRelease(space);
-    if (!bitmap) return;
-    CGContextDrawImage(bitmap, CGRectMake(0, 0, width, height), picture);
-    CGContextRelease(bitmap);
-    MTLTextureDescriptor *descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
-                                                                                         width:width height:height mipmapped:NO];
-    descriptor.usage = MTLTextureUsageShaderRead;
-    id<MTLTexture> texture = [sDevice newTextureWithDescriptor:descriptor];
-    [texture replaceRegion:MTLRegionMake2D(0, 0, width, height) mipmapLevel:0 withBytes:pixels.bytes bytesPerRow:width * 4];
-    _texture = texture;
+- (void)setPicture:(id<MTLTexture>)picture {
+    _picture = picture;
     [self drawAt:_time];
 }
 
@@ -155,7 +163,7 @@ static void whenCompiled(dispatch_block_t ready) {
     CGRect bounds = self.bounds;
     // The GPU is not Spotify's in the background: a frame sent then fails.
     _stale = UIApplication.sharedApplication.applicationState == UIApplicationStateBackground;
-    if (_stale || !sPipeline || !_texture || self.hidden || self.drawableSize.width < 1 || bounds.size.width < 1) return;
+    if (_stale || !sPipeline || !_picture || self.hidden || self.drawableSize.width < 1 || bounds.size.width < 1) return;
     id<CAMetalDrawable> drawable = [self nextDrawable];
     if (!drawable) return;
     CGRect visible = CGRectIsEmpty(_visibleRect) ? bounds : _visibleRect;
@@ -172,7 +180,7 @@ static void whenCompiled(dispatch_block_t ready) {
     id<MTLRenderCommandEncoder> encoder = [buffer renderCommandEncoderWithDescriptor:pass];
     [encoder setRenderPipelineState:sPipeline];
     [encoder setFragmentBytes:&u length:sizeof u atIndex:0];
-    [encoder setFragmentTexture:_texture atIndex:0];
+    [encoder setFragmentTexture:_picture atIndex:0];
     [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
     [encoder endEncoding];
     [buffer presentDrawable:drawable];

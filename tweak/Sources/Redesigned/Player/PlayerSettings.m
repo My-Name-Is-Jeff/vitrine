@@ -43,7 +43,7 @@ static NSArray<NSString *> *backgroundNotes(void) {
         @"The cover, blurred and held still.",
         @"The cover's colors, drifting slowly.",
         @"The cover itself, blurred and slowly turning. It rests while a song is paused.",
-        @"The song's Canvas or the album's moving cover, else Fluid. The player's ⋯ menu switches between this, Fluid and Visualizer.",
+        @"The song's Canvas or the album's moving cover, else Fluid. The player's ⋯ menu switches between this, Fluid, Visualizer and Liquid.",
         @"The song's sound as gentle hills in the cover's colors, over Fluid held still. They settle while a song is paused.",
         @"The cover, blurred, rippling slowly like liquid. Fluid with Reduce Motion or Low Power Mode. It rests while a song is paused.",
     ];

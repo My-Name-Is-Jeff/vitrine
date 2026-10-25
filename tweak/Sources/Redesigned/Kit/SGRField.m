@@ -226,6 +226,8 @@ const NSTimeInterval SGRFieldHoldLimit = 1.0;
     BOOL front = UIApplication.sharedApplication.applicationState == UIApplicationStateActive;
     BOOL calm = SGRReduceMotion() || NSProcessInfo.processInfo.lowPowerModeEnabled;
     BOOL may = self.window && front && !SGRPlayerIsTransitioning() && !calm && !_motionHeld;
+    // Held before the warp changes, so the change does not start the copies' turns only to stop them.
+    if (!(may && _fluid)) _fluidLayer.moving = NO;
     _fluidLayer.warps = _liquid && !calm;
     _fluidLayer.moving = may && _fluid;
     BOOL moving = may && _flows && !_flow.hidden;

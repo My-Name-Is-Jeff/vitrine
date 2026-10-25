@@ -654,6 +654,8 @@ void SGPlayerMenuSetAnimatedArtwork(BOOL on) {
     [sg_follower restart];
     // From the Visualizer, whose hills go.
     SGRPlayerVisualiserUpdate();
+    // From Liquid, whose warp gives way.
+    holdField();
 }
 
 %group SGRVideoSurfaces

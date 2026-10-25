@@ -224,11 +224,13 @@ static UIImage *blurred(UIImage *image, CGFloat side, BOOL contrast, CGFloat rad
     BOOL contrast = SGRIncreaseContrast();
     CGFloat radius = kBlurPerStep * SGRFluidValue(SGRFluidBlur), saturation = SGRFluidValue(SGRFluidSaturation) / 100.0;
     CGFloat gain = SGRFluidValue(SGRFluidBrightness) / 100.0;
-    BOOL warp = _warpLayer != nil;
+    // Only while it draws: turned on again, it blurs the cover anew (-setWarps:).
+    BOOL warp = _warps;
+    CGFloat warpRadius = MAX(kBlurPerStep, radius * 2 * kWarpBlurShare);
     __weak SGRFluidLayer *weakSelf = self;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         UIImage *blur = blurred(image, kBlurSide, contrast, radius, saturation, gain);
-        UIImage *sharper = warp ? blurred(image, kWarpSide, contrast, MAX(kBlurPerStep, radius * 2 * kWarpBlurShare), saturation, gain) : nil;
+        id<MTLTexture> sharper = warp ? SGRFluidWarpTexture(blurred(image, kWarpSide, contrast, warpRadius, saturation, gain).CGImage) : nil;
         dispatch_async(dispatch_get_main_queue(), ^{
             SGRFluidLayer *layer = weakSelf;
             if (!blur || !layer || generation != layer->_generation) return;
@@ -237,7 +239,7 @@ static UIImage *blurred(UIImage *image, CGFloat side, BOOL contrast, CGFloat rad
     });
 }
 
-- (void)show:(UIImage *)blur warp:(UIImage *)sharper animated:(BOOL)animated {
+- (void)show:(UIImage *)blur warp:(id<MTLTexture>)sharper animated:(BOOL)animated {
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     for (int i = 0; i < kCopies; i++) {
@@ -251,7 +253,7 @@ static UIImage *blurred(UIImage *image, CGFloat side, BOOL contrast, CGFloat rad
     }
     [CATransaction commit];
     // shortcut: the warp's new cover cuts in rather than crossfading; blend two textures in the shader if it jars.
-    if (sharper) [_warpLayer setPicture:sharper.CGImage];
+    if (sharper && _warps) [self showWarp:sharper];
 }
 
 #pragma mark - moving
@@ -323,19 +325,27 @@ static UIImage *blurred(UIImage *image, CGFloat side, BOOL contrast, CGFloat rad
     if (warps && !_warpLayer) {
         _warpLayer = [SGRFluidWarpLayer layer];
         _warpLayer.warp = (float)_warp;
+        _warpLayer.hidden = YES;
         [self insertSublayer:_warpLayer below:_shade];
         [self setNeedsLayout];
-        [self reblur];   // the warp's own, sharper cover
     }
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];
-    _warpLayer.hidden = !warps;
-    for (int i = 0; i < kCopies; i++) _copies[i].hidden = warps;
-    [CATransaction commit];
+    // The copies stay until the warp has this song's cover (-showWarp:), so the switch shows no black or old cover.
+    if (warps) [self reblur];
+    else [self showWarp:nil];
     if (moving) [self start];
     else [_warpLayer drawAt:_elapsed];
     static NSUInteger logged;
     if (logged++ < 6) SGLog(@"redesign kit: liquid warp %@", warps ? @"draws the cover" : @"gives way to Fluid");
+}
+
+// The warp drawing `picture` over hidden copies, or, for nil, the copies alone.
+- (void)showWarp:(id<MTLTexture>)picture {
+    _warpLayer.picture = picture;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    _warpLayer.hidden = !picture;
+    for (int i = 0; i < kCopies; i++) _copies[i].hidden = picture != nil;
+    [CATransaction commit];
 }
 
 - (void)tick:(CADisplayLink *)link {
