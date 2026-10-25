@@ -59,7 +59,9 @@ static void fill(UIImageView *view) {
 // ours, and SGLocalFileFallbackCover answers nil for any other track before doing anything), so the
 // walk for the image view is spared on every layout of the list.
 static BOOL nothingToFill(void) {
-    return sg_filled.count == 0 && !SGLocalFileIs(SGURIString(SGPlayerState().track.URI));
+    // A weak table's count can still include freed views; enumeration skips them.
+    for (__unused UIView *view in sg_filled) return NO;
+    return !SGLocalFileIs(SGURIString(SGPlayerState().track.URI));
 }
 
 static void fillFront(UIScrollView *list) {
