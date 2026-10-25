@@ -417,6 +417,12 @@ static const CGFloat kHatMin = 20;
 // styling it, and a second walk of the bar on each pass for it was a cost of its own.
 static __weak UIView *sg_strip;
 
+// Class names and frames only: a hat's labels can hold the track and the names of the people in a Jam.
+static void appendShape(UIView *view, NSUInteger depth, NSMutableString *out) {
+    [out appendFormat:@"%*s%@ %@\n", (int)depth * 2, "", NSStringFromClass(view.class), NSStringFromCGRect(view.frame)];
+    if (depth < 8) for (UIView *sub in view.subviews) appendShape(sub, depth + 1, out);
+}
+
 static void placeInline(UIViewController *container) {
     UIView *view = container.view;
     UIView *bar = container.childViewControllers.firstObject.viewIfLoaded;
@@ -428,8 +434,10 @@ static void placeInline(UIViewController *container) {
     if (!known) {
         static dispatch_once_t once;
         dispatch_once(&once, ^{
+            NSMutableString *shape = [NSMutableString string];
+            appendShape(bar, 0, shape);
             SGLogLong(@"now playing bar", [NSString stringWithFormat:@"a hat on the bar that is not the Jam's keeps the card out of the "
-                                          @"tab bar's row: card %@, bar %@\n%@", NSStringFromCGRect(track), NSStringFromCGRect(bar.frame), [bar recursiveDescription]]);
+                                          @"tab bar's row: card %@, bar %@\n%@", NSStringFromCGRect(track), NSStringFromCGRect(bar.frame), shape]);
         });
     }
     CGRect slot = !bar || bar.superview != view || !known ? CGRectNull : SGRTabBarInlineSlot(view.superview, track.size.height);
