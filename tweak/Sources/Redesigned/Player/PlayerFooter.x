@@ -413,8 +413,9 @@ void SGRPlayerLowerRow(UIView *row) {
     // moves there (the Music app has no such chip). Found in one walk: nothing between them touches the tree.
     static const void *const goneKeys[] = {&kShareKey, &kTrimmerKey, &kSharedByKey};
     UIView *gone[3];
-    SGRFindByIdentifiers(host, @[@"ShareButtonNowPlayingView", @"nowplaying-npv-media-trimmer-navigation-button", @"Components.UI.SharedByChip"],
-                         goneKeys, gone);
+    static NSArray<NSString *> *goneIdentifiers;
+    if (!goneIdentifiers) goneIdentifiers = @[@"ShareButtonNowPlayingView", @"nowplaying-npv-media-trimmer-navigation-button", @"Components.UI.SharedByChip"];
+    SGRFindByIdentifiers(host, goneIdentifiers, goneKeys, gone);
     UIView *share = gone[0];
     for (NSUInteger i = 0; i < 3; i++) {
         SGRPlayerVanish(gone[i]);
