@@ -89,10 +89,11 @@ static CGFloat screenRadius(void) {
     return CGRectGetMinY(_card);
 }
 
-// 9.1.90's CompactOverlayTransition animates the player itself, so the morph follows where it is drawn.
+// 9.1.90's CompactOverlayTransition animates the player itself, so the morph follows where it is drawn. Spotify also
+// crossfades its bar stand-in with the player at each end, on the render server, so the bar is in its place the moment
+// the card lands even when the main thread stalls; the stand-in is left to Spotify.
 - (void)follow {
     _follows = YES;
-    _bar.hidden = YES;
 }
 
 - (instancetype)initWithContainer:(UIView *)container overlay:(UIView *)overlay bar:(UIView *)bar barRest:(CGRect)barRest {
@@ -152,9 +153,11 @@ static CGFloat screenRadius(void) {
     _spotifyFrame = overlay.frame;
 
     if (_follows) {
-        // Where Spotify's animation has the player now: its frame's model value is already the end.
-        CALayer *drawn = overlay.layer.presentationLayer ?: overlay.layer;
-        _spotifyFrame = drawn.frame;
+        // Where Spotify's animation has the player now: its frame's model value is already the end. Not drawn yet (an
+        // open's first frame), it is at the bar and transparent.
+        CALayer *drawn = overlay.layer.presentationLayer;
+        _spotifyFrame = drawn ? drawn.frame : (CGRect){{_spotifyFrame.origin.x, self.restY}, _spotifyFrame.size};
+        _spotifyAlpha = drawn ? drawn.opacity : 0;
     }
     CGRect full = container.bounds;
     CGRect sheet = lerpRect(_card, full, t);
@@ -184,7 +187,8 @@ static CGFloat screenRadius(void) {
 
         self->_sheet.frame = sheet;
         self->_sheet.layer.cornerRadius = radius;
-        self->_sheet.alpha = ramp(0, 0.15, t);
+        // The sheet is the player's own paint, so it fades with the player Spotify fades against its bar stand-in.
+        self->_sheet.alpha = self->_follows ? self->_spotifyAlpha : ramp(0, 0.15, t);
 
         // The card's top edge is the sheet's.
         CGFloat rise = sheet.origin.y - self->_card.origin.y;
@@ -199,6 +203,12 @@ static CGFloat screenRadius(void) {
             // Worked out relative to the sheet, so the cover stays on it the whole way rather than
             // heading for where the player's cover is while that is still below the screen.
             CGRect from = CGRectOffset(self->_barArtwork, -self->_card.origin.x, -self->_card.origin.y);
+            // The player's cover is held hidden from the first frame, laid out or not: the first open lays it out
+            // between two frames of the morph, and it is hidden in that layout pass (PlayerArtwork.x).
+            if (!self->_coverHidden) {
+                SGRPlayerSetCoverHidden(YES);
+                self->_coverHidden = YES;
+            }
             if (CGRectIsNull(coverInPlayer)) {
                 self->_cover.hidden = YES;
             } else {
@@ -206,11 +216,6 @@ static CGFloat screenRadius(void) {
                                        middle.y + scale * (coverInPlayer.origin.y - middle.y) + shift.y + origin.y,
                                        coverInPlayer.size.width * scale, coverInPlayer.size.height * scale);
                 self->_cover.hidden = NO;
-                // The first open lays the cover out mid-way, so it is hidden once it is there.
-                if (!self->_coverHidden) {
-                    SGRPlayerSetCoverHidden(YES);
-                    self->_coverHidden = YES;
-                }
                 to = CGRectOffset(to, -sheet.origin.x, -sheet.origin.y);
                 self->_cover.frame = CGRectOffset(lerpRect(from, to, t), sheet.origin.x, sheet.origin.y);
                 // The cover's corners are drawn under its paused shrink too.
@@ -232,7 +237,6 @@ static CGFloat screenRadius(void) {
     if (overlay.layer.mask == _mask) overlay.layer.mask = nil;
     if (!_follows) overlay.alpha = _spotifyAlpha;
     if (overlay && !_follows) overlay.frame = _spotifyFrame;
-    if (_follows) _bar.hidden = NO;
     if (!overlay.layer.backgroundColor) overlay.layer.backgroundColor = _overlayColor;
     CGColorRelease(_overlayColor);
     _overlayColor = NULL;
@@ -285,7 +289,7 @@ static SGRPlayerMorph *morphFor(SPTBarOverlayPresentationTransition *transition,
 // stand-ins (npbSnapshotView, tabBarSnapshotView; BarTransition.x). A display link reads how far up Spotify's animation
 // has the player and morphs to match, so Spotify's frame, alpha and completion stay its own. It is let go once the
 // transition is no longer interactive and the player has no animation left and holds still a few frames.
-static const CFTimeInterval kGiveUp = 0.9;   // UIKit's presentation runs about 0.5 s
+static const CFTimeInterval kGiveUp = 0.9;   // ticking with no move this long; UIKit's whole presentation runs about 0.5 s
 static const float kCloseSpeed = 1.5;         // how much faster than Spotify's a close it runs on its own plays
 
 @interface SGRMorphFollower : NSObject
@@ -295,15 +299,16 @@ static const float kCloseSpeed = 1.5;         // how much faster than Spotify's 
 @property (nonatomic, strong) CADisplayLink *link;
 @property (nonatomic) NSInteger still;
 @property (nonatomic) CGFloat lastY;
-@property (nonatomic) CFTimeInterval settledSince;   // when it was last driven by a finger, or began
+@property (nonatomic) CFTimeInterval settledSince;   // when it last moved or was driven by a finger, or began
+@property (nonatomic) CFTimeInterval lastTick;
 @property (nonatomic) BOOL sped;                     // the container's layer runs at kCloseSpeed until let go
 @property (nonatomic) BOOL closing, wasInteractive;
 @end
 
-// The container's clock runs at kCloseSpeed from now on, continuing from where its animations are.
-static void runFaster(CALayer *layer) {
+// The container's clock runs at `speed` from now on, continuing from where its animations are.
+static void runAtSpeed(CALayer *layer, float speed) {
     CFTimeInterval now = CACurrentMediaTime(), local = [layer convertTime:now fromLayer:nil];
-    layer.speed = kCloseSpeed;
+    layer.speed = speed;
     layer.beginTime = layer.superlayer ? [layer.superlayer convertTime:now fromLayer:nil] : now;
     layer.timeOffset = local;
 }
@@ -315,37 +320,38 @@ static void runFaster(CALayer *layer) {
         [self finish];
         return;
     }
-    CALayer *drawn = overlay.layer.presentationLayer ?: overlay.layer;
-    CGFloat y = drawn.frame.origin.y, rest = self.morph.restY > 0 ? self.morph.restY : container.bounds.size.height;
+    CALayer *drawn = overlay.layer.presentationLayer;
+    CGFloat rest = self.morph.restY > 0 ? self.morph.restY : container.bounds.size.height;
+    // An open's first frame has no presentation layer yet and its model already holds the end; Spotify starts it at the bar.
+    CGFloat y = drawn ? drawn.frame.origin.y : rest;
     [self.morph apply:rest > 0 ? MIN(1, MAX(0, 1 - y / rest)) : 1];
     BOOL interactive = self.context.isInteractive;
     // A close dragged by a finger runs faster from the moment it is let go.
     if (self.closing && self.wasInteractive && !interactive && !self.sped) {
-        runFaster(container.layer);
+        runAtSpeed(container.layer, kCloseSpeed);
         self.sped = YES;
     }
     self.wasInteractive = interactive;
-    BOOL moving = overlay.layer.animationKeys.count > 0 || fabs(y - self.lastY) > 0.5 || interactive;
+    BOOL moved = fabs(y - self.lastY) > 0.5;
+    BOOL moving = overlay.layer.animationKeys.count > 0 || moved || interactive;
     self.lastY = y;
     self.still = moving ? 0 : self.still + 1;
-    // Let go once still, or kGiveUp after a finger last drove it whatever the layer holds: a mask and a transform left
-    // on the player would keep its glass buttons from drawing.
+    // Let go once still, or kGiveUp after it last moved whatever the layer holds: a mask and a transform left on the player
+    // would keep its glass buttons from drawing. Counted from the last move and over ticks only, so a stall of the main
+    // thread before the slide (a cold open's first layout) does not use it up.
     CFTimeInterval now = CACurrentMediaTime();
-    if (interactive || !self.settledSince) self.settledSince = now;
+    if (interactive || moved || !self.settledSince || now - self.lastTick > kGiveUp / 4) self.settledSince = now;
+    self.lastTick = now;
     if (self.still >= 3 || now - self.settledSince > kGiveUp) [self finish];
 }
 - (void)finish {
     if (!self.link) return;
     static NSUInteger logged;
-    if (logged++ < 3) SGLog(@"player morph: let go after %.2f s, %@", CACurrentMediaTime() - self.settledSince, self.still >= 3 ? @"settled" : @"given up");
+    if (logged++ < 3) SGLog(@"player morph: let go after %.2f s still, %@", CACurrentMediaTime() - self.settledSince, self.still >= 3 ? @"settled" : @"given up");
     [self.link invalidate];
     self.link = nil;
-    if (self.sped) {
-        CALayer *layer = self.container.layer;
-        layer.speed = 1;
-        layer.beginTime = 0;
-        layer.timeOffset = 0;
-    }
+    // Back to 1 from where its animations are, so a close Spotify has not finished does not jump back.
+    if (self.sped) runAtSpeed(self.container.layer, 1);
     [self.morph tearDown];
     self.morph = nil;
 }
@@ -382,7 +388,7 @@ static void followTransition(id transition, id<UIViewControllerContextTransition
     follower.closing = !to.isBeingPresented;
     follower.wasInteractive = context.isInteractive;
     if (follower.closing && !context.isInteractive) {
-        runFaster(container.layer);
+        runAtSpeed(container.layer, kCloseSpeed);
         follower.sped = YES;
     }
     follower.link = [CADisplayLink displayLinkWithTarget:follower selector:@selector(tick:)];

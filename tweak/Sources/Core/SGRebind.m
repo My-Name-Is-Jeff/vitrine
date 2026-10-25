@@ -12,13 +12,39 @@
 #import "SGRebind.h"
 #import "SGLog.h"
 
-static const struct mach_header_64 *mainExecutable(intptr_t *slide) {
-    for (uint32_t i = 0; i < _dyld_image_count(); i++) {
-        const struct mach_header *header = _dyld_get_image_header(i);
-        if (header->magic != MH_MAGIC_64 || header->filetype != MH_EXECUTE) continue;
-        *slide = _dyld_get_image_vmaddr_slide(i);
-        return (const struct mach_header_64 *)header;
+// The slide from the image's own __TEXT, so it cannot come from a different dyld index than the header.
+static BOOL imageSlide(const struct mach_header_64 *header, intptr_t *slide) {
+    const struct load_command *command = (const struct load_command *)(header + 1);
+    for (uint32_t i = 0; i < header->ncmds; i++, command = (const struct load_command *)((const char *)command + command->cmdsize)) {
+        if (command->cmd != LC_SEGMENT_64 || strcmp(((const struct segment_command_64 *)command)->segname, SEG_TEXT) != 0) continue;
+        *slide = (intptr_t)header - (intptr_t)((const struct segment_command_64 *)command)->vmaddr;
+        return YES;
     }
+    return NO;
+}
+
+// Spotify's binary: the image named Spotify (a dylib under LiveContainer), else the one named as the
+// bundle's executable (a normal install whose executable was renamed).
+// Logs the first lookup, so a missing image is not read as a missing import.
+static const struct mach_header_64 *spotifyImage(intptr_t *slide) {
+    static BOOL logged;
+    NSString *executable = NSBundle.mainBundle.infoDictionary[@"CFBundleExecutable"];
+    const char *names[] = {"Spotify", executable.UTF8String};
+    for (int n = 0; n < 2; n++) {
+        if (!names[n]) continue;
+        for (uint32_t i = 0; i < _dyld_image_count(); i++) {
+            const struct mach_header *header = _dyld_get_image_header(i);
+            const char *name = _dyld_get_image_name(i);
+            const char *slash = name ? strrchr(name, '/') : NULL;
+            if (!header || header->magic != MH_MAGIC_64 || !slash || strcmp(slash + 1, names[n]) != 0) continue;
+            if (!imageSlide((const struct mach_header_64 *)header, slide)) continue;
+            if (!logged) SGLog(@"rebind: Spotify's binary is %s", name);
+            logged = YES;
+            return (const struct mach_header_64 *)header;
+        }
+    }
+    if (!logged) SGLog(@"rebind: no image named Spotify or %@ is loaded, nothing is rebound", executable);
+    logged = YES;
     return NULL;
 }
 
@@ -62,7 +88,7 @@ static BOOL writeSlot(void **slot, void *value, BOOL readOnly) {
 
 BOOL SGRebindImport(const char *symbol, void *replacement, void **original) {
     intptr_t slide = 0;
-    const struct mach_header_64 *header = mainExecutable(&slide);
+    const struct mach_header_64 *header = spotifyImage(&slide);
     if (!header) return NO;
 
     const struct segment_command_64 *linkedit = NULL;
@@ -98,7 +124,7 @@ BOOL SGRebindImport(const char *symbol, void *replacement, void **original) {
     }
     if (wanted == UINT32_MAX) return NO;
 
-    BOOL rebound = NO;
+    BOOL rebound = NO, unbound = NO;
     command = (const struct load_command *)(header + 1);
     for (uint32_t i = 0; i < header->ncmds; i++, command = (const struct load_command *)((const char *)command + command->cmdsize)) {
         if (command->cmd != LC_SEGMENT_64) continue;
@@ -115,12 +141,18 @@ BOOL SGRebindImport(const char *symbol, void *replacement, void **original) {
                 if (entry >= dysymtab->nindirectsyms || indirect[entry] != wanted) continue;
                 if (slots[k] == replacement) continue;
                 void *held = slots[k];
+                // Bit 63 marks a chained-fixup bind dyld has not applied; it would overwrite the slot later.
+                if ((uintptr_t)held >> 63) {
+                    unbound = YES;
+                    continue;
+                }
                 if (!writeSlot(&slots[k], replacement, readOnly)) continue;
                 if (original && !*original) *original = held;
                 rebound = YES;
             }
         }
     }
+    if (unbound) SGLog(@"rebind: %s is not bound yet, left as it is", symbol);
     return rebound;
 }
 
