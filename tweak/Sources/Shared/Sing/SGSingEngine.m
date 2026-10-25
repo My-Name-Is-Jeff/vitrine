@@ -91,6 +91,7 @@ struct SGSingEngine {
     // The worker's.
     pthread_t worker;
     atomic_bool alive;
+    dispatch_semaphore_t wake;    // slept on while off, held or without a model; the setters and Destroy signal it
     os_unfair_lock lock;          // the separator, the error and `asked`
     void *separator;              // retained
     NSString *error;
@@ -422,7 +423,11 @@ static void *work(void *argument) {
         SGSingSeparator *separator = currentSeparator(engine);
         uint64_t written = atomic_load_explicit(&engine->written, memory_order_acquire);
         uint64_t played = atomic_load_explicit(&engine->played, memory_order_relaxed);
-        if (!separator || !atomic_load(&engine->on) || atomic_load(&engine->paused) || written < start + kSGSingWindowFrames) {
+        if (!separator || !atomic_load(&engine->on) || atomic_load(&engine->paused)) {
+            dispatch_semaphore_wait(engine->wake, DISPATCH_TIME_FOREVER);
+            continue;
+        }
+        if (written < start + kSGSingWindowFrames) {
             usleep(kPoll);
             continue;
         }
@@ -483,6 +488,7 @@ SGSingEngine *SGSingEngineCreate(void) {
     SGSingEngine *engine = calloc(1, sizeof *engine);
     if (!engine) return NULL;
     engine->lock = OS_UNFAIR_LOCK_INIT;
+    engine->wake = dispatch_semaphore_create(0);
     engine->left = calloc(kRing, sizeof(float));
     engine->right = calloc(kRing, sizeof(float));
     engine->vocalsLeft = calloc(kRing, sizeof(float));
@@ -521,7 +527,11 @@ SGSingEngine *SGSingEngineCreate(void) {
 void SGSingEngineDestroy(SGSingEngine *engine) {
     if (!engine) return;
     atomic_store(&engine->alive, false);
-    if (engine->worker) pthread_join(engine->worker, NULL);
+    if (engine->worker) {
+        dispatch_semaphore_signal(engine->wake);
+        pthread_join(engine->worker, NULL);
+    }
+    engine->wake = nil;
     if (engine->separator) CFRelease(engine->separator);
     engine->error = nil;
     for (int c = 0; c < 2; c++) {
@@ -545,17 +555,19 @@ void SGSingEngineSetSeparator(SGSingEngine *engine, SGSingSeparator *separator) 
     engine->separator = retained;
     os_unfair_lock_unlock(&engine->lock);
     atomic_store(&engine->hasSeparator, retained != NULL);
+    if ((old != NULL) != (retained != NULL)) dispatch_semaphore_signal(engine->wake);
     // Released outside the lock; the worker holds its own reference while it runs one.
     if (old) CFRelease(old);
 }
 
 void SGSingEngineSetOn(SGSingEngine *engine, bool on) {
+    bool was = atomic_exchange(&engine->on, on);
     // Switched on again, it tries again with a full budget.
-    if (on && !atomic_exchange(&engine->on, true)) {
+    if (on && !was) {
         atomic_store(&engine->freshBudget, true);
         atomic_store(&engine->gaveUp, false);
     }
-    atomic_store(&engine->on, on);
+    if (was != on) dispatch_semaphore_signal(engine->wake);
 }
 
 void SGSingEngineHoldBudget(SGSingEngine *engine, bool held) {
@@ -590,7 +602,7 @@ void SGSingEngineSetVoiceAngle(SGSingEngine *engine, float radians) {
 }
 
 void SGSingEngineSetPaused(SGSingEngine *engine, bool paused) {
-    atomic_store(&engine->paused, paused);
+    if (atomic_exchange(&engine->paused, paused) != paused) dispatch_semaphore_signal(engine->wake);
 }
 
 void SGSingEngineSetLeadCap(SGSingEngine *engine, double seconds) {
