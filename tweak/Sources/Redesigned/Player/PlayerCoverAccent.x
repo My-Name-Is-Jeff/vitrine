@@ -262,13 +262,16 @@ static BOOL isBarButton(UIView *view) {
     return name && ([name isEqualToString:kBarConnectId] || [name isEqualToString:kBarLikeId]);
 }
 
-// The bar's two buttons, found once and again only when one is gone from it: the bar lays out on every track
-// change, page swipe and Jam strip move, and a walk of its hundred views on each of those was #96's kind of cost.
-static __weak UIView *sg_barConnect, *sg_barLike;
+// The bar's two buttons, found once per bar and cover and again only when one is gone from it: the bar lays out on
+// every track change, page swipe and Jam strip move, and a walk of its hundred views on each of those was #96's kind
+// of cost. A bar with one of them, or neither (an ad, an episode), is not walked again on each layout either.
+static __weak UIView *sg_barConnect, *sg_barLike, *sg_barSearched;
 
 static BOOL findBarButtons(UIView *bar) {
     UIView *connect = sg_barConnect, *like = sg_barLike;
-    if (connect && like && [connect isDescendantOfView:bar] && [like isDescendantOfView:bar]) return YES;
+    if (bar == sg_barSearched && (!connect || [connect isDescendantOfView:bar]) && (!like || [like isDescendantOfView:bar]))
+        return connect || like;
+    sg_barSearched = bar;
     __block UIView *foundConnect = nil, *foundLike = nil;
     SGForEachView(bar, ^(UIView *view) {
         NSString *name = view.accessibilityIdentifier;
@@ -307,6 +310,7 @@ void SGRPlayerSetCoverAccent(UIColor *cover) {
     sg_cover = rgb;
     SGLog(@"redesign player: follow the cover %@", rgb < 0 ? @"gives the accent back (a gray cover)" : [NSString stringWithFormat:@"paints #%06lX", (long)rgb]);
     SGRPlayerPaintCover(sg_stack);
+    sg_barSearched = nil; // a new cover looks again, for a button the last bar state did not have
     paintBar(sgr_nowPlayingRoot);
 }
 
