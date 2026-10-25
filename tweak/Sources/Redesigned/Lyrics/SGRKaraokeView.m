@@ -1092,14 +1092,11 @@ static const NSUInteger kLinesPerFrame = 4;
 - (void)showTime:(double)ms running:(BOOL)running at:(CFTimeInterval)shown;
 @end
 
-// Apple Music's hop: each dot rises about 0.8 of its own width as it fills,
-// holds at the top, drops back with a small undershoot and settles. One hop per dot, over its third.
+// Apple Music's hop: as its turn begins each dot rises about 0.8 of its own width, holds at the top,
+// drops back with a small undershoot and settles. One hop of the same length per dot, whatever the break's.
 static const double kHopLift = 0.8;     // of a dot's width
-static const double kHopRise = 0.48;    // of the dot's third: up, and filled by the top
-static const double kHopHold = 0.62;    // of the dot's third: where the drop begins
-static const double kHopUnder = 0.12;   // of a dot's width below rest, where the drop lands
-static const double kHopRest = 0.05;    // ...and where it settles
-static const double kHopSpan = 1.15;    // the whole hop in dot thirds; the settle runs a little into the next
+static const double kHopUnder = 0.12;   // of a dot's width below rest, where the drop lands before it settles
+static const CFTimeInterval kHopLength = 0.9;   // seconds; a break is 7 s or more, so it fits in a dot's third
 
 // Local time on the dots' clock is this far into the break plus this, so no animation begins at 0,
 // which Core Animation reads as "now".
@@ -1222,13 +1219,12 @@ static double smoothstep(double p) {
         CALayer *dot = _dots[i];
         CFTimeInterval begin = kBreakEpoch + (_rightToLeft ? _dots.count - 1 - i : i) * slot;
 
-        // Brightness comes up with the rise.
+        // Each dot fills over its third of the time before they go, in the order the next line reads.
         CABasicAnimation *fill = [CABasicAnimation animationWithKeyPath:@"opacity"];
         fill.fromValue = @(kDimAlpha);
         fill.toValue = @1;
         fill.beginTime = begin;
-        fill.duration = slot * kHopRise;
-        fill.timingFunction = rise;
+        fill.duration = slot;
         fill.fillMode = kCAFillModeBoth;
         fill.removedOnCompletion = NO;
         atFullRate(fill);
@@ -1238,11 +1234,11 @@ static double smoothstep(double p) {
 
         CGFloat lift = -kHopLift * _side;   // y grows downward, so up is negative
         CAKeyframeAnimation *hop = [CAKeyframeAnimation animationWithKeyPath:@"transform.translation.y"];
-        hop.values = @[@0, @(lift), @(lift), @(kHopUnder * _side), @(kHopRest * _side)];
-        hop.keyTimes = @[@0, @(kHopRise / kHopSpan), @(kHopHold / kHopSpan), @(1 / kHopSpan), @1];
+        hop.values = @[@0, @(lift), @(lift), @(kHopUnder * _side), @0];
+        hop.keyTimes = @[@0, @0.42, @0.54, @0.87, @1];
         hop.timingFunctions = @[rise, [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear], drop, settle];
         hop.beginTime = begin;
-        hop.duration = slot * kHopSpan;
+        hop.duration = kHopLength;
         hop.fillMode = kCAFillModeBoth;
         hop.removedOnCompletion = NO;
         atFullRate(hop);
