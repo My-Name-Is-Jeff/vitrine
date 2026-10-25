@@ -1217,7 +1217,8 @@ static double smoothstep(double p) {
     CAMediaTimingFunction *settle = [CAMediaTimingFunction functionWithControlPoints:0 :0 :0.3 :1];
     for (NSUInteger i = 0; i < _dots.count; i++) {
         CALayer *dot = _dots[i];
-        CFTimeInterval begin = kBreakEpoch + (_rightToLeft ? _dots.count - 1 - i : i) * slot;
+        NSUInteger turn = _rightToLeft ? _dots.count - 1 - i : i;
+        CFTimeInterval begin = kBreakEpoch + turn * slot;
 
         // Each dot fills over its third of the time before they go, in the order the next line reads.
         CABasicAnimation *fill = [CABasicAnimation animationWithKeyPath:@"opacity"];
@@ -1237,7 +1238,7 @@ static double smoothstep(double p) {
         hop.values = @[@0, @(lift), @(lift), @(kHopUnder * _side), @0];
         hop.keyTimes = @[@0, @0.42, @0.54, @0.87, @1];
         hop.timingFunctions = @[rise, [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear], drop, settle];
-        hop.beginTime = begin;
+        hop.beginTime = begin + (turn == 0 ? kBreakWait + kBreakFadeIn : 0);   // the first hops once the dots are in
         hop.duration = kHopLength;
         hop.fillMode = kCAFillModeBoth;
         hop.removedOnCompletion = NO;
