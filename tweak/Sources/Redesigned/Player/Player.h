@@ -84,6 +84,8 @@ BOOL SGRPlayerLyricsAvailable(void);
 BOOL SGRPlayerLyricsNone(void);
 // Whether the player is showing them.
 BOOL SGRPlayerLyricsOpen(void);
+// Whether the lines have the player to themselves, with the controls faded under them.
+BOOL SGRPlayerLyricsAlone(void);
 // Shows them, or puts the cover back; does nothing when there are none to show.
 void SGRPlayerToggleLyrics(void);
 // Called by PlayerLyrics.x whenever either of those two changed, so the footer's lyrics glyph follows

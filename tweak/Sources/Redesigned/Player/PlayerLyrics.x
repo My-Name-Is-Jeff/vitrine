@@ -286,6 +286,10 @@ BOOL SGRPlayerLyricsOpen(void) {
     return sg_open;
 }
 
+BOOL SGRPlayerLyricsAlone(void) {
+    return sg_alone;
+}
+
 // Puts the overlay's own views where the measurements say, without animating. The thumbnail is laid out
 // at the size and place Spotify draws its cover at and moved by its transform alone, so a pass that
 // runs while it is up leaves it exactly where the eye has it: the two are worked out from one
