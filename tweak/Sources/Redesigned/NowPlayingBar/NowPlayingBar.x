@@ -67,12 +67,10 @@ CGRect SGRNowPlayingArtworkFrameIn(UIView *host) {
 // The height keeps out a view of the same module that can hold the track card too.
 static BOOL isStrip(UIView *view) {
     if (view.bounds.size.height > 60) return NO;
-    NSString *name = NSStringFromClass(view.class);
-    if ([name containsString:@"AttachmentsImpl"] && [name containsString:@"Hat"]) return YES;
+    if (SGClassNamed(view.class, @"AttachmentsImpl") && SGClassNamed(view.class, @"Hat")) return YES;
     UIResponder *next = view.nextResponder;
     if (![next isKindOfClass:UIViewController.class]) return NO;
-    NSString *controller = NSStringFromClass(next.class);
-    return [controller containsString:@"Jam"] && [controller containsString:@"Hat"];
+    return SGClassNamed(next.class, @"Jam") && SGClassNamed(next.class, @"Hat");
 }
 
 static BOOL inStrip(UIView *view, UIView *root) {
