@@ -268,23 +268,30 @@ UITableViewCell *SGDequeueCell(UITableView *table, NSString *identifier) {
         ?: [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:identifier];
 }
 
-// The rows' titles are the font most of the list's labels between 13 and 18 pt have: 13 pt in the settings list
-// (App/ModSettings.x), larger in the drawer. The first 13 pt label, which it once took, was in the drawer a badge
-// another tweak adds, bold, and the row read smaller and heavier than its neighbours (the phone, 2026-10-23).
+// The rows' titles are the font most of the list's labels between 13 and 18 pt have: 13 pt in 9.1.78's settings
+// list (App/ModSettings.x), larger in the drawer and in 9.1.90's, where the 13 pt subtitles are as many as the
+// titles, so a tie goes to the larger. The drawer's 13 pt labels count only when it has no larger one: the
+// first 13 pt label, which it once took, was there a badge another tweak adds, bold, and the row read smaller and
+// heavier than its neighbours (the phone, 2026-10-23).
 BOOL SGAdoptFonts(UIView *list, UIView *row, BOOL drawer) {
     if (sg_spotifyFont[drawer]) return NO;
     NSCountedSet<UIFont *> *titles = [NSCountedSet set];
-    __block UIFont *best = nil;
+    __block UIFont *best = nil, *small = nil;
     SGForEachView(list, ^(UIView *v) {
         if (![v isKindOfClass:UILabel.class] || SGIsInside(v, row)) return;
         UILabel *label = (UILabel *)v;
         CGFloat size = label.font.pointSize;
         if (label.text.length < 2 || size < 13 || size > 18) return;
+        if (drawer && size < 14) {
+            if (!small) small = label.font;
+            return;
+        }
         [titles addObject:label.font];
-        if (!best || [titles countForObject:label.font] > [titles countForObject:best]) best = label.font;
+        NSUInteger count = [titles countForObject:label.font], most = [titles countForObject:best];
+        if (!best || count > most || (count == most && size > best.pointSize)) best = label.font;
     });
-    sg_spotifyFont[drawer] = best;
-    return best != nil;
+    sg_spotifyFont[drawer] = best ?: small;
+    return sg_spotifyFont[drawer] != nil;
 }
 
 UIViewController *SGTopController(void) {
