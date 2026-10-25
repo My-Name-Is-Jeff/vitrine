@@ -16,7 +16,7 @@ static const CGFloat kCoverMinWidth = 80;
 - (UIView *)imageContainerView;
 @end
 
-static char kOnPageKey;
+static Class sg_madeForYou;
 
 static void roundCorners(UIView *view, CGFloat radius) {
     CALayer *layer = view.layer;
@@ -25,16 +25,10 @@ static void roundCorners(UIView *view, CGFloat radius) {
     if (!layer.masksToBounds) layer.masksToBounds = YES;
 }
 
-// Whether the card is on the Made For You page: the first view controller up its responder chain. Kept on the card once
-// a controller answers, so the chain is walked once; a card not yet in a controller's view asks again on its next pass.
+// Whether the card is on the Made For You page: the first view controller up its responder chain.
 static BOOL onPage(UIView *card) {
-    NSNumber *kept = objc_getAssociatedObject(card, &kOnPageKey);
-    if (kept) return kept.boolValue;
     for (UIResponder *r = card.nextResponder; r; r = r.nextResponder) {
-        if (![r isKindOfClass:UIViewController.class]) continue;
-        BOOL on = [r isKindOfClass:%c(SPTMadeForYouHubViewController)];
-        objc_setAssociatedObject(card, &kOnPageKey, @(on), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        return on;
+        if ([r isKindOfClass:UIViewController.class]) return [r isKindOfClass:sg_madeForYou];
     }
     return NO;
 }
@@ -55,6 +49,15 @@ static void roundCover(GLUEEntityCardView *card) {
 
 %ctor {
     if (!SGRedesignedUI()) return;
+    Class card = NSClassFromString(@"GLUEEntityCardView");
+    sg_madeForYou = NSClassFromString(@"SPTMadeForYouHubViewController");
+    if (!card || !sg_madeForYou) {
+        SGRequireClasses(@[@"GLUEEntityCardView", @"SPTMadeForYouHubViewController"]);
+        return;
+    }
+    if (![card instancesRespondToSelector:@selector(imageContainerView)]) {
+        SGLog(@"-[GLUEEntityCardView imageContainerView] not found, the covers on Made For You stay square");
+        return;
+    }
     %init;
-    SGRequireClasses(@[@"GLUEEntityCardView", @"SPTMadeForYouHubViewController"]);
 }
