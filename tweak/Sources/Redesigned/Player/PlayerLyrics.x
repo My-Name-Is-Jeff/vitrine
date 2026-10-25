@@ -67,6 +67,17 @@ static BOOL sg_touching;                    // a finger is on the player, which 
 static NSTimer *sg_rest;
 static __weak UIGestureRecognizer *sg_wake; // on the player, on while alone: the tap that brings the controls back
 
+SGRLyricsHide SGRLyricsHideMode(void) {
+    NSInteger stored = SGInt(SGRKeyLyricsAutoHide, -1);
+    return stored >= 0 ? stored : SGEnabled(SGRKeyLyricsAutoHide) ? SGRLyricsHideAll : SGRLyricsHideOff;
+}
+
+// Alone, the lines leave the header row, the thumbnail and the title row where they are, the way the Music
+// app keeps its title over the lyrics.
+static BOOL keepsTitle(void) {
+    return SGRLyricsHideMode() == SGRLyricsHideControls;
+}
+
 #pragma mark - the overlay
 
 // The thumbnail and the lines, side by side under one view so the lines' own view has no sibling of
@@ -105,7 +116,8 @@ static __weak UIGestureRecognizer *sg_wake; // on the player, on while alone: th
 }
 
 - (void)sgr_thumbTapped {
-    if (SGRPlayerLyricsOpen() && !sg_moving) SGRPlayerToggleLyrics();
+    // Left on screen while the lines are alone (keepsTitle), a tap on it only wakes the controls (SGRPlayerWake).
+    if (SGRPlayerLyricsOpen() && !sg_moving && !sg_alone) SGRPlayerToggleLyrics();
 }
 
 - (UIView *)thumb { return _thumb; }
@@ -118,12 +130,12 @@ static __weak UIGestureRecognizer *sg_wake; // on the player, on while alone: th
 // What it hands them to instead is the title row. Translated to the top of the player it is drawn well
 // outside the stack view it is arranged in, and UIKit stops looking at a view whose bounds the touch is
 // not in, so the add button and the menu that rode up with it are past Spotify's own reach. Asked here
-// directly, the row answers for where it is drawn. Not while the lines are alone: the row is faded then,
-// and a tap where its add button was is the player's, which brings everything back.
+// directly, the row answers for where it is drawn. Not while the lines are alone, unless the title is kept: the
+// row is faded then, and a tap where its add button was is the player's, which brings everything back.
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
     UIView *hit = [super hitTest:point withEvent:event];
     if (hit != self) return hit;
-    UIView *row = SGRPlayerLyricsOpen() && !sg_alone ? sg_info.viewIfLoaded : nil;
+    UIView *row = SGRPlayerLyricsOpen() && (!sg_alone || keepsTitle()) ? sg_info.viewIfLoaded : nil;
     UIView *inRow = row ? [row hitTest:[row convertPoint:point fromView:self] withEvent:event] : nil;
     return inRow == row ? nil : inRow;
 }
@@ -324,21 +336,25 @@ static CGFloat thumbRadius(SGRLyricsLayout l, BOOL open) {
 // it. A touch on the lines is the lines' alone: the recognizer does not take it, so their tap seeks and the
 // controls stay hidden.
 
-// What fades: every view of Spotify's bottom stack but the title row and the chips (gone while the lines are
-// up), which is the progress bar, the buttons, the footer and a volume row where the phone has one. Each fades
-// by its alpha and the stack is left alone, since the title row is in it too. Without the stack, the units of
-// the first three. Only views on screen are taken, and only the ones faded (sg_faded) come back, so nothing
-// Spotify keeps hidden is shown.
+// What fades: every view of Spotify's bottom stack but the chips (gone while the lines are up), which is the
+// title row, the progress bar, the buttons, the footer and a volume row where the phone has one; the header
+// row's unit; and the thumbnail. Each fades by its alpha and the stack is left alone. Without the stack, the
+// units by name. Only views on screen are taken, and only the ones faded (sg_faded) come back, so nothing
+// Spotify keeps hidden is shown. Keeping the title, the header row, the thumbnail and the title row stay.
 static NSHashTable<UIView *> *sg_faded;
 
 static NSArray<UIView *> *fadingViews(void) {
-    UIView *info = sg_info.viewIfLoaded, *floating = sg_floating.viewIfLoaded;
+    BOOL keeps = keepsTitle();
+    UIView *floating = sg_floating.viewIfLoaded, *info = keeps ? sg_info.viewIfLoaded : nil;
     NSMutableArray<UIView *> *views = [NSMutableArray array];
+    SGRPlayerLyricsOverlay *overlay = objc_getAssociatedObject(sg_host, &kOverlayKey);
+    UIView *header = keeps ? nil : sg_header.viewIfLoaded, *thumb = keeps ? nil : overlay.thumb;
+    if (header && !header.hidden && header.alpha > 0.01) [views addObject:header];
+    if (thumb && !thumb.hidden && thumb.alpha > 0.01) [views addObject:thumb];
     UIView *stack = SGRFindByIdentifier(sg_host, @"npv.bottomStackView", &kStackKey);
     if (stack) {
         for (UIView *view in stack.subviews) {
-            // The title row stays, and so do the chips' unit that the lines already took away.
-            if ([info isDescendantOfView:view] || [floating isDescendantOfView:view]) continue;
+            if ([floating isDescendantOfView:view] || [info isDescendantOfView:view]) continue;
             if (!view.hidden && view.alpha > 0.01) [views addObject:view];
         }
         return views;
@@ -346,12 +362,13 @@ static NSArray<UIView *> *fadingViews(void) {
     static NSArray<NSString *> *names;
     static dispatch_once_t once;
     dispatch_once(&once, ^{
-        names = @[@"DurationElementUnit", @"PlaybackControlsElementsUnit", @"FooterElementsUnit"];
+        names = @[@"InformationElementsUnit", @"DurationElementUnit", @"PlaybackControlsElementsUnit", @"FooterElementsUnit"];
     });
     // A unit's view answers to its controller as its next responder, wherever the unit sits in the tree.
     SGForEachView(sg_host, ^(UIView *view) {
         UIResponder *owner = view.nextResponder;
         if (![owner isKindOfClass:UIViewController.class] || ((UIViewController *)owner).viewIfLoaded != view) return;
+        if (view == info) return;
         NSString *name = NSStringFromClass(owner.class);
         for (NSString *unit in names) {
             if ([name hasSuffix:unit] && !view.hidden && view.alpha > 0.01) [views addObject:view];
@@ -373,12 +390,13 @@ static void fadeControls(BOOL faded) {
     }
 }
 
-// Where the lines go on their own: from where they start under the title row down to the bottom of the
-// safe area, over the controls that faded.
+// Where the lines go on their own: the whole safe area, kLyricsBottom in at both ends, over everything that
+// faded. The safe area keeps them from under the status bar and the Dynamic Island. Keeping the title, they
+// start where they did under it and grow down alone.
 static CGRect aloneStage(UIView *host, SGRLyricsLayout l) {
     CGRect safe = UIEdgeInsetsInsetRect(host.bounds, host.safeAreaInsets);
-    return CGRectMake(CGRectGetMinX(l.stage), CGRectGetMinY(l.stage), l.stage.size.width,
-                      CGRectGetMaxY(safe) - kLyricsBottom - CGRectGetMinY(l.stage));
+    CGFloat top = keepsTitle() ? CGRectGetMinY(l.stage) : CGRectGetMinY(safe) + kLyricsBottom;
+    return CGRectMake(CGRectGetMinX(l.stage), top, l.stage.size.width, CGRectGetMaxY(safe) - kLyricsBottom - top);
 }
 
 static void setAlone(BOOL alone, BOOL animated);
@@ -401,7 +419,7 @@ static BOOL coveredBySheet(void) {
 static BOOL mayCount(void) {
     SPTPlayerState *state = SGPlayerState();
     UIView *host = sg_host;
-    return SGEnabled(SGRKeyLyricsAutoHide) && sg_open && !sg_alone && !sg_touching && host.window && state && !state.isPaused
+    return SGRLyricsHideMode() != SGRLyricsHideOff && sg_open && !sg_alone && !sg_touching && host.window && state && !state.isPaused
         && !UIAccessibilityIsVoiceOverRunning()
         && UIApplication.sharedApplication.applicationState == UIApplicationStateActive;
 }
