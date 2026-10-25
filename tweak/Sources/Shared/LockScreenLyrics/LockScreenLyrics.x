@@ -116,7 +116,13 @@ static NSString *lineFor(NSDictionary *info, double elapsed, NSTimeInterval *wai
     if (!line) line = lines[index];
     NSString *shown = nil;
     for (NSArray<SGKaraokeWord *> *piece in piecesOf(line)) {
-        if (!shown || piece.firstObject.start <= position) shown = textOf(piece);
+        NSInteger pieceStart = piece.firstObject.start;
+        if (!shown || pieceStart <= position) {
+            shown = textOf(piece);
+        } else if (pieceStart > position && (ms <= 0 || pieceStart - position < ms)) {
+            ms = pieceStart - position;
+            *wait = (ms + 1) / 1000.0;
+        }
     }
     return shown;
 }

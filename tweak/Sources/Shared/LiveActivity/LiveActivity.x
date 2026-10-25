@@ -192,18 +192,18 @@ static NSString *lyricsLine(NSString *trackID, NSString **next, NSString **trans
     if (position >= 0) position -= SGKaraokeDelayMs();
     // With two voices at once, the one that came in first, and the one singing over it as the next.
     NSInteger index = SGKaraokeLeadLine(lines, position);
-    *next = index + 1 < (NSInteger)lines.count ? SGKaraokeLineText(lines[index + 1]) : @"";
+    BOOL replace = SGFlag(SGKeyLyricsRomanised, NO) && SGFlag(SGKeyLyricsRomanisedReplace, NO);
+    BOOL japanese = replace && SGLyricsLooksJapanese(lines);
+    if (index + 1 < (NSInteger)lines.count) {
+        SGKaraokeLine *nextLine = lines[index + 1];
+        if (replace) nextLine = SGLyricsRomanisedLine(nextLine, japanese) ?: nextLine;
+        *next = SGKaraokeLineText(nextLine);
+    } else {
+        *next = @"";
+    }
     if (index < 0) return @"♪";
     SGKaraokeLine *current = lines[index];
-    if (SGFlag(SGKeyLyricsRomanised, NO) && SGFlag(SGKeyLyricsRomanisedReplace, NO)) {
-        BOOL japanese = SGLyricsLooksJapanese(lines);
-        SGKaraokeLine *rom = SGLyricsRomanisedLine(current, japanese);
-        if (rom) current = rom;
-        if (index + 1 < (NSInteger)lines.count) {
-            SGKaraokeLine *nextRom = SGLyricsRomanisedLine(lines[index + 1], japanese);
-            if (nextRom) *next = SGKaraokeLineText(nextRom);
-        }
-    }
+    if (replace) current = SGLyricsRomanisedLine(current, japanese) ?: current;
     BOOL nextFarOff = index + 1 == (NSInteger)lines.count || lines[index + 1].start - position > kBreakMs;
     if (position > current.end + kBreakMs && nextFarOff) return @"♪";
     *translation = current.translation;

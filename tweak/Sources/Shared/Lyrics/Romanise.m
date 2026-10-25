@@ -91,19 +91,22 @@ SGKaraokeLine *SGLyricsRomanisedLine(SGKaraokeLine *line, BOOL japanese) {
     if (cached) {
         if (cached == NSNull.null) return nil;
         SGKaraokeLine *r = (SGKaraokeLine *)cached;
-        if (!r.translation.length && line.translation.length) r.translation = line.translation;
+        r.translation = line.translation;
+        r.translationMade = line.translationMade;
         return r;
     }
 
+    NSString *text = SGKaraokeLineText(line);
+    NSString *pronText = line.pronunciation.words.count ? SGKaraokeLineText(line.pronunciation) : nil;
     SGKaraokeLine *romanised = nil;
-    if (line.pronunciation && line.pronunciation.words.count) {
+    if (pronText.length && has(text, SGScriptNotLatin) && !has(pronText, SGScriptNotLatin)) {
         romanised = [line.pronunciation copy];
-        if (!romanised.translation.length) romanised.translation = line.translation;
-        if (!romanised.backing && line.backing) {
-            romanised.backing = SGLyricsRomanisedLine(line.backing, japanese);
+        romanised.translation = line.translation;
+        romanised.translationMade = line.translationMade;
+        if (line.backing) {
+            romanised.backing = SGLyricsRomanisedLine(line.backing, japanese) ?: line.backing;
         }
     } else {
-        NSString *text = SGKaraokeLineText(line);
         NSString *romanisedText = SGLyricsRomanised(text, japanese);
         if (romanisedText.length && [romanisedText caseInsensitiveCompare:text] != NSOrderedSame) {
             if (line.timing == SGKaraokeTimingNone) {
@@ -112,6 +115,18 @@ SGKaraokeLine *SGLyricsRomanisedLine(SGKaraokeLine *line, BOOL japanese) {
                 NSInteger start = line.start;
                 NSInteger end = line.end > line.start ? line.end : line.start + 3000;
                 romanised = SGKaraokeEstimatedLines(@[@(start), @(end)], @[romanisedText, @""]).firstObject;
+                if (romanised && line.end > start) {
+                    NSInteger targetSpan = line.end - start;
+                    NSInteger genSpan = romanised.end - start;
+                    if (genSpan > 0 && genSpan != targetSpan) {
+                        for (SGKaraokeWord *w in romanised.words) {
+                            w.start = start + (NSInteger)llround((double)(w.start - start) * targetSpan / genSpan);
+                            w.end = start + (NSInteger)llround((double)(w.end - start) * targetSpan / genSpan);
+                        }
+                    }
+                    romanised.start = start;
+                    romanised.end = line.end;
+                }
             }
             if (romanised) {
                 romanised.align = line.align;
@@ -119,8 +134,14 @@ SGKaraokeLine *SGLyricsRomanisedLine(SGKaraokeLine *line, BOOL japanese) {
                 romanised.translation = line.translation;
                 romanised.translationMade = line.translationMade;
                 if (line.backing) {
-                    romanised.backing = SGLyricsRomanisedLine(line.backing, japanese);
+                    romanised.backing = SGLyricsRomanisedLine(line.backing, japanese) ?: line.backing;
                 }
+            }
+        } else if (line.backing) {
+            SGKaraokeLine *romanisedBacking = SGLyricsRomanisedLine(line.backing, japanese);
+            if (romanisedBacking) {
+                romanised = [line copy];
+                romanised.backing = romanisedBacking;
             }
         }
     }

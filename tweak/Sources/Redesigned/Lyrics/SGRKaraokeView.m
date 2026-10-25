@@ -1941,9 +1941,9 @@ static BOOL anyUntranslated(NSArray<SGKaraokeLine *> *lines) {
     BOOL romanised = SGFlag(SGKeyLyricsRomanised, NO);
     BOOL replace = romanised && SGFlag(SGKeyLyricsRomanisedReplace, NO);
     SGRKaraokeStyle *style = [[SGRKaraokeStyle alloc] initWithSize:_fontSize order:SGRLyricsTextOrder()
-                                                     pronunciation:_hasSpoken && SGFlag(SGRKeyLyricsPronunciation, NO)
+                                                     pronunciation:!replace && _hasSpoken && SGFlag(SGRKeyLyricsPronunciation, NO)
                                                        translation:_hasTranslation && SGFlag(SGRKeyLyricsTranslation, NO)
-                                                         romanised:romanised];
+                                                         romanised:romanised && !replace];
     style.japanese = romanised && SGLyricsLooksJapanese(_lines);
     style.romanisedReplace = replace;
     return style;
