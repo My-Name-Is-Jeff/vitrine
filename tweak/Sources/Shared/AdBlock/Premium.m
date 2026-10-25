@@ -406,11 +406,11 @@ static void keepLiveConfiguration(NSArray<SGPBField *> *fields) {
         else if (SGPBFirst(value, 4)) shown = @(SGPBFirst(SGPBParse(SGPBFirst(value, 4).payload), 1).varint).stringValue;
         else if (SGPBFirst(value, 5)) shown = SGPBText(SGPBFirst(SGPBParse(SGPBFirst(value, 5).payload), 1)) ?: @"";
         NSString *scope = SGPBText(SGPBFirst(parts, 1)) ?: @"", *name = SGPBText(SGPBFirst(parts, 2)) ?: @"";
-        if ([scope isEqualToString:@"playback-settings"] && [name isEqualToString:@"use_playback_settings_crossfade"]) crossfadeFlag = shown;
+        if (!loggedCrossfadeFlag && [scope isEqualToString:@"playback-settings"] && [name isEqualToString:@"use_playback_settings_crossfade"]) crossfadeFlag = shown;
         [text appendFormat:@"%@.%@ = %@\n", scope, name, shown];
     }
     // The core flag behind issue #62, as the server sent it, once a launch; live-config.txt shows a fetch without it.
-    if (crossfadeFlag && !loggedCrossfadeFlag) {
+    if (crossfadeFlag) {
         loggedCrossfadeFlag = YES;
         SGLog(@"premium: server sent playback-settings.use_playback_settings_crossfade = %@", crossfadeFlag);
     }
