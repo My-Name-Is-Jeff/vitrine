@@ -6,6 +6,7 @@
 // are not in yet it looks four times a second. The lock screen keeps the line it was left on until the
 // sound starts again.
 #import <MediaPlayer/MediaPlayer.h>
+#import <objc/runtime.h>
 #import "Core/SGCore.h"
 #import "LockScreenLyrics.h"
 #import "Shared/Lyrics/Lyrics.h"
@@ -57,14 +58,20 @@ static NSArray<NSArray<SGKaraokeWord *> *> *piecesOf(SGKaraokeLine *line) {
     return pieces;
 }
 
-// Piece `index` of `count` of a translation, split by its words as evenly as the line is: the translation has no
-// word times of its own, so each piece shows while the line's piece of that number does. One with fewer words than
-// pieces (Japanese, Chinese) shows whole, for the system to cut off.
-static NSString *translatedPiece(NSString *translation, NSUInteger count, NSUInteger index) {
-    NSArray<NSString *> *words = [translation componentsSeparatedByString:@" "];
-    if (count < 2 || words.count < count) return translation;
-    NSUInteger from = words.count * index / count, to = words.count * (index + 1) / count;
-    return [[words subarrayWithRange:NSMakeRange(from, to - from)] componentsJoinedByString:@" "];
+static char kTranslatedKey;
+
+// A line's translation as a line of its own, its words' times estimated over the line's, so piecesOf splits it
+// by its own length and its pieces turn over at the line's wakes. Made once for each translation the line has.
+static SGKaraokeLine *translatedLine(SGKaraokeLine *line) {
+    NSString *translation = line.translation;
+    if (!translation.length) return nil;
+    NSArray *made = objc_getAssociatedObject(line, &kTranslatedKey);
+    if (made.firstObject != translation) {
+        SGKaraokeLine *translated = SGKaraokeEstimatedLines(@[@(line.start), @(MAX(line.end, line.start))], @[translation, @""]).firstObject;
+        made = @[translation, translated ?: NSNull.null];
+        objc_setAssociatedObject(line, &kTranslatedKey, made, OBJC_ASSOCIATION_RETAIN);
+    }
+    return made.lastObject == NSNull.null ? nil : made.lastObject;
 }
 
 // Seconds into the track at `now`, run on from what Spotify last reported. A rate it left out runs at 1, as
@@ -77,8 +84,8 @@ static double elapsedAt(NSDictionary *info, CFAbsoluteTime reportedAt, CFAbsolut
 
 // nil between lines and for a track without synced lyrics, plain text included. Past a line's end by
 // SGKaraokeBreakMs, with the next line at least that far off, the artist comes back. With translations on, a
-// line that has one shows it instead. `wait` is the playback
-// time in seconds until it can change: kTick while it cannot be worked out yet, negative for not again.
+// line that has one shows it instead. `wait` is the playback time in seconds until it can change: kTick while it
+// cannot be worked out yet, negative for not again.
 static NSString *lineFor(NSDictionary *info, double elapsed, NSTimeInterval *wait) {
     *wait = kTick;
     SPTPlayerState *state = [(id<SPTPlayer>)SGKaraokePlayer() state];
@@ -102,14 +109,12 @@ static NSString *lineFor(NSDictionary *info, double elapsed, NSTimeInterval *wai
     if (index < 0) return nil;
     BOOL nextFarOff = index + 1 == (NSInteger)lines.count || lines[index + 1].start - position > SGKaraokeBreakMs;
     if (position > lines[index].end + SGKaraokeBreakMs && nextFarOff) return nil;
-    NSArray<NSArray<SGKaraokeWord *> *> *pieces = piecesOf(lines[index]);
-    NSUInteger shown = 0;
-    for (NSUInteger i = 1; i < pieces.count; i++) {
-        if (pieces[i].firstObject.start <= position) shown = i;
+    SGKaraokeLine *line = (sg_translation ? translatedLine(lines[index]) : nil) ?: lines[index];
+    NSString *shown = nil;
+    for (NSArray<SGKaraokeWord *> *piece in piecesOf(line)) {
+        if (!shown || piece.firstObject.start <= position) shown = textOf(piece);
     }
-    NSString *translation = sg_translation ? lines[index].translation : nil;
-    if (translation.length) return translatedPiece(translation, pieces.count, shown);
-    return textOf(pieces[shown]);
+    return shown;
 }
 
 // Spotify's info with the line in place of the artist, or its own artist for nil. The clock always moves

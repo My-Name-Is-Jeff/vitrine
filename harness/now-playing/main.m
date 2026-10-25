@@ -33,6 +33,7 @@ __attribute__((constructor)) static void underneath(void) {
 #pragma mark - stubs
 
 BOOL SGFlag(NSString *key, BOOL fallback) { return getenv("LSL") != NULL; }
+void SGPrefsChanged(void) {}
 
 @implementation SPTPlayerTrack {
 @public
@@ -122,6 +123,25 @@ static void progressBar(void) {
     SGNowPlayingSetExtras(@"haptics", nil, nil);
 }
 
+// Lock screen translation (on with LSL, as every flag is): a translation longer than the row is cut by its own
+// length, not the line's, and its pieces follow the line's clock.
+static void translation(void) {
+    MPNowPlayingInfoCenter *center = MPNowPlayingInfoCenter.defaultCenter;
+    NSArray<SGKaraokeLine *> *was = sg_lines;
+    SGKaraokeLine *line = lineOf(@"Hola", 0, 4000);
+    line.translation = @"This translation runs well past what the lock screen's artist row holds";
+    sg_lines = @[line];
+    center.nowPlayingInfo = spotifyInfo(@"Song", 0, 0);
+    NSString *first = sg_system[MPMediaItemPropertyArtist];
+    check(first.length > 0 && first.length <= 30 && [line.translation hasPrefix:first],
+          [NSString stringWithFormat:@"the translation's first piece shows: \"%@\"", first]);
+    center.nowPlayingInfo = spotifyInfo(@"Song", 3.9, 0);
+    NSString *last = sg_system[MPMediaItemPropertyArtist];
+    check(last.length > 0 && last.length <= 30 && [line.translation hasSuffix:last],
+          [NSString stringWithFormat:@"its last piece shows by the line's end: \"%@\"", last]);
+    sg_lines = was;
+}
+
 // Two tracks with one title: what the first had must not stay on the second's info once it is cleared.
 static void sameTitle(void) {
     MPNowPlayingInfoCenter *center = MPNowPlayingInfoCenter.defaultCenter;
@@ -171,6 +191,7 @@ int main(void) {
         BOOL lyrics = getenv("LSL") != NULL;
         printf("lock screen lyrics %s\n", lyrics ? "on" : "off");
         if (lyrics) progressBar();
+        if (lyrics) translation();
         sameTitle();
         printf(failures ? "%d failed\n" : "all passed\n", failures);
         return failures ? 1 : 0;

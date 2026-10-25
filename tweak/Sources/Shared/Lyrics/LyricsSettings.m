@@ -40,7 +40,9 @@ SGModRow *SGLockScreenLyricsRow(void) {
 }
 
 SGModRow *SGLockScreenTranslationRow(void) {
-    return SGOptionRow(@"Lock screen translation", @"The line's translation in its place, when the lyrics have one", SGKeyLockScreenTranslation);
+    SGModRow *row = SGOptionRow(@"Lock screen translation", @"The line's translation in its place, when the lyrics have one", SGKeyLockScreenTranslation);
+    row.waitsOn = SGKeyLockScreenLyrics;
+    return row;
 }
 
 SGModRow *SGLyricsTranslationLanguageRow(void) {
