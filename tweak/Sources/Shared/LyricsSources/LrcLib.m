@@ -68,7 +68,7 @@ static NSArray<SGKaraokeLine *> *linesFromLRC(NSString *lrc) {
 // Without word sync a record's Lyricsfile only repeats its LRC's line times, so it is not read.
 // Whether a record has words to read: it says it times them, and it is not an instrumental.
 static BOOL timesWords(NSDictionary *record) {
-    return [record isKindOfClass:NSDictionary.class] && [record[@"hasWordSync"] isEqual:@YES] && ![record[@"instrumental"] boolValue];
+    return [record isKindOfClass:NSDictionary.class] && [record[@"hasWordSync"] isEqual:@YES] && ![record[@"instrumental"] isEqual:@YES];
 }
 
 static SGLyricsResult *syncedResult(NSArray<SGKaraokeLine *> *lines) {
@@ -102,11 +102,16 @@ SGLyricsResult *SGLyricsPlainResult(NSArray<NSString *> *rows) {
     return result;
 }
 
+static NSInteger secondsIn(NSDictionary *record) {
+    id duration = record[@"duration"];
+    return [duration respondsToSelector:@selector(doubleValue)] ? (NSInteger)[duration doubleValue] : 0;
+}
+
 // wordLines: the record's Lyricsfile as lines, nil when it has none that reads.
 static SGLyricsResult *resultFrom(NSDictionary *record, NSArray<SGKaraokeLine *> *wordLines) {
     if (![record isKindOfClass:NSDictionary.class]) return nil;
     SGLyricsResult *result = [SGLyricsResult new];
-    result.instrumental = [record[@"instrumental"] boolValue];
+    result.instrumental = [record[@"instrumental"] isEqual:@YES];
     if (result.instrumental) return result;
     id synced = record[@"syncedLyrics"], plain = record[@"plainLyrics"];
     SGLyricsResult *worded = syncedResult(wordLines);
@@ -133,9 +138,10 @@ static BOOL betterRecord(NSDictionary *record, NSDictionary *best, NSInteger sec
     BOOL wasSynced = [best[@"syncedLyrics"] isKindOfClass:NSString.class] && [best[@"syncedLyrics"] length];
     if (synced != wasSynced) return synced;
     if (seconds > 0) {
-        NSInteger off = labs((NSInteger)[record[@"duration"] doubleValue] - seconds);
-        NSInteger wasOff = labs((NSInteger)[best[@"duration"] doubleValue] - seconds);
-        return off < wasOff;
+        NSInteger length = secondsIn(record), wasLength = secondsIn(best);
+        NSInteger off = length > 0 ? labs(length - seconds) : NSIntegerMax;
+        NSInteger wasOff = wasLength > 0 ? labs(wasLength - seconds) : NSIntegerMax;
+        if (off != wasOff) return off < wasOff;
     }
     NSString *text = record[@"syncedLyrics"] ?: record[@"plainLyrics"] ?: @"";
     NSString *wasText = best[@"syncedLyrics"] ?: best[@"plainLyrics"] ?: @"";
@@ -149,7 +155,7 @@ static NSArray<NSDictionary *> *matching(id found, SGLyricsQuery *query) {
     NSMutableArray<NSDictionary *> *records = [NSMutableArray array];
     for (NSDictionary *record in [found isKindOfClass:NSArray.class] ? found : @[]) {
         if (![record isKindOfClass:NSDictionary.class]) continue;
-        NSInteger length = (NSInteger)[record[@"duration"] doubleValue];
+        NSInteger length = secondsIn(record);
         if (query.seconds > 0 && length > 0 && labs(length - query.seconds) > kLengthSlack) continue;
         NSString *artists = [record[@"artistName"] isKindOfClass:NSString.class] ? record[@"artistName"] : @"";
         if (!SGLyricsSongRank(query.title, query.artist, record[@"trackName"], @[artists])) continue;

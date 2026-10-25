@@ -36,7 +36,8 @@ SGLyricsAsk SGUnisonAsk = ^(SGLyricsQuery *query, void (^done)(SGLyricsResult *r
             done(nil);
             return;
         }
-        NSInteger length = [data[@"duration"] integerValue];
+        id duration = data[@"duration"];
+        NSInteger length = [duration respondsToSelector:@selector(integerValue)] ? [duration integerValue] : 0;
         if (query.seconds > 0 && length > 0 && labs(length - query.seconds) > kLengthSlack) {
             SGLog(@"unison: %@ is %lds against the track's %lds", query.title, (long)length, (long)query.seconds);
             done(nil);

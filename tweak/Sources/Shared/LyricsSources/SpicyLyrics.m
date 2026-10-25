@@ -92,7 +92,7 @@ static SGKaraokeLine *syllableLine(NSDictionary *part, NSString *field) {
         word.end = MAX(ms(syllable[@"EndTime"]), word.start);
         word.joined = words.count && runsOn;
         [words addObject:word];
-        runsOn = [syllable[@"IsPartOfWord"] boolValue];
+        runsOn = [syllable[@"IsPartOfWord"] isEqual:@YES];
     }
     if (!words.count) return nil;
     SGKaraokeLine *line = [SGKaraokeLine new];
@@ -126,7 +126,7 @@ static NSArray<SGKaraokeLine *> *syllableLines(NSArray *content) {
         NSDictionary *lead = item[@"Lead"];
         SGKaraokeLine *line = syllableLine(lead, @"Text");
         if (!line) continue;
-        line.align = [item[@"OppositeAligned"] boolValue] ? SGKaraokeAlignTrailing : SGKaraokeAlignLeading;
+        line.align = [item[@"OppositeAligned"] isEqual:@YES] ? SGKaraokeAlignTrailing : SGKaraokeAlignLeading;
         // A line can have several background phrases; the view has one backing line, so they share it,
         // and their translations join the lead's.
         NSMutableArray *backing = [NSMutableArray array];
@@ -174,7 +174,7 @@ static NSArray<SGKaraokeLine *> *lineLines(NSArray *content) {
     NSArray<SGKaraokeLine *> *lines = SGKaraokeEstimatedLines(starts, texts);
     // Breaks were left out of kept, so the lines and kept pair up one to one.
     for (NSUInteger i = 0; i < lines.count && i < kept.count; i++) {
-        if ([kept[i][@"OppositeAligned"] boolValue]) lines[i].align = SGKaraokeAlignTrailing;
+        if ([kept[i][@"OppositeAligned"] isEqual:@YES]) lines[i].align = SGKaraokeAlignTrailing;
         lines[i].pronunciation = SGLyricsPronunciation(nil, stringIn(kept[i], @"TransliteratedText"), lines[i]);
         lines[i].translation = translationOf(stringIn(kept[i], @"TranslatedText"), lines[i]);
     }

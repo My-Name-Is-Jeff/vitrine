@@ -83,6 +83,11 @@ static void tryLyrics(NSArray<NSNumber *> *songs, NSUInteger index, void (^done)
     });
 }
 
+static NSInteger secondsIn(NSDictionary *song) {
+    id duration = song[@"duration"];
+    return [duration respondsToSelector:@selector(integerValue)] ? [duration integerValue] / 1000 : 0;
+}
+
 // A recording is only taken when its length is this close to the track's, so the words fall on the
 // same beat as the recording Spotify is playing.
 SGLyricsAsk SGNetEaseAsk = ^(SGLyricsQuery *query, void (^done)(SGLyricsResult *result)) {
@@ -107,7 +112,9 @@ SGLyricsAsk SGNetEaseAsk = ^(SGLyricsQuery *query, void (^done)(SGLyricsResult *
         id songs = [root[@"result"] isKindOfClass:NSDictionary.class] ? root[@"result"][@"songs"] : nil;
         NSMutableArray<NSDictionary *> *fitting = [NSMutableArray array];
         for (NSDictionary *song in [songs isKindOfClass:NSArray.class] ? songs : @[]) {
-            if (![song isKindOfClass:NSDictionary.class] || labs([song[@"duration"] integerValue] / 1000 - seconds) > kLengthSlack) continue;
+            if (![song isKindOfClass:NSDictionary.class] || ![song[@"id"] respondsToSelector:@selector(stringValue)]) continue;
+            NSInteger length = secondsIn(song);
+            if (length <= 0 || labs(length - seconds) > kLengthSlack) continue;
             id artists = song[@"artists"];
             for (NSDictionary *credited in [artists isKindOfClass:NSArray.class] ? artists : @[]) {
                 NSString *name = [credited isKindOfClass:NSDictionary.class] && [credited[@"name"] isKindOfClass:NSString.class] ? [credited[@"name"] lowercaseString] : nil;
@@ -118,7 +125,7 @@ SGLyricsAsk SGNetEaseAsk = ^(SGLyricsQuery *query, void (^done)(SGLyricsResult *
             }
         }
         [fitting sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
-            return [@(labs([a[@"duration"] integerValue] / 1000 - seconds)) compare:@(labs([b[@"duration"] integerValue] / 1000 - seconds))];
+            return [@(labs(secondsIn(a) - seconds)) compare:@(labs(secondsIn(b) - seconds))];
         }];
         NSArray *ids = [[fitting valueForKey:@"id"] subarrayWithRange:NSMakeRange(0, MIN(fitting.count, kTriedSongs))];
         if (!ids.count) SGLog(@"netease: no recording of %@ by %@ within %lds of %lds", title, lead, (long)kLengthSlack, (long)seconds);
