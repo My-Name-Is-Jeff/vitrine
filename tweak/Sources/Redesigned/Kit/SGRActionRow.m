@@ -331,7 +331,8 @@ static BOOL indicatorOn(UIView *button, BOOL *found) {
 
 // Reads the state again every `interval` seconds; 0 stops.
 - (void)sgr_followDownload:(NSTimeInterval)interval {
-    if (interval <= 0) {
+    // A layout while Spotify plays in the background feeds the button too; becoming active reads it again.
+    if (interval <= 0 || UIApplication.sharedApplication.applicationState != UIApplicationStateActive) {
         [_downloadTimer invalidate];
         _downloadTimer = nil;
         return;
