@@ -143,9 +143,12 @@ static void watch(UIView *view, const void *key, void (^laidOut)(UIView *view)) 
     AVPlayerLayer *_motion;
     AVQueuePlayer *_player;
     AVPlayerLooper *_looper;
+    BOOL _motionOn;   // what the player was last asked, so a scroll's steps ask it nothing again
+    __weak UIScrollView *_list;   // the page's list, watched for the hero scrolling off the screen and back
 }
 
 static void *kReadyContext = &kReadyContext;
+static void *kListContext = &kListContext;
 
 - (instancetype)initWithFrame:(CGRect)frame {
     if (!(self = [super initWithFrame:frame])) return nil;
@@ -197,6 +200,7 @@ static void *kReadyContext = &kReadyContext;
 
 - (void)dealloc {
     [NSNotificationCenter.defaultCenter removeObserver:self];
+    [_list removeObserver:self forKeyPath:@"contentOffset" context:kListContext];
     [self sgr_dropMotion];
 }
 
@@ -295,6 +299,8 @@ static void *kReadyContext = &kReadyContext;
     _motion.opacity = 0;
     [self.layer addSublayer:_motion];
     [_motion addObserver:self forKeyPath:@"readyForDisplay" options:NSKeyValueObservingOptionInitial context:kReadyContext];
+    _motionOn = NO;
+    [self sgr_watchList];
     [self sgr_updateMotion];
     SGLog(@"redesign album: animated cover %@", file.lastPathComponent);
 }
@@ -308,6 +314,10 @@ static void *kReadyContext = &kReadyContext;
 }
 
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
+    if (context == kListContext) {
+        [self sgr_updateMotion];
+        return;
+    }
     if (context != kReadyContext) {
         [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
         return;
@@ -345,17 +355,37 @@ static void *kReadyContext = &kReadyContext;
 
 // The clip moves under the conditions the player's does (Player/PlayerMotion.x), and only with Auto-Play
 // Video Previews on; otherwise it holds its frame. Off screen it stops: an album page left on the
-// navigation stack would otherwise keep decoding.
+// navigation stack would otherwise keep decoding, and so would one scrolled down to its tracks, where the
+// hero is above the top of the screen. Scrolled back, the clip goes on from the frame it stopped on.
 - (void)sgr_updateMotion {
     BOOL front = UIApplication.sharedApplication.applicationState == UIApplicationStateActive;
-    BOOL may = self.window && front && !SGRReduceMotion() && !NSProcessInfo.processInfo.lowPowerModeEnabled
+    UIWindow *window = self.window;
+    BOOL seen = window && CGRectIntersectsRect([self convertRect:self.bounds toView:window], window.bounds);
+    BOOL may = seen && front && !SGRReduceMotion() && !NSProcessInfo.processInfo.lowPowerModeEnabled
             && UIAccessibilityIsVideoAutoplayEnabled();
+    if (may == _motionOn) return;
+    _motionOn = may;
     if (may) [_player play];
     else [_player pause];
 }
 
+// The hero scrolls with the header, so the page's list is where its leaving the screen is heard: its offset,
+// watched while the hero has a clip and is in a window, and let go when either goes. A hero with no clip, which
+// every album page has, costs the scroll nothing.
+- (void)sgr_watchList {
+    UIScrollView *list = nil;
+    for (UIView *v = _player && self.window ? self.superview : nil; v && !list; v = v.superview) {
+        if ([v isKindOfClass:UIScrollView.class]) list = (UIScrollView *)v;
+    }
+    if (list == _list) return;
+    [_list removeObserver:self forKeyPath:@"contentOffset" context:kListContext];
+    _list = list;
+    [list addObserver:self forKeyPath:@"contentOffset" options:0 context:kListContext];
+}
+
 - (void)didMoveToWindow {
     [super didMoveToWindow];
+    [self sgr_watchList];
     [self sgr_updateMotion];
 }
 
