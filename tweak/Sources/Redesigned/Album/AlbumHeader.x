@@ -420,7 +420,7 @@ static NSString *metadataText(UIView *metadata) {
 static void applyHeader(UIView *header, UIView *page);
 
 // The Kit's view over the whole header, its content on the header's bottom edge; Spotify's own column goes.
-static SGRHeaderInfo *applyInfo(UIView *header, UIView *page) {
+static SGRHeaderInfo *applyInfo(UIView *header, UIView *page, NSString **artist, NSString **album) {
     SGRHeaderInfo *info = objc_getAssociatedObject(header, &kInfoKey);
     if (!info) {
         info = [[SGRHeaderInfo alloc] initWithFrame:CGRectZero];
@@ -445,11 +445,12 @@ static SGRHeaderInfo *applyInfo(UIView *header, UIView *page) {
     }
     UIView *parent = SGRFindByIdentifier(header, @"CreativeWorkPlatform.Components.UI.ParentRow", &kParentKey);
     UIView *metadata = SGRFindByIdentifier(header, @"Components.UI.MetadataRow", &kMetaKey);
-    NSString *length = metadataText(metadata);
-    [info showTitle:firstText(title) creator:firstText(parent) ?: trimmed(parent.accessibilityLabel)
-             length:length about:nil];
+    NSString *length = metadataText(metadata), *line = firstText(parent);
+    *album = firstText(title);
+    *artist = line ?: trimmed(parent.accessibilityLabel);
+    [info showTitle:*album creator:*artist length:length about:nil];
     // The line as it reads, without the accessibility label to fall back on: no line, no row loses its artist.
-    SGRAlbumSetArtist(page, firstText(parent));
+    SGRAlbumSetArtist(page, line);
     // The kind and the date are cells the metadata row's collection view makes on its own pass, after the
     // header's, and nothing lays the header out again when they arrive; the collection is Spotify's own Swift
     // class, which cannot be watched. So an empty row is read again a moment later, a few times at most.
@@ -566,7 +567,8 @@ static void applyHeader(UIView *header, UIView *page) {
     if (!SGRFindByIdentifier(header, @"CreativeWorkPlatform.Components.UI.TitleRow", &kTitleKey)) return;
     SGRAlbumHoldPage(page);
     applyWash(page);
-    SGRHeaderInfo *info = applyInfo(header, page);
+    NSString *artist, *album;
+    SGRHeaderInfo *info = applyInfo(header, page, &artist, &album);
 
     // The picture reaches to where the content's top is at rest, plus the title and the artist. The header at
     // rest is the tallest it has been, so the picture does not change size as the header loads or scrolls.
@@ -576,9 +578,7 @@ static void applyHeader(UIView *header, UIView *page) {
     UIView *cover = SGRFindByIdentifier(header, @"CreativeWorkPlatform.Components.UI.ArtWorkElement.WithCoverArt", &kCoverKey);
     if (cover) applyHero(header, cover, bottom);
     SGRAlbumHero *hero = objc_getAssociatedObject(header, &kHeroKey);
-    UIView *title = SGRFindByIdentifier(header, @"CreativeWorkPlatform.Components.UI.TitleRow", &kTitleKey);
-    UIView *parent = SGRFindByIdentifier(header, @"CreativeWorkPlatform.Components.UI.ParentRow", &kParentKey);
-    [hero playMotionForArtist:firstText(parent) ?: trimmed(parent.accessibilityLabel) album:firstText(title)];
+    [hero playMotionForArtist:artist album:album];
 }
 
 static void applyPage(UIView *page) {

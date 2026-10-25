@@ -31,7 +31,7 @@ static const NSTimeInterval kSpinnerCheck = 0.6;
 // one sent before the player caught up, for this long; after it the player's word is final.
 static const NSTimeInterval kTapTrust = 1.2;
 
-static char kPreviousKey, kNextKey, kPlayKey, kGlyphKey, kTakeKey, kRemainingKey;
+static char kPreviousKey, kNextKey, kPlayKey, kGlyphKey, kTakeKey, kRemainingKey, kRowKey;
 static __weak UIView *sg_playView;
 static __weak UIButton *sg_playButton;
 static CFTimeInterval sg_tappedUntil;
@@ -183,7 +183,7 @@ void SGRPlayerPlayGlyphIn(UIView *host) {
     UIView *host = ((UIViewController *)self).viewIfLoaded;
     if (!host) return;
     // The unit lays out before its row does, and the glyphs are centered on the buttons in it.
-    [SGRowIn(host) layoutIfNeeded];
+    [SGFindRemembered(host, &kRowKey, ^BOOL(UIView *v) { return SGIsRow(v); }) layoutIfNeeded];
     skipGlyph(host, @"SPTNowPlayingPreviousTrackButton", &kPreviousKey, @"backward.fill");
     skipGlyph(host, @"SPTNowPlayingNextTrackButton", &kNextKey, @"forward.fill");
     SGRPlayerPlayGlyphIn(host);

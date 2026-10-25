@@ -45,7 +45,7 @@ static const CGFloat kVolumeMargin = 24;
 // And the controls go up this much over it, so the gaps above and below the volume row match.
 static const CGFloat kVolumeLift = 10;
 
-static char kConnectKey, kShareKey, kTrimmerKey, kSharedByKey, kQueueKey, kLyricsGlyphKey, kReachKey;
+static char kConnectKey, kShareKey, kTrimmerKey, kSharedByKey, kQueueKey, kLyricsGlyphKey, kReachKey, kRowKey;
 static __weak SGRGlyphButton *sg_lyricsGlyph;
 
 // The view the footer's stack view arranges around `view`.
@@ -273,7 +273,7 @@ void SGRPlayerLowerRow(UIView *row) {
     UIView *host = ((UIViewController *)self).viewIfLoaded;
     if (!host) return;
     // The unit lays out before its row does, and the moves are measured from where the row put things.
-    [SGRowIn(host) layoutIfNeeded];
+    [SGFindRemembered(host, &kRowKey, ^BOOL(UIView *v) { return SGIsRow(v); }) layoutIfNeeded];
     CGFloat width = host.bounds.size.width, middleY = CGRectGetMidY(host.bounds);
     BOOL rtl = host.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft;
 

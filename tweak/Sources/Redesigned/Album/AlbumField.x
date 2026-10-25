@@ -40,22 +40,57 @@ static char kFieldKey;
 
 #pragma mark - the page
 
+// Where a cell of a list is: the page it is on, and whether it is a row of the page's own list rather than a card
+// inside one of its carousels -- a card is a cell of the same class, and the row that carries the carousel decides
+// for it (Artist/ArtistSections.x). Worked out once the cell is in a window and kept on it, since a cell never
+// leaves its list nor the list its page; every cell of the class asks on every pass, Home's and Search's included.
+@interface SGRAlbumPlace : NSObject
+@property (nonatomic, weak) UIView *page;
+@property (nonatomic) BOOL pageCell;
+// pagesFound when no page was found: a cell measured before Spotify names its page looks again once one turns up.
+@property (nonatomic) NSInteger pagesFound;
+@end
+
+@implementation SGRAlbumPlace
+@end
+
+static char kPlaceKey;
+static NSInteger pagesFound;
+static __weak UIView *lastPage;
+
+static SGRAlbumPlace *placeOf(UIView *cell) {
+    SGRAlbumPlace *place = objc_getAssociatedObject(cell, &kPlaceKey);
+    if (place.page || (place && place.pagesFound == pagesFound)) return place;
+    place = [SGRAlbumPlace new];
+    BOOL nested = NO;
+    for (UIView *v = cell; v; v = v.superview) {
+        if (v != cell && [v isKindOfClass:UICollectionViewCell.class]) nested = YES;
+        if ([v.accessibilityIdentifier isEqualToString:kPageIdentifier]) {
+            place.page = v;
+            place.pageCell = !nested;
+            break;
+        }
+    }
+    if (place.page && place.page != lastPage) {
+        lastPage = place.page;
+        pagesFound++;
+    }
+    place.pagesFound = pagesFound;
+    if (cell.window) objc_setAssociatedObject(cell, &kPlaceKey, place, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return place;
+}
+
 UIView *SGRAlbumPageOf(UIView *view) {
+    if ([view isKindOfClass:UICollectionViewCell.class]) return placeOf(view).page;
     for (UIView *v = view; v; v = v.superview) {
         if ([v.accessibilityIdentifier isEqualToString:kPageIdentifier]) return v;
     }
     return nil;
 }
 
-// A cell of the page's own list rather than a card inside one of its carousels: a card is a cell of the
-// same class, and the row that carries the carousel decides for it (Artist/ArtistSections.x). So the walk
-// up to the page stops at the first cell it meets on the way.
 static BOOL isPageCell(UIView *cell) {
-    for (UIView *v = cell.superview; v; v = v.superview) {
-        if ([v isKindOfClass:UICollectionViewCell.class]) return NO;
-        if ([v.accessibilityIdentifier isEqualToString:kPageIdentifier]) return YES;
-    }
-    return NO;
+    SGRAlbumPlace *place = placeOf(cell);
+    return place.pageCell && place.page;
 }
 
 #pragma mark - the page's field
