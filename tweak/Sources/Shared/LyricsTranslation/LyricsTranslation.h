@@ -24,6 +24,9 @@ NSArray<SGModRow *> *SGOnDeviceTranslatorRows(void);
 // is kept in the Keychain beside its key, not here. All read at each translation.
 #define SGKeyAITranslator @"spotifyglass.lyrics.ai"
 #define SGKeyAIPrompt @"spotifyglass.lyrics.prompt"
+// Gemini's thinking level (unset: low) and the request timeout in seconds for every provider (unset: 120).
+#define SGKeyAIThinking @"spotifyglass.lyrics.gemini.thinking"
+#define SGKeyAITimeout @"spotifyglass.lyrics.ai.timeout"
 
 // Who made a translation: an AI provider's id with its model, or one of the two on the iPhone. A translation
 // saved before sources were kept has neither, and reads as unknown.
