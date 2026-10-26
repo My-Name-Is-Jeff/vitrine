@@ -1,6 +1,7 @@
 // Artist redesign: the header the playlist and album pages have. The photo runs full bleed across the top
-// of the page and dissolves into the page's color; the name and the monthly listeners are centered on the
-// bottom of that dissolve; and under them one row -- shuffle, a white Play capsule, and Follow.
+// of the page and dissolves into the page's field, stretching when the page is pulled down (the Kit's
+// SGRStretchHero); the name and the monthly listeners are centered on the bottom of that dissolve; and under
+// them one row -- shuffle, a white Play capsule, and Follow.
 //
 // Tree (trees/clean/artist/01.txt:37-170). The header is TemplateKit's HeaderContainer, 568pt, the first view
 // of the page's stack, holding an element view that holds the ImageHeaderView:
@@ -33,9 +34,7 @@
 #import "Redesigned/Album/Album.h"
 #import "Artist.h"
 
-// How much of the photo's height the dissolve into the field covers, and the scrim over the top of it that
-// keeps the status bar and the back button legible on a bright picture. The playlist's and the album's.
-static const CGFloat kDissolve = 0.46, kTopScrim = 140, kTopScrimAlpha = 0.28;
+// The dissolve and the scrim are the Kit's stretching hero's (SGRStretchHero.h), the playlist's and the album's.
 // A photo view narrower than this is a placeholder glyph, and a picture shorter than this one mid load.
 static const CGFloat kMinCover = 80, kMinHero = 120;
 // The collapsed ImageHeaderView, Spotify's navigation bar; the text fades out over the last kFade before it.
@@ -101,130 +100,32 @@ static UIView *containerOf(UIView *header) {
 
 #pragma mark - the photo, full bleed
 
-// The picture across the top of the page with the field showing through the bottom of it: a scrim over the
-// top for the status bar, and its bottom masked away, as the playlist's and the album's are (issue #169: a
-// fade to the field's flat color showed as an edge pulled down, where the still field is fading to black).
-//
-// Pulled down past the top, the hero grows upward by as much (-sgr_place), so the photo stays one piece with
-// the name and the list under it and zooms in, as the Music app's does, rather than sliding down and leaving
-// the field showing above it.
-@interface SGRArtistHero : UIView
+// The picture across the top of the page with the field showing through the bottom of it: the Kit's stretching
+// hero (SGRStretchHero.h), whose bottom is masked away as the playlist's and the album's are, under a scrim for
+// the status bar. Pulled down past the top, it grows upward by as much, so the photo stays one piece with the
+// name and the list under it and zooms in, as the Music app's does, rather than sliding down and leaving the
+// field showing above it (issue #169). The photo fills the hero's content, so a pull only resizes it.
+@interface SGRArtistHero : SGRStretchHero
 @property (nonatomic, readonly) UIImageView *picture;
-// The hero's height at rest, from the container (applyHero); -sgr_place adds the pull to it.
-@property (nonatomic) CGFloat restHeight;
 // The photo in Spotify's artwork view, and every photo it puts there afterward: the hero keeps itself
 // right, rather than being handed a picture on each of the header's passes and staying empty between them.
 // The same view again only re-reads it.
 - (void)followArtwork:(UIImageView *)source;
-// Its frame in the container: the top of it and restHeight at rest, and pulled down past the top of the list,
-// from the top of the list's bounds down to the same bottom. Called on the header's passes and on every change
-// of the list's offset, and it writes nothing unless the frame changed.
-- (void)sgr_place;
 @end
 
-static void *kArtistListContext = &kArtistListContext;
-
 @implementation SGRArtistHero {
-    CAGradientLayer *_scrim, *_dissolve;   // the dissolve is the layer's mask
     __weak UIImageView *_artwork;
-    __weak UIScrollView *_list;   // the page's list, watched for the pull at its top while the hero is in a window
-    CGFloat _stretch;   // how far the list is pulled down past its top, which the hero grows upward by
 }
 
 - (instancetype)initWithFrame:(CGRect)frame {
     if (!(self = [super initWithFrame:frame])) return nil;
-    self.userInteractionEnabled = NO;
-    self.accessibilityElementsHidden = YES;
-    self.clipsToBounds = YES;
-
+    self.logName = @"artist";
     _picture = [[UIImageView alloc] initWithFrame:self.bounds];
     _picture.contentMode = UIViewContentModeScaleAspectFill;
     _picture.clipsToBounds = YES;
     _picture.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    [self addSubview:_picture];
-
-    _scrim = [CAGradientLayer layer];
-    _scrim.zPosition = 1;
-    _scrim.colors = @[(id)[UIColor colorWithWhite:0 alpha:kTopScrimAlpha].CGColor, (id)UIColor.clearColor.CGColor];
-    [self.layer addSublayer:_scrim];
-
-    // Opaque down to the dissolve, then down to nothing on the curve the color fade had: 0.28 of the photo
-    // left at 0.62 of the way.
-    _dissolve = [CAGradientLayer layer];
-    _dissolve.colors = @[(id)UIColor.blackColor.CGColor, (id)UIColor.blackColor.CGColor,
-                         (id)[UIColor colorWithWhite:0 alpha:0.28].CGColor, (id)UIColor.clearColor.CGColor];
-    self.layer.mask = _dissolve;
+    [self.content addSubview:_picture];
     return self;
-}
-
-- (void)dealloc {
-    [_list removeObserver:self forKeyPath:@"contentOffset" context:kArtistListContext];
-}
-
-- (void)layoutSubviews {
-    [super layoutSubviews];
-    CGRect bounds = self.bounds;
-    // Pulled down, the hero is `stretch` taller than at rest: the photo fills it and so zooms in, and the
-    // dissolve keeps its rest height on the bottom, where the name is.
-    CGFloat stretch = MAX(0, MIN(_stretch, bounds.size.height - 1)), rest = bounds.size.height - stretch;
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];
-    _scrim.frame = CGRectMake(0, 0, bounds.size.width, MIN(kTopScrim, bounds.size.height));
-    CGFloat height = MAX(1, bounds.size.height), fade = round(rest * kDissolve);
-    _dissolve.frame = bounds;
-    _dissolve.locations = @[@0, @((height - fade) / height), @((height - fade * 0.38) / height), @1];
-    [CATransaction commit];
-}
-
-- (void)sgr_place {
-    UIView *container = self.superview;
-    if (!container || _restHeight < kMinHero || container.bounds.size.width < 1) return;
-    UIScrollView *list = _list;
-    CGFloat pull = list ? MAX(0, -(list.contentOffset.y + list.adjustedContentInset.top)) : 0;
-    if (fabs(pull - _stretch) > 0.01) {
-        _stretch = pull;
-        [self setNeedsLayout];
-    }
-    CGRect frame = CGRectMake(0, -pull, container.bounds.size.width, _restHeight + pull);
-    if (!CGRectEqualToRect(self.frame, frame)) self.frame = frame;
-    static BOOL logged;
-    if (!logged && pull > 24) {
-        logged = YES;
-        // Above the container's top is outside it: a view on the way to the list that clips would cut the stretch off.
-        UIView *clips = nil;
-        for (UIView *v = container; v && v != list && !clips; v = v.superview) {
-            if (v.clipsToBounds) clips = v;
-        }
-        SGLog(@"redesign artist: hero stretched %.0fpt over the pull, %@", pull,
-              clips ? [NSString stringWithFormat:@"cut off by %@", NSStringFromClass(clips.class)] : @"nothing clips it");
-    }
-}
-
-// The container scrolls with the page, so the page's list is where the pull at its top is heard: its offset,
-// watched while the hero is in a window and let go when it leaves. A step that is not a pull costs a comparison.
-- (void)sgr_watchList {
-    UIScrollView *list = nil;
-    for (UIView *v = self.window ? self.superview : nil; v && !list; v = v.superview) {
-        if ([v isKindOfClass:UIScrollView.class]) list = (UIScrollView *)v;
-    }
-    if (list == _list) return;
-    [_list removeObserver:self forKeyPath:@"contentOffset" context:kArtistListContext];
-    _list = list;
-    [list addObserver:self forKeyPath:@"contentOffset" options:0 context:kArtistListContext];
-    [self sgr_place];
-}
-
-- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
-    if (context != kArtistListContext) {
-        [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
-        return;
-    }
-    [self sgr_place];
-}
-
-- (void)didMoveToWindow {
-    [super didMoveToWindow];
-    [self sgr_watchList];
 }
 
 - (void)followArtwork:(UIImageView *)source {
@@ -369,9 +270,15 @@ static void applyHeader(UIView *header, BOOL full) {
     if (fabs(info.alpha - alpha) > 0.01) info.alpha = alpha;
 
     // The picture reaches to where the content's top is at rest, plus the name. The container keeps its
-    // height as the header collapses, and only ever grows as the page loads.
-    CGFloat rest = MAX([objc_getAssociatedObject(container, &kContainerHeightKey) doubleValue], container.bounds.size.height);
-    objc_setAssociatedObject(container, &kContainerHeightKey, @(rest), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    // height as the header collapses, and only ever grows as the page loads. Not while the page is pulled down
+    // past its top: should Spotify grow the container with the pull, that height is not the rest, and the hero
+    // would stay that much too tall once the page is let go.
+    CGFloat rest = [objc_getAssociatedObject(container, &kContainerHeightKey) doubleValue];
+    SGRArtistHero *hero = objc_getAssociatedObject(container, &kHeroKey);
+    if (container.bounds.size.height > rest && hero.pull <= 0) {
+        rest = container.bounds.size.height;
+        objc_setAssociatedObject(container, &kContainerHeightKey, @(rest), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
     CGFloat bottom = rest - SGRHeaderInfoBottom - [info contentHeightForWidth:container.bounds.size.width] + SGRHeaderInfoTitleRise;
     applyHero(container, artwork, bottom);
 }
