@@ -251,6 +251,12 @@ static void watchHold(UIView *tilt) {
 }
 
 %hook _TtC35CreativeWorkCommons_CoverArtTiltKit16CoverArtTiltView
+// Spotify moves the cover up or down in its band (the lyric preview under it), which lays out nothing of the field's.
+- (void)setCenter:(CGPoint)center {
+    %orig;
+    SGRPlayerFieldFollowCover();
+}
+
 - (void)layoutSubviews {
     UIView *tilt = (UIView *)self;
     BOOL player = inCoverCell(tilt);

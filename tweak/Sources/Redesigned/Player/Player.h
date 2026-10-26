@@ -47,7 +47,7 @@ typedef NS_ENUM(NSInteger, SGRPlayerBackgroundKind) {
     SGRPlayerBackgroundFluid,      // the artwork itself blurred and turning (SGRFluid.h)
     SGRPlayerBackgroundAnimated,   // the track's Canvas or Apple Music's animated cover, over Fluid (PlayerMotion.x)
     SGRPlayerBackgroundVisualiser, // a spectrum of the song over Fluid held still (PlayerVisualiser.m)
-    SGRPlayerBackgroundLiquid,     // the Fluid cover through a slow liquid warp on the GPU (SGRFluidWarp.h)
+    SGRPlayerBackgroundLiquid,     // rings of the cover's edges and its reflection, on the GPU (SGRFluidWarp.h)
 };
 // The player's ⋯ menu switches between Fluid and the ones after it, which share the Fluid field, without a restart.
 SGRPlayerBackgroundKind SGRPlayerBackground(void);
@@ -59,6 +59,8 @@ SGRArtworkField *SGRPlayerField(void);
 // Holds the field still, or lets it move, for what is over it now: a paused song, an Animated artwork clip, the
 // Visualizer (PlayerField.x).
 void SGRPlayerHoldField(void);
+// Places Liquid's rings around the cover again, once the current layout pass is over.
+void SGRPlayerFieldFollowCover(void);
 
 #pragma mark - the cover (PlayerArtwork.x)
 

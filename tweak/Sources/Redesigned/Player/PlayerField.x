@@ -58,9 +58,30 @@ static BOOL fieldHeld(void) {
     return SGPlayerState().isPaused || SGRPlayerMotionShowing() || SGRPlayerVisualiserShowing();
 }
 
+// Liquid's rings surround the cover where it is drawn. It scrolls with the field, so this changes only with the
+// paused shrink, the cover moving in its band, or a new layout of the cards.
+static void followCoverFrame(void) {
+    if (!sg_field.liquid) return;
+    // No cover showing (the lyrics, a video, mid-swipe): the rings stay where the cover last was.
+    CGRect cover = SGRPlayerCoverFrameIn(sg_field);
+    if (!CGRectIsNull(cover)) sg_field.coverRect = cover;
+}
+
+void SGRPlayerFieldFollowCover(void) {
+    static BOOL asked;
+    if (asked || !sg_field.liquid) return;
+    asked = YES;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        asked = NO;
+        followCoverFrame();
+    });
+}
+
 void SGRPlayerHoldField(void) {
     sg_field.motionHeld = fieldHeld();
     sg_field.liquid = SGRPlayerBackground() == SGRPlayerBackgroundLiquid;
+    // After the cover takes its paused or playing size, which the same change sets.
+    SGRPlayerFieldFollowCover();
 }
 
 #pragma mark - the field
@@ -123,6 +144,7 @@ static SGRArtworkField *fieldIn(UIView *plane) {
     if (field.superview != plane) [plane addSubview:field];
     else if (plane.subviews.lastObject != field) [plane bringSubviewToFront:field];
     if (!CGRectEqualToRect(field.frame, plane.bounds)) field.frame = plane.bounds;
+    followCoverFrame();
     SGRPlayerMotionFieldLaidOut();
     SGRPlayerVisualiserUpdate();
 }
@@ -176,6 +198,7 @@ static void publishCover(void) {
     %orig;
     sg_coverList = (UIScrollView *)self;
     publishCover();
+    followCoverFrame();
 }
 %end
 

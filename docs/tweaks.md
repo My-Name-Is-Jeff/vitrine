@@ -861,9 +861,11 @@ for Animated while the player has no clip, the card looks the playing track's up
 (SGMotionClipFor, the player's sources, size and Low Data Mode, into the store the player reads), Fluid until it
 is in, then the clip over it, poster first (harness/player/ `preview`);
 under it a segmented control of the six backgrounds (Still, Colors, Fluid, Animated, Visualizer, Liquid, changing the card
-at once; Liquid draws Fluid's blurred cover through a slow ripple shader on the GPU, Redesigned/Kit/SGRFluidWarp.h, from a
-display link of at most 30 frames a second that is down whenever Fluid would hold still, and is Fluid under Reduce Motion
-or Low Power Mode)
+at once; Liquid echoes the cover's edges outward as stepped, slowly waving rings of its edge colors that fade to black,
+with a dark rippling reflection under it, drawn by a fragment shader on the GPU around where Spotify draws the cover
+(SGRPlayerCoverFrameIn), Redesigned/Kit/SGRFluidWarp.h; a display link of at most 30 frames a second draws it and is down
+whenever Fluid would hold still, it draws nothing while the player is closed, and it is Fluid under Reduce Motion or Low
+Power Mode, without Metal, or if the shader does not compile)
 with a note on what the one picked does, Artwork sources and Download in Low Data Mode while Animated is chosen,
 while Fluid or Liquid is chosen its five sliders and a red Reset (Redesigned/Kit/SGRFluid.h, spotifyglass.redesign.fluid.*):
 Speed (25-300 %, how fast the four blurred copies turn, picked up from the angle each is at), Warp (0-100 %, how
