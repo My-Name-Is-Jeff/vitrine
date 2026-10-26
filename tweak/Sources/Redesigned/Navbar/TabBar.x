@@ -21,8 +21,8 @@
 #import <objc/message.h>
 
 static char kBarKey, kApartBarKey, kHostKey, kFadeKey;
-// On a UITabBarItem: the Encore icon of Spotify's view its image was drawn from unselected, and its selectedImage selected.
-static char kPlainIconKey, kLitIconKey;
+// On a UITabBarItem: the names of the Encore icons its image and selectedImage were drawn from (see fillBar).
+static char kGlyphNamesKey;
 static __weak UIView *sg_stockBar;
 static CGFloat sg_room, sg_glassHeight;   // see "room for the glass bar"
 // See "minimized". sg_keepApart holds the second bar on screen while the main one grows back under it.
@@ -112,32 +112,37 @@ static id encoreIconOf(UIView *view) {
     return type && type[0] == '@' ? object_getIvar(view, ivar) : nil;
 }
 
-// The filled variant of a tab's SPTEncoreIcon (-active, which fillBar's log prints), when it has one.
+// An SPTEncoreIcon's name, which is what tells two icons apart: Spotify may hand a view a new instance of the
+// same glyph. Nil for an icon that does not say.
+static NSString *iconName(id icon) {
+    id name = [icon respondsToSelector:@selector(name)] ? [icon name] : nil;
+    return [name isKindOfClass:NSString.class] ? name : nil;
+}
+
+// The filled variant of a tab's SPTEncoreIcon (-active, which fillBar's log prints), when it has one. A filled
+// icon has none: its -active is itself, or the same glyph again.
 static id activeVariantOf(id icon) {
     SEL selector = NSSelectorFromString(@"active");
     if (!icon || ![icon respondsToSelector:selector]) return nil;
     id variant = ((id (*)(id, SEL))objc_msgSend)(icon, selector);
-    return variant != icon && [variant isKindOfClass:[icon class]] ? variant : nil;
+    if (variant == icon || ![variant isKindOfClass:[icon class]]) return nil;
+    NSString *name = iconName(icon);
+    return name && [name isEqualToString:iconName(variant)] ? nil : variant;
 }
 
-// A tab's filled glyph is not an isActive state of its icon view: isActive only picks the view's colors. Spotify
-// gives the selected tab's view the filled SPTEncoreIcon in place of the outline one (#151: the glass bar's
-// selected tab stayed outlined, and showed filled only once minimizing made its item anew from the view). So the
-// filled glyph is drawn from the icon's filled variant where it has one, and fillBar draws each image again from
-// Spotify's view as the tab it shows turns selected or not. Both are drawn on an icon view of our own, off
-// screen, so the images do not wait for Spotify's views to lay out and paint, and UITabBar swaps image and
-// selectedImage itself.
-static UIImage *glyphOf(UIView *item, BOOL active) {
-    UIView *live = iconIn(item);
+// One glyph of a tab: `icon` drawn at the size of `live`, Spotify's icon view it came from. The caller picks the
+// icon, outline or filled, so the cache key names the glyph actually drawn and an outline drawing can never be
+// filed under a filled icon's name or the other way round. isActive only picks the view's colors, white either
+// way. Drawn on an icon view of our own, off screen, so the images do not wait for Spotify's views to lay out
+// and paint, and UITabBar swaps image and selectedImage itself.
+static UIImage *drawGlyph(UIView *live, id icon, BOOL active) {
     if (!live) return nil;
     CGSize size = live.bounds.size;
-    id icon = encoreIconOf(live);
-    if (active) icon = activeVariantOf(icon) ?: icon;
     Class viewClass = NSClassFromString(@"SPTEncoreIconView");
     if (icon && viewClass) {
         static NSCache<NSString *, UIImage *> *cache;
         if (!cache) cache = [NSCache new];
-        NSString *key = [NSString stringWithFormat:@"%@ %d %@", [icon respondsToSelector:@selector(name)] ? [icon name] : icon, active, NSStringFromCGSize(size)];
+        NSString *key = [NSString stringWithFormat:@"%@ %d %@", iconName(icon) ?: icon, active, NSStringFromCGSize(size)];
         UIImage *cached = [cache objectForKey:key];
         if (cached) return cached;
         SPTEncoreIconView *view = [[viewClass alloc] initWithIcon:icon];
@@ -154,6 +159,14 @@ static UIImage *glyphOf(UIView *item, BOOL active) {
     }
     // Tabs of the mod's own draw a UIImageView, or an icon Encore would not draw off screen.
     return size.width >= 2 ? renderLayer(live.layer, size) : nil;
+}
+
+// A tab's glyph from what its view holds now, the filled variant for the selected state where the icon has one.
+static UIImage *glyphOf(UIView *item, BOOL active) {
+    UIView *live = iconIn(item);
+    id icon = live ? encoreIconOf(live) : nil;
+    if (active) icon = activeVariantOf(icon) ?: icon;
+    return drawGlyph(live, icon, active);
 }
 
 // For the Tab bar page's list and preview: a tab of Spotify's drawn from its item on the bar, hidden or not,
@@ -463,6 +476,13 @@ static SGRSystemTabBar *makeBar(UIView *stockBar) {
     return bar;
 }
 
+// Setting a tab's image lays its bar's items out again, so an image is set only when it is another one: the glyph
+// cache hands back the same object for the same glyph.
+static void setGlyphs(UITabBarItem *item, UIImage *image, UIImage *selectedImage) {
+    if (image && item.image != image) item.image = image;
+    if (selectedImage && item.selectedImage != selectedImage) item.selectedImage = selectedImage;
+}
+
 // One bar's share of the tabs: its items, their glyphs and titles. YES while a glyph is still missing.
 static BOOL fillBar(SGRSystemTabBar *bar, NSArray<UIView *> *sources, BOOL hideLabels) {
     bar.tintColor = SGRAccent();
@@ -475,9 +495,9 @@ static BOOL fillBar(SGRSystemTabBar *bar, NSArray<UIView *> *sources, BOOL hideL
         for (UIView *source in sources) {
             UIView *live = iconIn(source);
             id icon = live ? encoreIconOf(live) : nil;
-            id variant = [icon respondsToSelector:NSSelectorFromString(@"active")] ? ((id (*)(id, SEL))objc_msgSend)(icon, NSSelectorFromString(@"active")) : nil;
+            id variant = activeVariantOf(icon);
             [out appendFormat:@"\n  %@: %@ icon %@ active-variant %@ live-isActive %d label-white %d", labelIn(source).text, NSStringFromClass(live.class),
-                 [icon respondsToSelector:@selector(name)] ? [icon name] : icon, [variant respondsToSelector:@selector(name)] ? [variant name] : variant,
+                 iconName(icon) ?: icon, iconName(variant) ?: variant,
                  [live respondsToSelector:@selector(isActive)] ? [(SPTEncoreIconView *)live isActive] : -1, isActive(source)];
         }
         SGLogLong(@"navbar", out);
@@ -486,26 +506,22 @@ static BOOL fillBar(SGRSystemTabBar *bar, NSArray<UIView *> *sources, BOOL hideL
     BOOL missing = NO;
     for (NSUInteger i = 0; i < sources.count; i++) {
         UITabBarItem *item = bar.items[i];
-        // Spotify's view holds the outline icon while its tab is not selected and the filled one while it is, so
-        // image is drawn again whenever the view holds a new icon unselected, and selectedImage selected. Until a
-        // tab has been seen in a state, the other state's drawing stands in. Tabs of the mod's own have no Encore
-        // icon and are drawn once.
+        // A tab's filled glyph is not an isActive state of its icon view: Spotify gives the selected tab's view the
+        // filled SPTEncoreIcon in place of the outline one (#151: the glass bar's selected tab stayed outlined, and
+        // showed filled only once minimizing made its item anew). So both images come from the icon the view holds,
+        // known by the icon itself and never by the label's color, which Spotify repaints apart from the icon: an
+        // outline icon gives image and its -active variant selectedImage, and a filled one, or one with no variant,
+        // gives both, which is right for the state it is shown in. The item keeps the names it was drawn from, so it
+        // is drawn again only when the view holds an icon outside them: a filled icon whose outline drew the item
+        // changes nothing. Tabs of the mod's own have no Encore icon and are drawn once.
         UIView *live = iconIn(sources[i]);
         id icon = live ? encoreIconOf(live) : nil;
-        BOOL lit = isActive(sources[i]);
-        if (!item.image || (icon && !lit && objc_getAssociatedObject(item, &kPlainIconKey) != icon)) {
-            UIImage *image = glyphOf(sources[i], NO);
-            if (image) {
-                item.image = image;
-                if (!lit) objc_setAssociatedObject(item, &kPlainIconKey, icon, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            }
-        }
-        if (!item.selectedImage || item.selectedImage == item.image || (icon && lit && objc_getAssociatedObject(item, &kLitIconKey) != icon)) {
-            UIImage *image = glyphOf(sources[i], YES);
-            if (image) {
-                item.selectedImage = image;
-                if (lit) objc_setAssociatedObject(item, &kLitIconKey, icon, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            }
+        NSString *name = iconName(icon);
+        if (!item.image || !item.selectedImage || (name && ![objc_getAssociatedObject(item, &kGlyphNamesKey) containsObject:name])) {
+            id lit = activeVariantOf(icon);
+            setGlyphs(item, drawGlyph(live, icon, NO), drawGlyph(live, lit ?: icon, YES));
+            NSString *litName = iconName(lit);
+            if (item.image && item.selectedImage) objc_setAssociatedObject(item, &kGlyphNamesKey, name ? (litName ? @[name, litName] : @[name]) : nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
         missing |= !item.image || !item.selectedImage;
         item.accessibilityLabel = labelIn(sources[i]).text;
