@@ -111,9 +111,10 @@ static UILabel *label(UIFontTextStyle style, UIFontWeight weight, CGFloat size, 
 
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
-    UIVisualEffectView *glass = SGGlassFor(_close, &kCloseGlassKey);
+    UIView *glass = SGGlassFor(_close, &kCloseGlassKey);
     glass.frame = _close.bounds;
     SGShapeGlass(glass, _close.bounds.size.height / 2, YES);
+    SGGlassInteractive(_close, glass);
     // Room above the first line and below the last for either to be scrolled to the middle.
     CGFloat half = _scroll.bounds.size.height / 2;
     _scroll.contentInset = UIEdgeInsetsMake(24, 0, half, 0);

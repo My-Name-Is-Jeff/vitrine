@@ -40,6 +40,7 @@ static UIView *circleOf(UIControl *control) {
     return objc_getAssociatedObject(control, &kGlassKey) ?: objc_getAssociatedObject(control.superview, &kGlassKey);
 }
 - (void)down:(UIControl *)control {
+    if (SGUseLegacyGlass()) return;    // the glass answers the press itself (SGGlassInteractiveVia)
     UIView *circle = circleOf(control);
     SGRAnimate(SGRMotionPress, ^{ circle.transform = CGAffineTransformMakeScale(kPressScale, kPressScale); }, nil);
 }
@@ -94,6 +95,8 @@ static void glassInside(UIViewController *unit, NSArray<NSArray<NSString *> *> *
         }
         UIControl *front = SGRSystemMenuFront(button);
         pressFrom(front ?: (UIControl *)button, front != nil);
+        // The mod's button over the ⋯ takes its touches, so the press is watched there and moves the ⋯.
+        if (front) SGGlassInteractiveVia(front, button, circle);
         found++;
     }
 

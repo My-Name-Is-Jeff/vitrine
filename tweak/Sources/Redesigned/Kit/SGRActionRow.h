@@ -34,6 +34,10 @@
 @property (nonatomic, weak, readonly) UIView *source;
 // Drawn, in white, when Spotify's button has no image view to copy (a glyph it draws itself).
 @property (nonatomic, strong) UIImage *fallbackGlyph;
+// YES draws fallbackGlyph centred at its own size and never Spotify's image: for a control whose own image has
+// uneven padding in its canvas (the Eat this playlist cross sat off the middle of its circle), where copying it
+// copies the offset. The label and the action are still Spotify's. NO, the default, copies Spotify's glyph.
+@property (nonatomic, assign) BOOL ownGlyph;
 // The color to draw the mirrored glyph in, whatever color Spotify drew it. nil, the default, keeps
 // Spotify's -- which is what a glyph that says something by its color needs (shuffle turns the accent
 // color while it is on). Set it for a glyph whose color is only the weight Spotify gave the control it
@@ -79,3 +83,23 @@ UIView *SGRPinnedMoreRecentPage(void);
 // The pinned ⋯ itself, tapped within that window, or nil: what the redesign's system menu opens from
 // (Redesigned/ContextMenu).
 SGRMirrorButton *SGRPinnedMoreRecentButton(void);
+
+// The mirror of SGRPinnedMore at the leading edge: one glass circle, the same size and inset, in place of
+// Spotify's own back button, which is hidden. Resizing and glassing Spotify's box in place fought the
+// header's collapse animation on every scroll (it lagged, clipped and sat off-centre from the ⋯ opposite),
+// so every header pins this independent button instead.
+//
+// `searchRoot` is where Spotify's back button (Components.Header.UI.BackButton) is looked for; until it is
+// found the pinned button stays hidden. Kept on `page`, and cheap to call on every pass.
+SGRMirrorButton *SGRPinnedBack(UIView *page, UIView *searchRoot);
+
+// The same for a page whose back button is not Spotify's own Components.Header.UI.BackButton but a control of a
+// UINavigationBar (Recents, Your Updates): `source` is what the button reads its glyph from and fires, concealed
+// here like the one above. Kept on `page` and cheap to call on every pass. Nil on iOS 26.
+SGRMirrorButton *SGRPinnedBackOf(UIView *page, UIView *source);
+
+// A glass circle of the same size and inset as SGRPinnedMore's, `slot` places further in from the trailing edge
+// (0 is the corner itself, 1 the one left of it): for a page whose bar has more than one control there, SongDNA's
+// Share and Close. `glyph` is drawn in white when Spotify's control has no image view to copy. Kept on `page` under
+// `key`; cheap to call on every pass.
+SGRMirrorButton *SGRPinnedTrailing(UIView *page, const void *key, UIView *source, NSUInteger slot, UIImage *glyph);

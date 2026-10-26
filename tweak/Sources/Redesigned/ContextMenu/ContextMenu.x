@@ -25,6 +25,7 @@
 #import <objc/runtime.h>
 #import "Core/SGCore.h"
 #import "Redesigned/Kit/SGRKit.h"
+#import "Settings/SGPageStyle.h"
 #import "Shared/Player/SpeedPitch.h"
 #import "Shared/AlbumQueue/AlbumQueue.h"
 #import "Shared/LyricsTranslation/BatchTranslation.h"
@@ -39,6 +40,18 @@ static const NSTimeInterval kRowsPoll = 0.1;
 static const NSTimeInterval kQuickWait = 4;
 // How long the player's menu waits for Spotify's sheet once its ⋯ action has been run for it.
 static const NSTimeInterval kRequestWindow = 3;
+// The ⋯ under a menu below iOS 26: how fast it goes as the menu comes, and how long after the menu starts to go it comes
+// back, as the menu has shrunk most of the way into it.
+static const NSTimeInterval kButtonFade = 0.12, kButtonBackDelay = 0.12;
+
+// Whether a page's ⋯ (the one SGRPinnedMore pins over the playlist, album, artist and profile pages) opens the system
+// menu. It does on every iOS the redesign runs on: below iOS 26 the menu wears the mod's glass and opens out of a drop
+// (ContextMenuGlass.x), as the player's does, rather than Spotify's sheet coming up from the bottom. Each opening reads
+// the rows of the sheet that tap brought up (an uncached deferred element of a session of its own), so no page's rows
+// show on another's menu.
+static BOOL pageMenu(void) {
+    return YES;
+}
 
 static NSString *const kSheetClass = @"_TtC24ContextMenu_InternalImpl25ContextMenuViewController";
 static NSString *const kTopMenu = @"com.vitrine.systemmenu.top";
@@ -316,15 +329,47 @@ static UIMenu *inlineGroup(NSArray<UIMenuElement *> *children) {
 
 @implementation SGRMenuAnchor
 
+// iOS 26's menu takes the place of the button it opens from: the button goes as the menu comes out of it and is back as
+// the menu goes. Below iOS 26 the ⋯ under the menu is faded out for as long as the menu is up, rather than standing
+// beside it. Its alpha before is put back, whatever the page had it at.
+static char kFadedAlphaKey;
+
+// iOS 26 opens a button's menu from the button's top, where the button was; below iOS 26 UIKit hangs it from the
+// button's middle, a half button lower. It hangs from the top here.
+- (CGPoint)menuAttachmentPointForConfiguration:(UIContextMenuConfiguration *)configuration {
+    CGPoint point = [super menuAttachmentPointForConfiguration:configuration];
+    if (@available(iOS 26.0, *)) return point;
+    return CGPointMake(point.x, CGRectGetMinY(self.bounds));
+}
+
+static void fadeButton(UIView *button, BOOL away) {
+    if (@available(iOS 26.0, *)) return;
+    if (!button) return;
+    NSNumber *was = objc_getAssociatedObject(button, &kFadedAlphaKey);
+    if (away) {
+        if (was) return;
+        objc_setAssociatedObject(button, &kFadedAlphaKey, @(button.alpha), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [UIView animateWithDuration:kButtonFade delay:0 options:UIViewAnimationOptionBeginFromCurrentState animations:^{ button.alpha = 0; } completion:nil];
+        return;
+    }
+    if (!was) return;
+    objc_setAssociatedObject(button, &kFadedAlphaKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [UIView animateWithDuration:kButtonFade delay:kButtonBackDelay options:UIViewAnimationOptionBeginFromCurrentState
+                     animations:^{ button.alpha = was.doubleValue; } completion:nil];
+}
+
 - (void)contextMenuInteraction:(UIContextMenuInteraction *)interaction willDisplayMenuForConfiguration:(UIContextMenuConfiguration *)configuration
                       animator:(id<UIContextMenuInteractionAnimating>)animator {
     [super contextMenuInteraction:interaction willDisplayMenuForConfiguration:configuration animator:animator];
     [self.session shown];
+    // The ⋯ this anchor covers: the page's pinned one, or Spotify's for the player's (the mod's button sits inside it).
+    fadeButton(self.superview, YES);
 }
 
 - (void)contextMenuInteraction:(UIContextMenuInteraction *)interaction willEndForConfiguration:(UIContextMenuConfiguration *)configuration
                       animator:(id<UIContextMenuInteractionAnimating>)animator {
     [super contextMenuInteraction:interaction willEndForConfiguration:configuration animator:animator];
+    fadeButton(self.superview, NO);
     SGRMenuSession *session = self.session;
     self.session = nil;
     self.userInteractionEnabled = [self isKindOfClass:SGRMenuFront.class];
@@ -1199,7 +1244,7 @@ static SGRMenuAnchor *anchorIn(UIView *host) {
 
 // A page's ⋯ was touched this recently: a context menu sheet that is not taken over now is worth a line saying why.
 static BOOL claimRecent(void) {
-    return SGRPinnedMoreRecentButton() != nil;
+    return pageMenu() && SGRPinnedMoreRecentButton() != nil;
 }
 
 // Why a sheet was not taken over: every time while a ⋯ touch is recent, so the next log of a ⋯ that opened
@@ -1222,6 +1267,8 @@ static NSString *controllersIn(UIViewController *presented) {
 // Whether this sheet is a watched ⋯'s, and if so its session, with the sheet's presentation now the menu's.
 // `via` says which way in asked, for the log.
 static SGRMenuSession *takeOver(UIViewController *presented, NSString *via) {
+    // Below iOS 26 a page's ⋯ keeps Spotify's sheet; only the player's ⋯ is the system menu.
+    if (!pageMenu()) return nil;
     BOOL recent = claimRecent();
     if (!sheetIn(presented)) {
         if (recent) SGLog(@"system menu: %@ presented soon after a page's ⋯ touch holds no ⋯ sheet (%@)", NSStringFromClass(presented.class),
@@ -1308,7 +1355,7 @@ static void openWhenUp(SGRMenuSession *session, UIViewController *sheet, int tri
     UIWindow *in = self.viewIfLoaded.window;
     // The sheet the player's menu asked Spotify for: into the mod's window, unseen.
     SGRMenuSession *requesting = sg_requesting;
-    if (requesting && in != sg_host && CACurrentMediaTime() - sg_requestedAt <= kRequestWindow && ![presented isKindOfClass:UIAlertController.class]) {
+    if (requesting && in != sg_host && CACurrentMediaTime() - sg_requestedAt <= kRequestWindow && !SGIsAlertController(presented)) {
         sg_requesting = nil;
         [requesting adoptSheet:presented from:self completion:completion];
         return;

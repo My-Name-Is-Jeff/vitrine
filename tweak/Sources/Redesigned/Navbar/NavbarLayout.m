@@ -69,7 +69,11 @@ void SGRMigrateNavbarSplit(void) {
 }
 
 NSArray<NSDictionary *> *SGRNavbarSplit(void) {
-    return listOfKind(kNavbarSplit, NSDictionary.class);
+    NSArray<NSDictionary *> *split = listOfKind(kNavbarSplit, NSDictionary.class);
+    // Below iOS 26 the capsule bar has one round button for the split tab, so the list holds one: the last
+    // one set apart. A longer list saved before that (or on iOS 26) is left as stored and read as its last.
+    if (split.count > 1 && SGRLegacyTabBarOn()) return @[split.lastObject];
+    return split;
 }
 
 void SGRSetNavbarSplit(NSArray<NSDictionary *> *split) {
