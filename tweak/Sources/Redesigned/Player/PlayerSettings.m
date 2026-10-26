@@ -43,8 +43,9 @@ static NSArray<NSString *> *backgroundNotes(void) {
         @"The cover, blurred and held still.",
         @"The cover's colors, drifting slowly.",
         @"The cover itself, blurred and slowly turning. It rests while a song is paused.",
-        @"The song's Canvas or the album's moving cover, else Fluid. The player's ⋯ menu switches between this, Fluid and Visualizer.",
+        @"The song's Canvas or the album's moving cover, else Fluid. The player's ⋯ menu switches between this, Fluid, Visualizer and Liquid.",
         @"The song's sound as gentle hills in the cover's colors, over Fluid held still. They settle while a song is paused.",
+        @"Rings of the cover's edge colors that ripple slowly out into the dark, over its reflection in dark water. Fluid with Reduce Motion or Low Power Mode. It rests while a song is paused.",
     ];
 }
 
@@ -193,6 +194,7 @@ static NSArray<NSString *> *backgroundNotes(void) {
     void (^apply)(void) = ^{
         self->_field.flows = kind == SGRPlayerBackgroundColours;
         self->_field.fluid = kind >= SGRPlayerBackgroundFluid;
+        self->_field.liquid = kind == SGRPlayerBackgroundLiquid;
         [self->_motion removeFromSuperview];
         self->_motion = kind == SGRPlayerBackgroundAnimated ? SGRPlayerMotionPreview(arrived) : nil;
         if (self->_motion) [self insertSubview:self->_motion aboveSubview:self->_field];
@@ -354,7 +356,7 @@ UIViewController *SGRPlayerSettingsPage(NSArray *more) {
         fluidSlider(@"Speed", SGRFluidSpeed, @"%"), fluidSlider(@"Warp", SGRFluidWarp, @"%"), fluidSlider(@"Blur", SGRFluidBlur, @""),
         fluidSlider(@"Saturation", SGRFluidSaturation, @"%"), fluidSlider(@"Brightness", SGRFluidBrightness, @"%"), reset,
     ];
-    for (SGModRow *row in fluid) row.visible = ^BOOL { return SGRPlayerBackground() == SGRPlayerBackgroundFluid; };
+    for (SGModRow *row in fluid) row.visible = ^BOOL { return SGRPlayerBackground() == SGRPlayerBackgroundFluid || SGRPlayerBackground() == SGRPlayerBackgroundLiquid; };
 
     NSMutableArray<SGModSection *> *sections = [NSMutableArray arrayWithObjects:
         SGSection(nil, @[sources, lowData]),
@@ -367,9 +369,9 @@ UIViewController *SGRPlayerSettingsPage(NSArray *more) {
         SGNotedSection(@"Mini player", SGRNowPlayingBarRows(),
                        @"Apple Music style moves the now playing bar in between two tabs as you scroll down."), nil];
     [sections addObjectsFromArray:more];
-    // Fluid, Animated and Visualizer share the field (PlayerMotion.x reads the choice on every track, PlayerVisualiser.m
+    // Fluid, Animated, Visualizer and Liquid share the field (PlayerMotion.x reads the choice on every track, PlayerVisualiser.m
     // on the field's layout); Still and Colors are a field of another kind, made once a launch (PlayerField.x).
-    NSString *footer = @"Fluid, Animated and Visualizer change with the next song. Still, Colors and Hide on the player apply after you restart Spotify.";
+    NSString *footer = @"Fluid, Animated, Visualizer and Liquid change with the next song. Still, Colors and Hide on the player apply after you restart Spotify.";
     SGRPlayerPage *page = [[SGRPlayerPage alloc] initWithTitle:@"Player" intro:nil sections:sections footer:footer];
     weakPage = page;
     page.showcase = showcase;

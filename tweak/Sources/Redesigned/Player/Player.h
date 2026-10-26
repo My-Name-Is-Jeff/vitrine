@@ -47,8 +47,9 @@ typedef NS_ENUM(NSInteger, SGRPlayerBackgroundKind) {
     SGRPlayerBackgroundFluid,      // the artwork itself blurred and turning (SGRFluid.h)
     SGRPlayerBackgroundAnimated,   // the track's Canvas or Apple Music's animated cover, over Fluid (PlayerMotion.x)
     SGRPlayerBackgroundVisualiser, // a spectrum of the song over Fluid held still (PlayerVisualiser.m)
+    SGRPlayerBackgroundLiquid,     // rings of the cover's edges and its reflection, on the GPU (SGRFluidWarp.h)
 };
-// The player's ⋯ menu switches between the last three, which share the Fluid field, without a restart.
+// The player's ⋯ menu switches between Fluid and the ones after it, which share the Fluid field, without a restart.
 SGRPlayerBackgroundKind SGRPlayerBackground(void);
 // The names of the choices, in order.
 NSArray<NSString *> *SGRPlayerBackgroundNames(void);
@@ -58,6 +59,8 @@ SGRArtworkField *SGRPlayerField(void);
 // Holds the field still, or lets it move, for what is over it now: a paused song, an Animated artwork clip, the
 // Visualizer (PlayerField.x).
 void SGRPlayerHoldField(void);
+// Places Liquid's rings around the cover again, once the current layout pass is over.
+void SGRPlayerFieldFollowCover(void);
 
 #pragma mark - the cover (PlayerArtwork.x)
 
@@ -175,7 +178,7 @@ BOOL SGRPlayerVisualiserShowing(void);
 void SGRPlayerVisualiserUpdate(void);
 // A view of its own drawing the same hills, for the Player page's showcase. It moves only in a window.
 UIView *SGRPlayerVisualiserPreview(void);
-// Switches the background to `kind` from the ⋯ menu, at once: Fluid, Animated or Visualizer, while it is one of
+// Switches the background to `kind` from the ⋯ menu, at once: Fluid, Animated, Visualizer or Liquid, while it is one of
 // them (SGPlayerMenuOffersAnimatedArtwork); nothing otherwise.
 void SGRPlayerMenuSetBackground(SGRPlayerBackgroundKind kind);
 

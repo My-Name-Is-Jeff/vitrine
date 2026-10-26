@@ -138,6 +138,7 @@ const NSTimeInterval SGRFieldHoldLimit = 1.0;
     _fluidLayer.frame = painted;
     // The screen's part of it, so the copies turn about it and the shade ends at the screen's foot.
     _fluidLayer.visibleRect = CGRectMake(bleed.left, bleed.top, bounds.size.width, height);
+    _fluidLayer.coverRect = [self.layer convertRect:_coverRect toLayer:_fluidLayer];
     [CATransaction commit];
 }
 
@@ -179,6 +180,17 @@ const NSTimeInterval SGRFieldHoldLimit = 1.0;
     [self setNeedsLayout];
 }
 
+- (void)setLiquid:(BOOL)liquid {
+    if (liquid == _liquid) return;
+    _liquid = liquid;
+    [self updateMotion];
+}
+
+- (void)setCoverRect:(CGRect)rect {
+    _coverRect = rect;
+    _fluidLayer.coverRect = [self.layer convertRect:rect toLayer:_fluidLayer];
+}
+
 - (void)setMotionHeld:(BOOL)held {
     if (held == _motionHeld) return;
     _motionHeld = held;
@@ -218,8 +230,12 @@ const NSTimeInterval SGRFieldHoldLimit = 1.0;
     if (!_flow && !_fluidLayer) return;
     // A locked phone keeps the player in its window, so being in front counts as much as being in one.
     BOOL front = UIApplication.sharedApplication.applicationState == UIApplicationStateActive;
-    BOOL may = self.window && front && !SGRPlayerIsTransitioning() && !SGRReduceMotion()
-            && !NSProcessInfo.processInfo.lowPowerModeEnabled && !_motionHeld;
+    BOOL calm = SGRReduceMotion() || NSProcessInfo.processInfo.lowPowerModeEnabled;
+    BOOL may = self.window && front && !SGRPlayerIsTransitioning() && !calm && !_motionHeld;
+    // Held before the warp changes, so the change does not start the copies' turns only to stop them.
+    if (!(may && _fluid)) _fluidLayer.moving = NO;
+    _fluidLayer.warps = _liquid && !calm;
+    _fluidLayer.offscreen = !self.window;
     _fluidLayer.moving = may && _fluid;
     BOOL moving = may && _flows && !_flow.hidden;
     if (!_flow || moving == _flow.moving) return;

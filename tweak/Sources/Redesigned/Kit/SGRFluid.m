@@ -1,6 +1,7 @@
 #import <CoreImage/CoreImage.h>
 #import "Core/SGCore.h"
 #import "SGRFluid.h"
+#import "SGRFluidWarp.h"
 #import "SGRTokens.h"
 
 // Each copy: its side as a share of the visible rect's longer side, its center as shares of that rect, and
@@ -17,11 +18,19 @@ enum { kCopies = sizeof(kCopy) / sizeof(kCopy[0]) };
 // offset: Core Image works in linear light, where even -0.08 turned every channel under about 30% to black
 // (issue #100), leaving dark covers black and the rest a single saturated channel. The ceiling below darkens.
 static const CGFloat kBlurSide = 128, kBlurPerStep = 1.25;
+// Each blurred pixel's linear luminance at most, and with Increase Contrast (see blurred()).
+static const CGFloat kCeiling = 0.07, kContrastCeiling = 0.04;
+// Liquid's cover is sharper, so its rings keep the edge's colors: twice the side, a quarter of the Blur. Its ceiling
+// is higher, as its rings darken away from the cover: by the header's and the title's rows they are under Fluid's.
+static const CGFloat kWarpSide = 256, kWarpBlurShare = 0.25, kWarpCeiling = 0.35, kWarpContrastCeiling = 0.2;
 // The upper three copies' opacity at full Warp.
 static const float kOverOpacity = 0.7;
 // The shade over the bottom of the visible rect, where the controls are. Light: the ceiling already keeps the
 // text's contrast, and 0.55 left the lower half of a dark cover black (issue #100).
 static const CGFloat kShadeFrom = 0.45, kShadeAlpha = 0.3;
+// The warp's frames a second at most. Its link asks for this but takes up to 120 and skips the extra ticks: a
+// link that caps the rate holds the player's 120 Hz animations down with it (AGENTS.md).
+static const CFTimeInterval kWarpFrame = 1.0 / 30;
 
 NSNotificationName const SGRFluidSettingsDidChangeNotification = @"spotifyglass.redesign.fluidSettingsDidChange";
 
@@ -54,11 +63,11 @@ void SGRResetFluidSettings(void) {
 }
 
 // `gain` is the Brightness setting as a factor on linear light, applied under the ceiling below.
-static UIImage *blurred(UIImage *image, BOOL contrast, CGFloat radius, CGFloat saturation, CGFloat gain) {
+static UIImage *blurred(UIImage *image, CGFloat side, CGFloat ceiling, CGFloat radius, CGFloat saturation, CGFloat gain) {
     CGImageRef source = image.CGImage;
     if (!source) return nil;
     CIImage *input = [CIImage imageWithCGImage:source];
-    CGFloat scale = kBlurSide / MAX(input.extent.size.width, input.extent.size.height);
+    CGFloat scale = side / MAX(input.extent.size.width, input.extent.size.height);
     input = [input imageByApplyingTransform:CGAffineTransformMakeScale(scale, scale)];
     CGRect extent = input.extent;
     CIImage *output = [[[input imageByClampingToExtent]
@@ -69,7 +78,7 @@ static UIImage *blurred(UIImage *image, BOOL contrast, CGFloat radius, CGFloat s
     dispatch_once(&once, ^{ context = [CIContext contextWithOptions:nil]; });
     CGImageRef cg = [context createCGImage:[output imageByCroppingToRect:extent] fromRect:extent];
     if (!cg) return nil;
-    // Each blurred pixel is capped at a linear luminance (0.04 with Increase Contrast) that keeps the player's
+    // Each blurred pixel is capped at a linear luminance (kCeiling) that keeps the player's
     // white text at about 8.8:1 and its 65% white at about 4.7:1 on the brightest; an average alone would leave
     // a bright patch of a cover behind the text. The Brightness gain scales the capped pixel, so below 100 it
     // darkens every cover alike (applied before the cap, a bright cover stayed at the ceiling whatever the
@@ -83,7 +92,6 @@ static UIImage *blurred(UIImage *image, BOOL contrast, CGFloat radius, CGFloat s
     CGContextDrawImage(bitmap, CGRectMake(0, 0, width, height), cg);
     CGImageRelease(cg);
     unsigned char *pixels = CGBitmapContextGetData(bitmap);
-    CGFloat ceiling = contrast ? 0.04 : 0.07;
     for (size_t i = 0; i < width * height; i++) {
         unsigned char *p = pixels + i * 4;
         CGFloat rgb[3];
@@ -109,12 +117,16 @@ static UIImage *blurred(UIImage *image, BOOL contrast, CGFloat radius, CGFloat s
 @implementation SGRFluidLayer {
     CALayer *_copies[kCopies];
     CAGradientLayer *_shade;
+    SGRFluidWarpLayer *_warpLayer;
+    CADisplayLink *_link;              // only while the warp moves
+    CFTimeInterval _drawn;
     UIImage *_source;
     NSUInteger _generation;
     BOOL _moving;
     CFTimeInterval _since, _elapsed;   // _elapsed in turns at the standard speed
     CGFloat _rate, _warp;              // Speed and Warp as factors, read when the copies are laid out or started
     CGRect _laidOutFor;
+    BOOL _warpWorks;                   // the shader compiled (SGRFluidWarpPrepare)
 }
 
 - (instancetype)init {
@@ -161,6 +173,7 @@ static UIImage *blurred(UIImage *image, BOOL contrast, CGFloat radius, CGFloat s
     [CATransaction setDisableActions:YES];
     for (int i = 1; i < kCopies; i++) _copies[i].opacity = kOverOpacity * (float)_warp;
     [CATransaction commit];
+    _warpLayer.warp = (float)_warp;
 }
 
 - (void)settingsChanged {
@@ -192,6 +205,11 @@ static UIImage *blurred(UIImage *image, BOOL contrast, CGFloat radius, CGFloat s
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     _shade.frame = bounds;
+    // From the top of the bleed to the screen's foot, a size that holds while the player's list grows under the
+    // cards: past the foot the rings and the reflection have faded to black, the layer's own color.
+    _warpLayer.frame = CGRectMake(CGRectGetMinX(visible), 0, visible.size.width, CGRectGetMaxY(visible));
+    _warpLayer.visibleRect = [self convertRect:visible toLayer:_warpLayer];
+    _warpLayer.coverRect = [self convertRect:_coverRect toLayer:_warpLayer];
     _shade.locations = @[@(MIN(1, (CGRectGetMinY(visible) + visible.size.height * kShadeFrom) / total)),
                          @(MIN(1, CGRectGetMaxY(visible) / total))];
     if (!CGRectEqualToRect(visible, _laidOutFor) && visible.size.width >= 1) {
@@ -215,20 +233,25 @@ static UIImage *blurred(UIImage *image, BOOL contrast, CGFloat radius, CGFloat s
     _source = image;
     NSUInteger generation = ++_generation;
     BOOL contrast = SGRIncreaseContrast();
+    CGFloat ceiling = contrast ? kContrastCeiling : kCeiling, warpCeiling = contrast ? kWarpContrastCeiling : kWarpCeiling;
     CGFloat radius = kBlurPerStep * SGRFluidValue(SGRFluidBlur), saturation = SGRFluidValue(SGRFluidSaturation) / 100.0;
     CGFloat gain = SGRFluidValue(SGRFluidBrightness) / 100.0;
+    // Only while it draws: turned on again, it blurs the cover anew (-setWarps:).
+    BOOL warp = _warps && _warpWorks;
+    CGFloat warpRadius = MAX(kBlurPerStep, radius * 2 * kWarpBlurShare);
     __weak SGRFluidLayer *weakSelf = self;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        UIImage *blur = blurred(image, contrast, radius, saturation, gain);
+        UIImage *blur = blurred(image, kBlurSide, ceiling, radius, saturation, gain);
+        id<MTLTexture> sharper = warp ? SGRFluidWarpTexture(blurred(image, kWarpSide, warpCeiling, warpRadius, saturation, gain).CGImage) : nil;
         dispatch_async(dispatch_get_main_queue(), ^{
             SGRFluidLayer *layer = weakSelf;
             if (!blur || !layer || generation != layer->_generation) return;
-            [layer show:blur animated:animated];
+            [layer show:blur warp:sharper animated:animated];
         });
     });
 }
 
-- (void)show:(UIImage *)blur animated:(BOOL)animated {
+- (void)show:(UIImage *)blur warp:(id<MTLTexture>)sharper animated:(BOOL)animated {
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     for (int i = 0; i < kCopies; i++) {
@@ -241,6 +264,8 @@ static UIImage *blurred(UIImage *image, BOOL contrast, CGFloat radius, CGFloat s
         _copies[i].contents = (__bridge id)blur.CGImage;
     }
     [CATransaction commit];
+    // shortcut: the warp's new cover cuts in rather than crossfading; blend two textures in the shader if it jars.
+    if (sharper && _warps) [self showWarp:sharper];
 }
 
 #pragma mark - moving
@@ -256,6 +281,14 @@ static UIImage *blurred(UIImage *image, BOOL contrast, CGFloat radius, CGFloat s
     if (self.bounds.size.width < 1) return;
     _since = CACurrentMediaTime();
     _rate = SGRFluidValue(SGRFluidSpeed) / 100.0;
+    if (_warps && _warpWorks) {
+        // Down whenever the warp holds (-stop), so it never takes part in choosing the display's rate then.
+        _link = [CADisplayLink displayLinkWithTarget:self selector:@selector(tick:)];
+        _link.preferredFrameRateRange = CAFrameRateRangeMake(15, 120, 1 / kWarpFrame);
+        [_link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
+        _drawn = 0;
+        return;
+    }
     CAFrameRateRange rate = CAFrameRateRangeMake(15, 60, 30);
     for (int i = 0; i < kCopies; i++) {
         CFTimeInterval length = fabs(kCopy[i].turn);
@@ -275,10 +308,12 @@ static UIImage *blurred(UIImage *image, BOOL contrast, CGFloat radius, CGFloat s
     }
 }
 
-// Every copy held at the angle it is drawn at now.
+// Every copy held at the angle it is drawn at now, and the warp at its last frame.
 - (void)stop {
     if (_since > 0) _elapsed += (CACurrentMediaTime() - _since) * _rate;
     _since = 0;
+    [_link invalidate];
+    _link = nil;
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     for (int i = 0; i < kCopies; i++) {
@@ -288,6 +323,72 @@ static UIImage *blurred(UIImage *image, BOOL contrast, CGFloat radius, CGFloat s
         _copies[i].transform = CATransform3DMakeRotation(angle, 0, 0, 1);
     }
     [CATransaction commit];
+}
+
+#pragma mark - the liquid warp
+
+- (void)setWarps:(BOOL)warps {
+    if (warps == _warps) return;
+    _warps = warps;
+    if (!warps) return [self switchWarp];
+    // Fluid until the shader has compiled, and for good if it cannot.
+    __weak SGRFluidLayer *weakSelf = self;
+    SGRFluidWarpPrepare(^(BOOL works) {
+        SGRFluidLayer *layer = weakSelf;
+        if (!layer || !works) return;
+        layer->_warpWorks = YES;
+        if (layer->_warps) [layer switchWarp];
+    });
+}
+
+// Between the warp and the copies, for what `warps` says now.
+- (void)switchWarp {
+    BOOL moving = _moving, warps = _warps && _warpWorks;
+    if (moving) [self stop];
+    if (warps && !_warpLayer) {
+        _warpLayer = [SGRFluidWarpLayer layer];
+        _warpLayer.warp = (float)_warp;
+        _warpLayer.offscreen = _offscreen;
+        _warpLayer.hidden = YES;
+        [self insertSublayer:_warpLayer below:_shade];
+        [self setNeedsLayout];
+    }
+    // The copies stay until the warp has this song's cover (-showWarp:), so the switch shows no black or old cover.
+    if (warps) [self reblur];
+    else [self showWarp:nil];
+    if (moving) [self start];
+    static NSUInteger logged;
+    if (logged++ < 6) SGLog(@"redesign kit: liquid warp %@", warps ? @"draws the cover" : @"gives way to Fluid");
+}
+
+- (void)setCoverRect:(CGRect)rect {
+    _coverRect = rect;
+    _warpLayer.coverRect = [self convertRect:rect toLayer:_warpLayer];
+}
+
+- (void)setOffscreen:(BOOL)offscreen {
+    _offscreen = offscreen;
+    _warpLayer.offscreen = offscreen;
+}
+
+// The warp drawing `picture` over hidden copies, or, for nil, the copies alone.
+- (void)showWarp:(id<MTLTexture>)picture {
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    _warpLayer.hidden = !picture;
+    for (int i = 0; i < kCopies; i++) _copies[i].hidden = picture != nil;
+    [CATransaction commit];
+    // Shown first: a hidden layer draws nothing.
+    _warpLayer.picture = picture;
+}
+
+- (void)tick:(CADisplayLink *)link {
+    // The resign-active notification reaches the owner a moment late, on the main queue.
+    if (UIApplication.sharedApplication.applicationState != UIApplicationStateActive) return;
+    // 2 ms early still counts, so a 120 Hz display draws every fourth tick rather than every fifth.
+    if (link.timestamp - _drawn < kWarpFrame - 0.002) return;
+    _drawn = link.timestamp;
+    [_warpLayer drawAt:_elapsed + (CACurrentMediaTime() - _since) * _rate];
 }
 
 @end
