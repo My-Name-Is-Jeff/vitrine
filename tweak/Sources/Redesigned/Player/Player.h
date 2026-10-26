@@ -132,7 +132,8 @@ void SGRPlayerPaintCover(UIView *stack);
 
 // Shuffle and repeat left out of the controls (PlayerControls.x), each on its own switch under Hide on the player, the
 // way the Music app keeps them off its main controls. Off until switched on, read at launch. The buttons go by alpha
-// and keep their slots, so previous, play and next stay where they are, centered.
+// and keep their slots. With one gone, previous, play and next stay where they are, centered; with both gone,
+// previous and next move out a quarter of the row either side of play, as the Music app spaces them (issue #162).
 #define SGRKeyPlayerHideShuffle @"spotifyglass.redesign.player.hideShuffle"
 #define SGRKeyPlayerHideRepeat @"spotifyglass.redesign.player.hideRepeat"
 
