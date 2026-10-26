@@ -102,19 +102,33 @@ static UIView *containerOf(UIView *header) {
 #pragma mark - the photo, full bleed
 
 // The picture across the top of the page with the field showing through the bottom of it: a scrim over the
-// top for the status bar, and under it a fade to the very color the page's field is drawing.
+// top for the status bar, and its bottom masked away, as the playlist's and the album's are (issue #169: a
+// fade to the field's flat color showed as an edge pulled down, where the still field is fading to black).
+//
+// Pulled down past the top, the hero grows upward by as much (-sgr_place), so the photo stays one piece with
+// the name and the list under it and zooms in, as the Music app's does, rather than sliding down and leaving
+// the field showing above it.
 @interface SGRArtistHero : UIView
 @property (nonatomic, readonly) UIImageView *picture;
-@property (nonatomic, copy) UIColor *fieldColor;
+// The hero's height at rest, from the container (applyHero); -sgr_place adds the pull to it.
+@property (nonatomic) CGFloat restHeight;
 // The photo in Spotify's artwork view, and every photo it puts there afterward: the hero keeps itself
 // right, rather than being handed a picture on each of the header's passes and staying empty between them.
 // The same view again only re-reads it.
 - (void)followArtwork:(UIImageView *)source;
+// Its frame in the container: the top of it and restHeight at rest, and pulled down past the top of the list,
+// from the top of the list's bounds down to the same bottom. Called on the header's passes and on every change
+// of the list's offset, and it writes nothing unless the frame changed.
+- (void)sgr_place;
 @end
 
+static void *kArtistListContext = &kArtistListContext;
+
 @implementation SGRArtistHero {
-    CAGradientLayer *_scrim, *_dissolve;
+    CAGradientLayer *_scrim, *_dissolve;   // the dissolve is the layer's mask
     __weak UIImageView *_artwork;
+    __weak UIScrollView *_list;   // the page's list, watched for the pull at its top while the hero is in a window
+    CGFloat _stretch;   // how far the list is pulled down past its top, which the hero grows upward by
 }
 
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -134,46 +148,83 @@ static UIView *containerOf(UIView *header) {
     _scrim.colors = @[(id)[UIColor colorWithWhite:0 alpha:kTopScrimAlpha].CGColor, (id)UIColor.clearColor.CGColor];
     [self.layer addSublayer:_scrim];
 
+    // Opaque down to the dissolve, then down to nothing on the curve the color fade had: 0.28 of the photo
+    // left at 0.62 of the way.
     _dissolve = [CAGradientLayer layer];
-    _dissolve.zPosition = 2;
-    [self.layer addSublayer:_dissolve];
-    self.fieldColor = SGRNeutralField();
-    // The color is read off the main thread, so it can land after the last layout pass of the page.
-    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(sgr_fieldColorDidChange)
-                                               name:SGRFieldColorDidChangeNotification object:nil];
+    _dissolve.colors = @[(id)UIColor.blackColor.CGColor, (id)UIColor.blackColor.CGColor,
+                         (id)[UIColor colorWithWhite:0 alpha:0.28].CGColor, (id)UIColor.clearColor.CGColor];
+    self.layer.mask = _dissolve;
     return self;
 }
 
 - (void)dealloc {
-    [NSNotificationCenter.defaultCenter removeObserver:self];
-}
-
-- (void)sgr_fieldColorDidChange {
-    if (self.superview) self.fieldColor = SGRArtistFieldColor(self);
-}
-
-- (void)setFieldColor:(UIColor *)color {
-    if (!color || [_fieldColor isEqual:color]) return;
-    _fieldColor = [color copy];
-    // The clear end is the same color with no alpha, so the fade keeps its hue instead of going through gray.
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];
-    _dissolve.colors = @[(id)[color colorWithAlphaComponent:0].CGColor,
-                         (id)[color colorWithAlphaComponent:0.72].CGColor,
-                         (id)color.CGColor];
-    _dissolve.locations = @[@0, @0.62, @1];
-    [CATransaction commit];
+    [_list removeObserver:self forKeyPath:@"contentOffset" context:kArtistListContext];
 }
 
 - (void)layoutSubviews {
     [super layoutSubviews];
     CGRect bounds = self.bounds;
+    // Pulled down, the hero is `stretch` taller than at rest: the photo fills it and so zooms in, and the
+    // dissolve keeps its rest height on the bottom, where the name is.
+    CGFloat stretch = MAX(0, MIN(_stretch, bounds.size.height - 1)), rest = bounds.size.height - stretch;
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     _scrim.frame = CGRectMake(0, 0, bounds.size.width, MIN(kTopScrim, bounds.size.height));
-    CGFloat fade = round(bounds.size.height * kDissolve);
-    _dissolve.frame = CGRectMake(0, bounds.size.height - fade, bounds.size.width, fade);
+    CGFloat height = MAX(1, bounds.size.height), fade = round(rest * kDissolve);
+    _dissolve.frame = bounds;
+    _dissolve.locations = @[@0, @((height - fade) / height), @((height - fade * 0.38) / height), @1];
     [CATransaction commit];
+}
+
+- (void)sgr_place {
+    UIView *container = self.superview;
+    if (!container || _restHeight < kMinHero || container.bounds.size.width < 1) return;
+    UIScrollView *list = _list;
+    CGFloat pull = list ? MAX(0, -(list.contentOffset.y + list.adjustedContentInset.top)) : 0;
+    if (fabs(pull - _stretch) > 0.01) {
+        _stretch = pull;
+        [self setNeedsLayout];
+    }
+    CGRect frame = CGRectMake(0, -pull, container.bounds.size.width, _restHeight + pull);
+    if (!CGRectEqualToRect(self.frame, frame)) self.frame = frame;
+    static BOOL logged;
+    if (!logged && pull > 24) {
+        logged = YES;
+        // Above the container's top is outside it: a view on the way to the list that clips would cut the stretch off.
+        UIView *clips = nil;
+        for (UIView *v = container; v && v != list && !clips; v = v.superview) {
+            if (v.clipsToBounds) clips = v;
+        }
+        SGLog(@"redesign artist: hero stretched %.0fpt over the pull, %@", pull,
+              clips ? [NSString stringWithFormat:@"cut off by %@", NSStringFromClass(clips.class)] : @"nothing clips it");
+    }
+}
+
+// The container scrolls with the page, so the page's list is where the pull at its top is heard: its offset,
+// watched while the hero is in a window and let go when it leaves. A step that is not a pull costs a comparison.
+- (void)sgr_watchList {
+    UIScrollView *list = nil;
+    for (UIView *v = self.window ? self.superview : nil; v && !list; v = v.superview) {
+        if ([v isKindOfClass:UIScrollView.class]) list = (UIScrollView *)v;
+    }
+    if (list == _list) return;
+    [_list removeObserver:self forKeyPath:@"contentOffset" context:kArtistListContext];
+    _list = list;
+    [list addObserver:self forKeyPath:@"contentOffset" options:0 context:kArtistListContext];
+    [self sgr_place];
+}
+
+- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
+    if (context != kArtistListContext) {
+        [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
+        return;
+    }
+    [self sgr_place];
+}
+
+- (void)didMoveToWindow {
+    [super didMoveToWindow];
+    [self sgr_watchList];
 }
 
 - (void)followArtwork:(UIImageView *)source {
@@ -220,7 +271,7 @@ static UIImageView *photoIn(UIView *artwork) {
 
 // The picture from the top of the container down to `bottom`, which comes from the container at rest and only
 // ever grows, so it does not change size while the page loads or scrolls.
-static void applyHero(UIView *container, UIView *artwork, CGFloat bottom, UIColor *fieldColor) {
+static void applyHero(UIView *container, UIView *artwork, CGFloat bottom) {
     SGRArtistHero *hero = objc_getAssociatedObject(container, &kHeroKey);
     if (!hero) {
         hero = [[SGRArtistHero alloc] initWithFrame:CGRectZero];
@@ -236,8 +287,8 @@ static void applyHero(UIView *container, UIView *artwork, CGFloat bottom, UIColo
         SGLog(@"redesign artist: hero %.0fpt across the top of the page", height);
     }
     if (height < kMinHero) return;
-    setFrame(hero, CGRectMake(0, 0, container.bounds.size.width, height));
-    hero.fieldColor = fieldColor;
+    hero.restHeight = height;
+    [hero sgr_place];
     [hero followArtwork:photoIn(artwork)];
 }
 
@@ -322,7 +373,7 @@ static void applyHeader(UIView *header, BOOL full) {
     CGFloat rest = MAX([objc_getAssociatedObject(container, &kContainerHeightKey) doubleValue], container.bounds.size.height);
     objc_setAssociatedObject(container, &kContainerHeightKey, @(rest), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     CGFloat bottom = rest - SGRHeaderInfoBottom - [info contentHeightForWidth:container.bounds.size.width] + SGRHeaderInfoTitleRise;
-    applyHero(container, artwork, bottom, fieldColor);
+    applyHero(container, artwork, bottom);
 }
 
 // What the header shows besides its text: the logo, the buttons, More, and the watch on the buttons' row.
