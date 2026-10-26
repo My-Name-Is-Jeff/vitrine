@@ -149,7 +149,8 @@ static void suppressButton(UIView *button) {
 // its holders back where the stack puts them.
 static char kQuietKey, kMovedKey;
 // The ends of the row shuffle and repeat were last found in.
-static __weak UIView *sg_shuffleSlot, *sg_repeatSlot;
+static __weak UIView *sg_shuffleSlot;
+static __weak UIView *sg_repeatSlot;
 
 // Whether `slot`, an end of the row, is the hidden button's: it holds the button now, or it is the one the button
 // was last found in, for the moment Spotify has taken the button out and not yet put the new one in.
