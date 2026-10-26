@@ -141,61 +141,74 @@ static void suppressButton(UIView *button) {
 // Issue #162: with both gone, previous and next spread out over the room the two left, the way the Music app sets
 // its three controls: a quarter of the row's span either side of play, which stays in the middle. The row is
 // Spotify's stack of five, so they move by a translation of the arranged view that holds each, as the footer's
-// glyphs do (PlayerFooter.x): a transform survives the stack laying them out again, and the holder takes its
-// touches along. With only one of the two gone they stay in their slots, so play stays centered between them.
-// A row without both (a podcast's, or one Spotify has not put them in yet) gets its holders back where the
-// stack puts them.
-static char kQuietKey;
+// glyphs do (SGRPlayerTranslateArranged): a transform survives the stack laying them out again, and the holder
+// takes its touches along. With only one of the two gone they stay in their slots, so play stays centered between
+// them. The spread follows the switches and the row's shape, not the buttons in it at that moment: Spotify swaps
+// repeat for a new one after the controls lay out (SGRPlayerButtonArrival), and a pass that missed the button would
+// put previous and next back with no later pass to spread them again. A row of another shape (a podcast's) gets
+// its holders back where the stack puts them.
+static char kQuietKey, kMovedKey;
+// The ends of the row shuffle and repeat were last found in.
+static __weak UIView *sg_shuffleSlot, *sg_repeatSlot;
 
-static UIView *holderIn(UIStackView *row, UIView *view) {
-    if (!view) return nil;
-    for (UIView *arranged in row.arrangedSubviews) {
-        if ([view isDescendantOfView:arranged]) return arranged;
-    }
-    return nil;
+// Whether `slot`, an end of the row, is the hidden button's: it holds the button now, or it is the one the button
+// was last found in, for the moment Spotify has taken the button out and not yet put the new one in.
+static BOOL hiddenSlot(UIView *slot, UIView *button, UIView *__weak *remembered) {
+    if (!slot) return NO;
+    if (button) *remembered = slot;
+    return slot == *remembered;
 }
 
-static void translateHolder(UIView *holder, CGFloat dx) {
-    if (!holder) return;
-    CGAffineTransform transform = CGAffineTransformMakeTranslation(round(dx), 0);
-    if (!CGAffineTransformEqualToTransform(holder.transform, transform)) holder.transform = transform;
+// Marked, so a row that stops spreading puts back only the holders moved here.
+static void moveHolder(UIView *holder, UIView *row, CGFloat x) {
+    SGRPlayerTranslateArranged(holder, holder, CGPointMake(CGRectGetMidX(holder.bounds), CGRectGetMidY(holder.bounds)), row, x);
+    if (!objc_getAssociatedObject(holder, &kMovedKey)) objc_setAssociatedObject(holder, &kMovedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
 // The holder of a hidden button stays where the stack put it and stops taking touches, or one over the moved
 // next (the last of the row is on top) would keep them from it. Given its touches back once the row no longer
 // spreads, since Spotify may reuse it for another button (a podcast's).
 static void quietHolder(UIView *holder, BOOL quiet) {
-    if (!holder) return;
     BOOL quieted = objc_getAssociatedObject(holder, &kQuietKey) != nil;
     if (quiet == quieted) return;
     holder.userInteractionEnabled = !quiet;
     objc_setAssociatedObject(holder, &kQuietKey, quiet ? @YES : nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
-static void spreadControls(UIView *host, UIStackView *row, BOOL spread) {
-    NSArray<UIView *> *arranged = row.arrangedSubviews;
-    UIView *first = arranged.firstObject, *last = arranged.lastObject;
-    UIView *previous = holderIn(row, SGRFindByIdentifier(host, @"SPTNowPlayingPreviousTrackButton", &kPreviousKey));
-    UIView *next = holderIn(row, SGRFindByIdentifier(host, @"SPTNowPlayingNextTrackButton", &kNextKey));
-    UIView *play = holderIn(row, SGRFindByIdentifier(host, @"SPTNowPlayingPlayButton", &kPlayKey));
-    // Five holders apart: shuffle's and repeat's at the ends, previous, play and next between them.
-    BOOL apart = previous && next && play && first != last
-              && previous != next && previous != play && next != play
-              && previous != first && previous != last && next != first && next != last && play != first && play != last;
-    if (!spread || !apart) {
-        translateHolder(previous, 0);
-        translateHolder(next, 0);
-        quietHolder(first, NO);
-        quietHolder(last, NO);
+// With both switched on. `arranged` is the row's arranged views, `shuffle` and `repeat` the buttons found in its ends
+// this pass, if any.
+static void spreadControls(UIView *host, UIStackView *row, NSArray<UIView *> *arranged, UIView *shuffle, UIView *repeat) {
+    // Five holders: shuffle's and repeat's at the ends, play's in the middle, previous's and next's either side of it,
+    // in either order (a right-to-left layout). The three were found this pass already, for their glyphs.
+    UIView *before = nil, *after = nil;
+    BOOL apart = NO;
+    if (arranged.count == 5 && hiddenSlot(arranged[0], shuffle, &sg_shuffleSlot) && hiddenSlot(arranged[4], repeat, &sg_repeatSlot)) {
+        UIView *previous = SGRFindByIdentifier(host, @"SPTNowPlayingPreviousTrackButton", &kPreviousKey);
+        UIView *next = SGRFindByIdentifier(host, @"SPTNowPlayingNextTrackButton", &kNextKey);
+        UIView *play = SGRFindByIdentifier(host, @"SPTNowPlayingPlayButton", &kPlayKey);
+        BOOL inOrder = [previous isDescendantOfView:arranged[1]];
+        before = arranged[inOrder ? 1 : 3];
+        after = arranged[inOrder ? 3 : 1];
+        apart = previous && next && [play isDescendantOfView:arranged[2]] && [previous isDescendantOfView:before] && [next isDescendantOfView:after];
+    }
+    if (!apart) {
+        for (UIView *holder in arranged) {
+            if (objc_getAssociatedObject(holder, &kMovedKey)) {
+                holder.transform = CGAffineTransformIdentity;
+                objc_setAssociatedObject(holder, &kMovedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
+            quietHolder(holder, NO);
+        }
         return;
     }
+    UIView *first = arranged[0], *last = arranged[4];
     // Centers and bounds are where the stack put the holders, untouched by their transforms.
     CGFloat start = first.center.x - CGRectGetWidth(first.bounds) / 2, end = last.center.x + CGRectGetWidth(last.bounds) / 2;
-    CGFloat middle = play.center.x, reach = (end - start) / 4;
+    CGFloat middle = arranged[2].center.x, reach = (end - start) / 4;
     // The side previous is on (the right in a right-to-left layout); next goes to the other.
-    CGFloat side = previous.center.x < middle ? -1 : 1;
-    translateHolder(previous, middle + side * reach - previous.center.x);
-    translateHolder(next, middle - side * reach - next.center.x);
+    CGFloat side = before.center.x < middle ? -1 : 1;
+    moveHolder(before, row, middle + side * reach);
+    moveHolder(after, row, middle - side * reach);
     quietHolder(first, YES);
     quietHolder(last, YES);
     static dispatch_once_t once;
@@ -206,11 +219,12 @@ static void spreadControls(UIView *host, UIStackView *row, BOOL spread) {
 // element, not the unit.
 static void hideShuffleAndRepeat(UIView *host, UIStackView *row) {
     sg_buttonsHost = host;
-    UIView *shuffle = sg_hideShuffle ? SGRFindByIdentifier(row.arrangedSubviews.firstObject, kShuffleID, &kShuffleKey) : nil;
-    UIView *repeat = sg_hideRepeat ? SGRFindByIdentifier(row.arrangedSubviews.lastObject, kRepeatID, &kRepeatKey) : nil;
+    NSArray<UIView *> *arranged = row.arrangedSubviews;
+    UIView *shuffle = sg_hideShuffle ? SGRFindByIdentifier(arranged.firstObject, kShuffleID, &kShuffleKey) : nil;
+    UIView *repeat = sg_hideRepeat ? SGRFindByIdentifier(arranged.lastObject, kRepeatID, &kRepeatKey) : nil;
     suppressButton(shuffle);
     suppressButton(repeat);
-    if (sg_hideShuffle && sg_hideRepeat) spreadControls(host, row, shuffle && repeat);
+    if (sg_hideShuffle && sg_hideRepeat) spreadControls(host, row, arranged, shuffle, repeat);
 }
 
 #pragma mark - play

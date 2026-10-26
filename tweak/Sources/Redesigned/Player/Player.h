@@ -204,6 +204,11 @@ UIView *SGRPlayerConnectGlyphIn(UIView *host, UIView *connect);
 // Connect's touches only in a 44pt square over its glyph: `holder` is the view of the footer that holds Connect, whose
 // own view reaches far past the glyph (over Queue and the DJ button once the glyph is moved).
 void SGRPlayerCoverConnect(UIView *holder, UIView *glyph);
+// Translates `arranged`, a view a stack arranges, so that `point` of `view` inside it lands at `x` in `host`: a transform
+// survives the stack laying it out again, and the arranged view takes its touches along. Measured where the stack put
+// it, its own transform left out, which is returned (-1 for no `arranged`). The footer's glyphs (PlayerFooter.x) and
+// previous and next with shuffle and repeat both hidden (PlayerControls.x) move by it.
+CGFloat SGRPlayerTranslateArranged(UIView *arranged, UIView *view, CGPoint point, UIView *host, CGFloat x);
 // Whether a control is drawn lit: in the accent, judged as Follow the cover judges what it repaints.
 BOOL SGRPlayerAccentLike(UIColor *color);
 // The color an image is drawn in: the average of its opaque pixels, read once at 16 by 16 and kept on the image; nil
