@@ -598,6 +598,13 @@ static void syncBar(UIView *stockBar) {
     }
     if (host.superview != stockBar) [stockBar addSubview:host];
     else if (stockBar.subviews.lastObject != host) [stockBar bringSubviewToFront:host];
+    // The now playing card takes its edges from the glass row (SGRTabBarGlassRow); it is told once the row is first
+    // on screen and when its width changes, after this pass.
+    static CGFloat rowWidth;
+    if (bar.window && fabs(width - rowWidth) >= 0.5) {
+        rowWidth = width;
+        dispatch_async(dispatch_get_main_queue(), ^{ SGRNowPlayingBarFollowTabBar(); });
+    }
     logBarOnce(bar);
     makeRoom(containerOf(stockBar));
 }
@@ -852,6 +859,17 @@ CGRect SGRTabBarInlineSlot(UIView *host, CGFloat height) {
     CGRect inWindow = [host convertRect:slot toView:nil];
     if (slot.size.width < 100 || CGRectGetMaxY(inWindow) > CGRectGetMaxY(bar.window.bounds)) return CGRectNull;
     return slot;
+}
+
+// The glass the expanded bar draws runs kPlatterInset in from either side of Spotify's bar, the split tabs' bar
+// included: its trailing platter ends where the main one would have. Only the x edges are meant; a bar Spotify has
+// slid away for a page keeps them.
+CGRect SGRTabBarGlassRow(UIView *host) {
+    UIView *stockBar = sg_stockBar;
+    UIView *bar = stockBar ? objc_getAssociatedObject(stockBar, &kBarKey) : nil;
+    if (!host || !bar.window || stockBar.traitCollection.horizontalSizeClass != UIUserInterfaceSizeClassCompact) return CGRectNull;
+    CGRect whole = [stockBar convertRect:stockBar.bounds toView:host];
+    return CGRectInset(whole, kPlatterInset, 0);
 }
 
 #pragma mark - hooks

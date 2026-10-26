@@ -444,10 +444,13 @@ static void placeInline(UIViewController *container) {
     // Where the view stands untransformed, in the slot's coordinates.
     CGPoint origin = CGPointMake(view.center.x - view.bounds.size.width / 2, view.center.y - view.bounds.size.height / 2);
     if (CGRectIsNull(slot) || !setEdges(bar, CGRectGetMinX(slot) - origin.x, CGRectGetMaxX(slot) - origin.x)) {
-        if (sg_inline) restoreEdges(bar);
         if (sg_inline) tuckExtras(bar, NO);
         sg_inline = nil;
         if (!CGAffineTransformIsIdentity(view.transform)) view.transform = CGAffineTransformIdentity;
+        // Above the bar the card is as wide as the glass under it, the way the Music app's mini player is: Spotify
+        // keeps its bar 8 pt in from the screen's sides, the glass bar's platters 21 (SGRTabBarGlassRow).
+        CGRect row = bar && bar.superview == view ? SGRTabBarGlassRow(view.superview) : CGRectNull;
+        if (CGRectIsNull(row) || !setEdges(bar, CGRectGetMinX(row) - origin.x, CGRectGetMaxX(row) - origin.x)) restoreEdges(bar);
         if (bar) placeTexts(bar);
         return;
     }
