@@ -219,7 +219,7 @@ static const SGAIProvider kProviders[] = {
      @"Answer with a JSON array of the {count} translations as strings.",
      // A pinned id first, the one users report working. gemini-flash-latest follows each Flash release, preview
      // ones included, with notice only by email to the key's owner, so it is offered but not the default.
-     {@"gemini-3.8-flash", @"gemini-3.5-flash-lite", @"gemini-flash-latest"}, {@"3.8 Flash", @"3.5 Flash-Lite", @"Flash (latest)"},
+     {@"gemini-3.5-flash", @"gemini-3-flash-preview", @"gemini-3.5-flash-lite", @"gemini-3.6-flash"}, {@"3.5 Flash (Recommended)", @"3 Flash Preview", @"3.5 Flash Lite", @"3.6 Flash"},
      YES, {@"thinking"}, geminiRequest, geminiAnswer},
     {@"openai", @"OpenAI-compatible", nil, @"Vitrine.OpenAI",
      @"Sends the song's lyrics to the server below: OpenAI's own unless you name another, such as OpenRouter, or an "
@@ -314,7 +314,14 @@ static NSString *modelIDIn(NSString *text, const SGAIProvider *p) {
 }
 
 static NSString *model(const SGAIProvider *p) {
-    return modelIDIn(storedString(modelKey(p)), p) ?: p->models[0];
+    NSString *stored = modelIDIn(storedString(modelKey(p)), p);
+    if ([p->tag isEqualToString:@"gemini"] &&
+        ([stored isEqualToString:@"gemini-2.5-flash-lite"] ||
+         [stored isEqualToString:@"gemini-2.5-flash"])) {
+        [NSUserDefaults.standardUserDefaults removeObjectForKey:modelKey(p)];
+        return p->models[0];
+    }
+    return stored ?: p->models[0];
 }
 
 static NSString *promptTemplate(void) {
@@ -501,17 +508,22 @@ NSArray<NSString *> *SGAITranslationsIn(NSString *provider, id root, NSInteger s
     NSString *says = string(dig(reply, @[@"error", @"message"])) ?: string(reply[@"error"]);
     if (error) {
         *problem = error.code == NSURLErrorTimedOut
-            ? [NSString stringWithFormat:@"%@ timed out. Try a longer timeout on the Lyrics page.", who]
+            ? [NSString stringWithFormat:@"%@ timed out. Try a longer timeout or a faster model in Mod Settings > Lyrics.", who]
             : [NSString stringWithFormat:@"%@ could not be reached.", who];
     } else if (status == 401 || status == 403 || (status == 400 && [says localizedCaseInsensitiveContainsString:@"API key"])) {
-        *problem = [NSString stringWithFormat:@"%@ turned the key down. Check it on the Lyrics page.", who];
-    } else if (status == 400 || status == 404) {
+        *problem = [NSString stringWithFormat:@"%@ turned the key down. Check it in Mod Settings > Lyrics.", who];
+    } else if (status == 404) {
+        *problem = says.length ? [NSString stringWithFormat:@"%@ did not take the request: %@. This model may be retired; choose another model in Mod Settings > Lyrics.", who, says]
+                               : [NSString stringWithFormat:@"The selected model was not found on %@. Choose an active model in Mod Settings > Lyrics.", who];
+    } else if (status == 400) {
         *problem = says.length ? [NSString stringWithFormat:@"%@ did not take the request: %@", who, says]
                                : [NSString stringWithFormat:@"%@ did not take the request (%ld).", who, (long)status];
     } else if (status == 429) {
-        *problem = [NSString stringWithFormat:@"%@'s limit for this key is reached for now.", who];
+        *problem = [NSString stringWithFormat:@"%@'s limit for this key is reached for now. Wait a moment, or switch to a lighter model in Mod Settings > Lyrics.", who];
+    } else if (status == 503) {
+        *problem = [NSString stringWithFormat:@"%@ is busy experiencing high demand for this model right now. Try again in a moment, or choose another model in Mod Settings > Lyrics.", who];
     } else if (status >= 500) {
-        *problem = [NSString stringWithFormat:@"%@ is busy right now. Try again in a minute.", who];
+        *problem = [NSString stringWithFormat:@"%@ is busy right now. Try again in a minute, or choose another model in Mod Settings > Lyrics.", who];
     } else if (status != 200) {
         *problem = [NSString stringWithFormat:@"%@ did not translate the song (%ld).", who, (long)status];
     } else if (stopped) {
@@ -970,7 +982,7 @@ static void sendBatchStream(const SGAIProvider *p,
     };
     NSURLSessionConfiguration *config = [NSURLSessionConfiguration ephemeralSessionConfiguration];
     config.timeoutIntervalForRequest = aiTimeout();
-    config.timeoutIntervalForResource = MAX(aiTimeout() * (songs.count ?: 1), 600.0);
+    config.timeoutIntervalForResource = MAX(aiTimeout() * 1.5, 120.0);
     NSURLSession *session = [NSURLSession sessionWithConfiguration:config delegate:del delegateQueue:nil];
     [[session dataTaskWithRequest:request] resume];
     [session finishTasksAndInvalidate];
@@ -1058,7 +1070,11 @@ void SGLyricsTranslateBatchWithAI(NSDictionary<NSString *, NSArray<NSString *> *
             }
         }
         
-        NSUInteger answered = results.count / 2;
+        NSUInteger answered = 0;
+        for (NSString *trackKey in songs) {
+            NSString *bareID = [trackKey hasPrefix:@"spotify:track:"] ? [trackKey substringFromIndex:@"spotify:track:".length] : trackKey;
+            if (results[trackKey] || results[bareID]) answered++;
+        }
         NSString *problem = nil;
         if (answered >= songs.count) {
             // All songs in the chunk completed.
@@ -1068,10 +1084,14 @@ void SGLyricsTranslateBatchWithAI(NSDictionary<NSString *, NSArray<NSString *> *
                 : [NSString stringWithFormat:@"Could not reach %@", who];
         } else if (status == 401 || status == 403) {
             problem = [NSString stringWithFormat:@"%@ rejected API key", who];
+        } else if (status == 404) {
+            problem = [NSString stringWithFormat:@"%@ model not found", who];
         } else if (status == 429) {
             problem = [NSString stringWithFormat:@"%@ rate limit reached", who];
-        } else if (status >= 500) {
+        } else if (status == 503) {
             problem = [NSString stringWithFormat:@"%@ is busy, try again", who];
+        } else if (status >= 500) {
+            problem = [NSString stringWithFormat:@"%@ is busy right now", who];
         } else if (status != 200) {
             problem = [NSString stringWithFormat:@"%@ error (%ld)", who, (long)status];
         } else if (stopped) {
@@ -1120,6 +1140,8 @@ void SGAIForgetKeys(void) {
         SecItemDelete((__bridge CFDictionaryRef)@{(__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
                                                   (__bridge id)kSecAttrService: kProviders[i].service});
     }
+    [NSUserDefaults.standardUserDefaults removeObjectForKey:@"spotifyglass.lyrics.gemini.polled_ids"];
+    [NSUserDefaults.standardUserDefaults removeObjectForKey:@"spotifyglass.lyrics.gemini.polled_names"];
     translatorChanged();
 }
 
@@ -1133,6 +1155,8 @@ static void configure(UITextField *field, NSString *placeholder) {
 // catches it, and a secure field made iOS offer to save it in Passwords, which syncs it through iCloud. An
 // OpenAI-compatible provider's server is typed above. Says what leaves the phone, not only where the key stays:
 // each song translated goes to the provider whole.
+static void fetchGeminiModels(SGModRow *modelsRow);
+
 static void askForKey(void) {
     const SGAIProvider *p = chosen();
     BOOL server = isOpenAI(p), stored = storedSecret(p, kKeyAccount) != nil;
@@ -1163,6 +1187,8 @@ static void askForKey(void) {
         }
         saveServer();
         storeSecret(p, kKeyAccount, key);
+        if ([p->tag isEqualToString:@"gemini"]) fetchGeminiModels(nil);
+        
         // Left on the clipboard, Universal Clipboard would hand the key on to the user's other devices.
         board.items = @[];
         translatorChanged();
@@ -1192,11 +1218,123 @@ static void askForKey(void) {
         [alert addAction:[UIAlertAction actionWithTitle:@"Remove" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
             storeSecret(p, kKeyAccount, nil);
             storeSecret(p, kServerAccount, nil);
+            if ([p->tag isEqualToString:@"gemini"]) {
+                [NSUserDefaults.standardUserDefaults removeObjectForKey:@"spotifyglass.lyrics.gemini.polled_ids"];
+                [NSUserDefaults.standardUserDefaults removeObjectForKey:@"spotifyglass.lyrics.gemini.polled_names"];
+            }
             translatorChanged();
         }]];
     }
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [SGTopController() presentViewController:alert animated:YES completion:nil];
+}
+
+static NSInteger geminiModelWeightRank(NSString *modelID) {
+    static NSArray<NSString *> *ordered;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        // Quality & accuracy first (full Flash models for lyric/idiom nuance), followed by speed/lite alternatives:
+        ordered = @[
+            @"gemini-3.5-flash",
+            @"gemini-3-flash-preview",
+            @"gemini-3.5-flash-lite",
+            @"gemini-3.6-flash",
+            @"gemini-3.1-flash-lite",
+            @"gemini-3.1-flash-lite-preview",
+            @"gemini-flash-lite-latest",
+            @"gemini-3.8-flash",
+            @"gemini-3.7-flash",
+            @"gemini-flash-latest",
+            @"gemini-2.5-flash",
+            @"gemini-2.5-flash-lite"
+        ];
+    });
+    NSString *lower = modelID.lowercaseString;
+    NSUInteger idx = [ordered indexOfObject:lower];
+    if (idx != NSNotFound) return (NSInteger)idx;
+    BOOL isLite = [lower containsString:@"lite"];
+    BOOL isPreview = [lower containsString:@"preview"];
+    if (!isLite && !isPreview) return 100;
+    if (isLite && !isPreview) return 200;
+    if (!isLite && isPreview) return 300;
+    return 400;
+}
+
+static NSArray<NSString *> *modelMenu(const SGAIProvider *p);
+
+static void fetchGeminiModels(SGModRow *modelsRow) {
+    const SGAIProvider *p = providerFor(@"gemini");
+    if (!p) return;
+    NSString *key = storedSecret(p, kKeyAccount);
+    if (!key.length) return;
+    static BOOL inFlight = NO;
+    if (inFlight) return;
+    inFlight = YES;
+    NSURL *url = [NSURL URLWithString:@"https://generativelanguage.googleapis.com/v1beta/models"];
+    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
+    [req setValue:key forHTTPHeaderField:@"x-goog-api-key"];
+    req.timeoutInterval = 8.0;
+    __weak SGModRow *weakRow = modelsRow;
+    [[NSURLSession.sharedSession dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            inFlight = NO;
+        });
+        if (!data || error) return;
+        NSInteger status = [response isKindOfClass:NSHTTPURLResponse.class] ? ((NSHTTPURLResponse *)response).statusCode : 0;
+        if (status != 200) return;
+        id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+        if (![json isKindOfClass:NSDictionary.class]) return;
+        NSArray *models = json[@"models"];
+        if (![models isKindOfClass:NSArray.class]) return;
+        NSMutableArray<NSDictionary *> *pairs = [NSMutableArray array];
+        for (NSDictionary *m in models) {
+            if (![m isKindOfClass:NSDictionary.class]) continue;
+            NSArray *methods = m[@"supportedGenerationMethods"];
+            if (![methods isKindOfClass:NSArray.class] || ![methods containsObject:@"generateContent"]) continue;
+            NSString *name = m[@"name"];
+            if (![name isKindOfClass:NSString.class]) continue;
+            if ([name hasPrefix:@"models/"]) name = [name substringFromIndex:7];
+            NSString *lower = name.lowercaseString;
+            if (![lower containsString:@"flash"]) continue;
+            if ([lower containsString:@"tts"] || [lower containsString:@"image"] || [lower containsString:@"banana"] ||
+                [lower containsString:@"audio"] || [lower containsString:@"omni"] || [lower containsString:@"transcribe"] ||
+                [lower containsString:@"realtime"]) continue;
+            // Hide defunct (404) models permanently unavailable to users:
+            if ([lower containsString:@"2.5"]) continue;
+            NSString *disp = m[@"displayName"] ?: name;
+            if ([name isEqualToString:p->models[0]]) {
+                if (![disp containsString:@"Recommended"]) {
+                    disp = [disp stringByAppendingString:@" (Recommended)"];
+                }
+            }
+            [pairs addObject:@{@"id": name, @"name": disp}];
+        }
+        [pairs sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
+            NSInteger rankA = geminiModelWeightRank(a[@"id"]);
+            NSInteger rankB = geminiModelWeightRank(b[@"id"]);
+            if (rankA != rankB) return rankA < rankB ? NSOrderedAscending : NSOrderedDescending;
+            return [a[@"id"] compare:b[@"id"]];
+        }];
+        NSMutableArray<NSString *> *discoveredIDs = [NSMutableArray arrayWithCapacity:pairs.count];
+        NSMutableArray<NSString *> *discoveredNames = [NSMutableArray arrayWithCapacity:pairs.count];
+        for (NSDictionary *pair in pairs) {
+            [discoveredIDs addObject:pair[@"id"]];
+            [discoveredNames addObject:pair[@"name"]];
+        }
+        if (discoveredIDs.count > 0) {
+            [NSUserDefaults.standardUserDefaults setObject:discoveredIDs forKey:@"spotifyglass.lyrics.gemini.polled_ids"];
+            [NSUserDefaults.standardUserDefaults setObject:discoveredNames forKey:@"spotifyglass.lyrics.gemini.polled_names"];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                SGModRow *strongRow = weakRow;
+                if (strongRow) strongRow.menu = modelMenu(chosen());
+                UIViewController *top = SGTopController();
+                if ([top isKindOfClass:UITableViewController.class]) {
+                    [((UITableViewController *)top).tableView reloadData];
+                }
+                translatorChanged();
+            });
+        }
+    }] resume];
 }
 
 static void askForModel(void) {
@@ -1227,6 +1365,14 @@ static void askForModel(void) {
 
 static NSArray<NSString *> *modelMenu(const SGAIProvider *p) {
     NSMutableArray<NSString *> *names = [NSMutableArray array];
+    if ([p->tag isEqualToString:@"gemini"]) {
+        NSArray *polledNames = [NSUserDefaults.standardUserDefaults stringArrayForKey:@"spotifyglass.lyrics.gemini.polled_names"];
+        if (polledNames.count > 0) {
+            for (NSString *name in polledNames) [names addObject:name];
+            [names addObject:@"Other…"];
+            return names;
+        }
+    }
     for (NSUInteger i = 0; i < 4 && p->modelNames[i]; i++) [names addObject:p->modelNames[i]];
     [names addObject:@"Other…"];
     return names;
@@ -1318,12 +1464,42 @@ NSArray<SGModRow *> *SGAITranslatorRows(void) {
     SGModRow *models = SGMenuRow(@"Model", modelMenu(chosen()), ^NSString *{
         const SGAIProvider *p = chosen();
         NSString *current = model(p);
+        if ([p->tag isEqualToString:@"gemini"]) {
+            NSArray *polledIDs = [NSUserDefaults.standardUserDefaults stringArrayForKey:@"spotifyglass.lyrics.gemini.polled_ids"];
+            NSArray *polledNames = [NSUserDefaults.standardUserDefaults stringArrayForKey:@"spotifyglass.lyrics.gemini.polled_names"];
+            if (polledIDs.count == polledNames.count) {
+                NSUInteger idx = [polledIDs indexOfObject:current];
+                if (idx != NSNotFound) return polledNames[idx];
+            }
+        }
         for (NSUInteger i = 0; i < 4 && p->models[i]; i++) if ([p->models[i] isEqualToString:current]) return p->modelNames[i];
         return current ?: @"Not set";
     }, nil);
     __weak SGModRow *weakModels = models;
+    models.action = ^{
+        if ([chosen()->tag isEqualToString:@"gemini"] && storedSecret(chosen(), kKeyAccount)) {
+            fetchGeminiModels(weakModels);
+        }
+    };
+    if ([chosen()->tag isEqualToString:@"gemini"] && storedSecret(chosen(), kKeyAccount)) {
+        fetchGeminiModels(weakModels);
+    }
     models.chosen = ^(NSInteger index) {
         const SGAIProvider *p = chosen();
+        if ([p->tag isEqualToString:@"gemini"]) {
+            NSArray *polledIDs = [NSUserDefaults.standardUserDefaults stringArrayForKey:@"spotifyglass.lyrics.gemini.polled_ids"];
+            if (polledIDs.count > 0) {
+                if (index < (NSInteger)polledIDs.count) {
+                    NSString *picked = polledIDs[(NSUInteger)index];
+                    if ([picked isEqualToString:p->models[0]]) [NSUserDefaults.standardUserDefaults removeObjectForKey:modelKey(p)];
+                    else [NSUserDefaults.standardUserDefaults setObject:picked forKey:modelKey(p)];
+                } else {
+                    askForModel();
+                }
+                translatorChanged();
+                return;
+            }
+        }
         if (index == 0 && p->models[0]) [NSUserDefaults.standardUserDefaults removeObjectForKey:modelKey(p)];
         else if (index < 4 && p->models[index]) [NSUserDefaults.standardUserDefaults setObject:p->models[index] forKey:modelKey(p)];
         else askForModel();

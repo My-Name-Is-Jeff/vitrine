@@ -162,6 +162,7 @@ static void applySymbolToIcon(UIImageView *icon, NSString *symbol, NSString *pre
     BOOL _leaving;
     BOOL _persistent;
     uint64_t _generation;
+    void (^_action)(void);
 }
 static __weak SGAlbumQueueNotice *sg_notice;
 
@@ -170,19 +171,23 @@ static __weak SGAlbumQueueNotice *sg_notice;
 }
 
 + (void)showIn:(UIWindow *)window title:(NSString *)title detail:(NSString *)detail symbol:(NSString *)symbol persistent:(BOOL)persistent {
+    [self showIn:window title:title detail:detail symbol:symbol persistent:persistent action:nil];
+}
+
++ (void)showIn:(UIWindow *)window title:(NSString *)title detail:(NSString *)detail symbol:(NSString *)symbol persistent:(BOOL)persistent action:(void (^)(void))action {
     window = activeWindow(window);
     if (!window) return;
 
     SGAlbumQueueNotice *existing = sg_notice;
     if (existing && !existing->_leaving && existing.superview) {
-        [existing updateTitle:title detail:detail symbol:symbol persistent:persistent];
+        [existing updateTitle:title detail:detail symbol:symbol persistent:persistent action:action];
         return;
     }
 
     [sg_notice leave:0];
     SGAlbumQueueNotice *notice = [[self alloc] initWithFrame:CGRectZero];
     notice.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
-    [notice buildIn:window title:title detail:detail symbol:symbol persistent:persistent];
+    [notice buildIn:window title:title detail:detail symbol:symbol persistent:persistent action:action];
     sg_notice = notice;
     UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification, notice.accessibilityLabel);
 
@@ -197,7 +202,8 @@ static __weak SGAlbumQueueNotice *sg_notice;
     }
 }
 
-- (void)updateTitle:(NSString *)title detail:(NSString *)detail symbol:(NSString *)symbol persistent:(BOOL)persistent {
+- (void)updateTitle:(NSString *)title detail:(NSString *)detail symbol:(NSString *)symbol persistent:(BOOL)persistent action:(void (^)(void))action {
+    _action = [action copy];
     _generation++;
     BOOL titleChanged = ![_top.text isEqualToString:title];
     BOOL previousPersistent = _persistent;
@@ -246,7 +252,8 @@ static __weak SGAlbumQueueNotice *sg_notice;
     }
 }
 
-- (void)buildIn:(UIWindow *)window title:(NSString *)title detail:(NSString *)detail symbol:(NSString *)symbol persistent:(BOOL)persistent {
+- (void)buildIn:(UIWindow *)window title:(NSString *)title detail:(NSString *)detail symbol:(NSString *)symbol persistent:(BOOL)persistent action:(void (^)(void))action {
+    _action = [action copy];
     _persistent = persistent;
     _generation++;
     _symbol = [symbol copy];
@@ -313,7 +320,9 @@ static __weak SGAlbumQueueNotice *sg_notice;
 }
 
 - (void)tapped {
+    void (^act)(void) = _action;
     [self leave:0];
+    if (act) act();
 }
 
 // Follows the finger up, resists going down, and leaves on a flick or a short lift.
