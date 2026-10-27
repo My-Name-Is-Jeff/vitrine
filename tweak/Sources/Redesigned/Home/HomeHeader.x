@@ -241,6 +241,71 @@ static void place(UIView *view, CGRect frame) {
     if (!CGPointEqualToPoint(view.center, center)) view.center = center;
 }
 
+// New Music Friday: on a Friday the pill wears a thin ring of pinks and purples, turning slowly round it, as a nod to the
+// week's new releases. A layer of the pill's glass holder, cut to a capsule's outline; still under Reduce Motion.
+static char kFridayKey;
+static const CGFloat kFridayRing = 1.5;
+static const CFTimeInterval kFridayTurn = 6;
+
+static BOOL isFriday(void) {
+    return [NSCalendar.currentCalendar component:NSCalendarUnitWeekday fromDate:NSDate.date] == 6;
+}
+
+static void layoutFriday(UIView *holder, CGSize size) {
+    CALayer *ring = objc_getAssociatedObject(holder, &kFridayKey);
+    BOOL friday = isFriday() && size.width > 1;
+    if (!friday) {
+        ring.hidden = YES;
+        return;
+    }
+    CAGradientLayer *colors;
+    if (!ring) {
+        ring = [CALayer layer];
+        colors = [CAGradientLayer layer];
+        colors.type = kCAGradientLayerConic;
+        colors.startPoint = CGPointMake(0.5, 0.5);
+        colors.endPoint = CGPointMake(0.5, 0);
+        UIColor *pink = [UIColor colorWithRed:1 green:0.36 blue:0.72 alpha:1], *violet = [UIColor colorWithRed:0.62 green:0.36 blue:1 alpha:1];
+        UIColor *magenta = [UIColor colorWithRed:0.92 green:0.3 blue:1 alpha:1], *rose = [UIColor colorWithRed:1 green:0.55 blue:0.8 alpha:1];
+        colors.colors = @[(id)pink.CGColor, (id)violet.CGColor, (id)magenta.CGColor, (id)rose.CGColor, (id)pink.CGColor];
+        [ring addSublayer:colors];
+        CAShapeLayer *outline = [CAShapeLayer layer];
+        outline.fillColor = nil;
+        outline.strokeColor = UIColor.whiteColor.CGColor;
+        outline.lineWidth = kFridayRing;
+        ring.mask = outline;
+        ring.zPosition = 101;
+        objc_setAssociatedObject(holder, &kFridayKey, ring, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    colors = (CAGradientLayer *)ring.sublayers.firstObject;
+    if (ring.superlayer != holder.layer) [holder.layer addSublayer:ring];
+    ring.hidden = NO;
+    CGRect bounds = (CGRect){CGPointZero, size};
+    if (!CGRectEqualToRect(ring.frame, bounds)) {
+        [CATransaction begin];
+        [CATransaction setDisableActions:YES];
+        ring.frame = bounds;
+        // Square and wider than the pill, so it covers the outline whichever way it has turned.
+        CGFloat side = hypot(size.width, size.height);
+        colors.bounds = CGRectMake(0, 0, side, side);
+        colors.position = CGPointMake(size.width / 2, size.height / 2);
+        CAShapeLayer *outline = (CAShapeLayer *)ring.mask;
+        outline.frame = bounds;
+        CGRect line = CGRectInset(bounds, kFridayRing / 2, kFridayRing / 2);
+        outline.path = [UIBezierPath bezierPathWithRoundedRect:line cornerRadius:line.size.height / 2].CGPath;
+        [CATransaction commit];
+    }
+    if (!SGRReduceMotion() && ![colors animationForKey:@"turn"]) {
+        CABasicAnimation *turn = [CABasicAnimation animationWithKeyPath:@"transform.rotation.z"];
+        turn.fromValue = @0;
+        turn.toValue = @(2 * M_PI);
+        turn.duration = kFridayTurn;
+        turn.repeatCount = HUGE_VALF;
+        turn.removedOnCompletion = NO;
+        [colors addAnimation:turn forKey:@"turn"];
+    }
+}
+
 static CGFloat layoutPill(UIView *header, UIStackView *stack, UIView *face) {
     SGRHomePillButtons *buttons = buttonsIn(header);
     UIView *glass = glassIn(header);
@@ -254,6 +319,7 @@ static CGFloat layoutPill(UIView *header, UIStackView *stack, UIView *face) {
     CGRect filter = CGRectMake(kPillPad, 0, kPillButton, kPillHeight);
     if (!CGRectEqualToRect(buttons.filter.frame, filter)) buttons.filter.frame = filter;
     SGRGlassCapsuleInside(glass, &kPillGlassKey, pill.size, NO);
+    layoutFriday(glass, pill.size);
     return CGRectGetMinX(pill);
 }
 
