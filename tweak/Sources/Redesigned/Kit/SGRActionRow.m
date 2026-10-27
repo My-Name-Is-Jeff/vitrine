@@ -503,6 +503,8 @@ static void placeInCorner(UIView *page, UIView *button) {
     if (!CGRectIsEmpty(frame) && !CGRectEqualToRect(button.frame, frame)) button.frame = frame;
 }
 
+void (*SGRPinnedMoreHook)(SGRMirrorButton *button);
+
 SGRMirrorButton *SGRPinnedMore(UIView *page, const void *key, UIView *source) {
     if (!page) return nil;
     SGRMirrorButton *button = objc_getAssociatedObject(page, key);
@@ -522,5 +524,6 @@ SGRMirrorButton *SGRPinnedMore(UIView *page, const void *key, UIView *source) {
     if (source) [button feedFrom:source];
     if (button.hidden != (source == nil)) button.hidden = source == nil;
     placeInCorner(page, button);
+    if (SGRPinnedMoreHook && source) SGRPinnedMoreHook(button);
     return button;
 }

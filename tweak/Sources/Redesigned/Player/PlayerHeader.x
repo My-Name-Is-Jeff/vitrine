@@ -62,7 +62,8 @@ static void pressFrom(UIControl *control, BOOL throughMenu) {
 }
 
 // `identifiers` holds, for each button, the identifiers it may carry, the first found winning. `watchMenu`: the ⋯ is
-// handed to PlayerMenu.m, which takes it for the ordinary player's; the AI DJ's ⋯ keeps Spotify's own menu.
+// handed to PlayerMenu.m, which opens the system menu from it. The AI DJ's ⋯ is too: left as Spotify's, it was the one
+// ⋯ of the redesign that still opened Spotify's sheet from the bottom.
 static void glassInside(UIViewController *unit, NSArray<NSArray<NSString *> *> *identifiers, const void **findKeys, BOOL watchMenu) {
     UIView *host = unit.viewIfLoaded;
     if (!host) return;
@@ -124,7 +125,7 @@ static void glassHeader(UIViewController *unit, BOOL watchMenu) {
 %hook SGRDJHeaderUnit
 - (void)viewDidLayoutSubviews {
     %orig;
-    glassHeader((UIViewController *)self, NO);
+    glassHeader((UIViewController *)self, YES);
 }
 %end
 %end
