@@ -4,6 +4,7 @@
 #import "Shared/Lyrics/Lyrics.h"
 #import "Shared/LyricsSources/LyricsSources.h"
 #import "Shared/AlbumQueue/AlbumQueue.h"
+#import "Settings/SGPage.h"
 #import "Settings/SGPageStyle.h"
 #import "LyricsTranslation.h"
 #import "BatchTranslation.h"
@@ -304,6 +305,45 @@ static void filterCandidateSongs(NSArray<NSString *> *trackIDs, NSString *target
 
 #pragma mark - Batch translation execution
 
+
+static void showBatchErrorAlert(NSString *error) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSString *title = @"Translation Failed";
+        if ([error containsString:@"API key"] || [error containsString:@"key"]) {
+            title = @"Invalid API Key";
+        } else if ([error containsString:@"not found"] || [error containsString:@"retired"]) {
+            title = @"Model Unavailable";
+        } else if ([error containsString:@"busy"] || [error containsString:@"demand"]) {
+            title = @"Service Busy";
+        } else if ([error containsString:@"limit"]) {
+            title = @"Rate Limit Exceeded";
+        } else if ([error containsString:@"timed out"]) {
+            title = @"Request Timed Out";
+        } else if ([error containsString:@"could not be reached"]) {
+            title = @"Connection Error";
+        }
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:title
+                                                                       message:error preferredStyle:UIAlertControllerStyleAlert];
+        alert.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+        if ([error hasPrefix:@"Download "]) {
+            [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+            UIAlertAction *open = [UIAlertAction actionWithTitle:@"Open Settings" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+                [SGOnDeviceTranslation openTranslateSettings];
+            }];
+            [alert addAction:open];
+            alert.preferredAction = open;
+        } else {
+            [alert addAction:[UIAlertAction actionWithTitle:@"Dismiss" style:UIAlertActionStyleCancel handler:nil]];
+            UIAlertAction *open = [UIAlertAction actionWithTitle:@"Open Settings" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+                SGOpenModSettings(nil);
+            }];
+            [alert addAction:open];
+            alert.preferredAction = open;
+        }
+        [SGTopController() presentViewController:alert animated:YES completion:nil];
+    });
+}
+
 void SGBatchTranslateURI(NSString *uri, SGBatchTranslationEngine engine, UIWindow *window) {
     window = normalAppWindow(window);
     if (sg_translating) {
@@ -420,7 +460,7 @@ void SGBatchTranslateURI(NSString *uri, SGBatchTranslationEngine engine, UIWindo
                         }
                         if (song && lines.count == song.lines.count && ![savedTrackIDs containsObject:song.trackID]) {
                             saveSongTranslation(song, lines);
-                            NSString *progressDetail = [NSString stringWithFormat:@"%lu of %lu songs…", (unsigned long)MIN(completed + 1, total), (unsigned long)total];
+                            NSString *progressDetail = [NSString stringWithFormat:@"%lu of %lu songs…", (unsigned long)completed, (unsigned long)total];
                             [SGAlbumQueueNotice showIn:window title:translatingTitle detail:progressDetail symbol:@"sparkles" persistent:YES];
                         }
                     }, ^(NSDictionary<NSString *, NSArray<NSString *> *> *results, NSString *error) {
@@ -435,13 +475,12 @@ void SGBatchTranslateURI(NSString *uri, SGBatchTranslationEngine engine, UIWindo
                         if (error || !results.count) {
                             processChunk = nil;
                             sg_translating = NO;
-                            NSString *title = completed > 0
-                                ? [NSString stringWithFormat:@"Translated %lu of %lu", (unsigned long)completed, (unsigned long)total]
-                                : @"Translation Failed";
-                            NSString *detail = error ?: @"Could not read reply";
-                            [SGAlbumQueueNotice showIn:window title:title detail:detail symbol:@"exclamationmark.circle" persistent:NO];
                             if (completed > 0) {
+                                NSString *title = [NSString stringWithFormat:@"Translated %lu of %lu", (unsigned long)completed, (unsigned long)total];
+                                [SGAlbumQueueNotice showIn:window title:title detail:error ?: @"Could not read reply" symbol:@"checkmark.circle" persistent:NO];
                                 [NSNotificationCenter.defaultCenter postNotificationName:SGLyricsTranslationsDidChangeNotification object:nil];
+                            } else {
+                                showBatchErrorAlert(error ?: @"Could not read reply");
                             }
                             return;
                         }
@@ -467,7 +506,7 @@ void SGBatchTranslateURI(NSString *uri, SGBatchTranslationEngine engine, UIWindo
                             NSString *detail = lastError ?: [NSString stringWithFormat:@"%lu songs saved", (unsigned long)completed];
                             [SGAlbumQueueNotice showIn:window title:title detail:detail symbol:@"exclamationmark.circle" persistent:NO];
                         } else {
-                            [SGAlbumQueueNotice showIn:window title:@"Translation Failed" detail:lastError ?: @"Could not translate songs" symbol:@"exclamationmark.circle" persistent:NO];
+                            showBatchErrorAlert(lastError ?: @"Could not translate songs");
                         }
                         if (completed > 0) {
                             [NSNotificationCenter.defaultCenter postNotificationName:SGLyricsTranslationsDidChangeNotification object:nil];
@@ -494,12 +533,12 @@ void SGBatchTranslateURI(NSString *uri, SGBatchTranslationEngine engine, UIWindo
                                 [err containsString:@"does not work in this language"]) {
                                 translateNext = nil;
                                 sg_translating = NO;
-                                NSString *title = completed > 0
-                                    ? [NSString stringWithFormat:@"Translated %lu of %lu", (unsigned long)completed, (unsigned long)total]
-                                    : @"Translation Failed";
-                                [SGAlbumQueueNotice showIn:window title:title detail:err symbol:@"exclamationmark.circle" persistent:NO];
                                 if (completed > 0) {
+                                    NSString *title = [NSString stringWithFormat:@"Translated %lu of %lu", (unsigned long)completed, (unsigned long)total];
+                                    [SGAlbumQueueNotice showIn:window title:title detail:err symbol:@"checkmark.circle" persistent:NO];
                                     [NSNotificationCenter.defaultCenter postNotificationName:SGLyricsTranslationsDidChangeNotification object:nil];
+                                } else {
+                                    showBatchErrorAlert(err);
                                 }
                                 return;
                             }

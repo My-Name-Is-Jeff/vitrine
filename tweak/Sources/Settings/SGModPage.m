@@ -986,6 +986,11 @@ static void showWaiting(UITableViewCell *cell, BOOL waiting, NSString *switchTit
     button.showsMenuAsPrimaryAction = YES;
     button.accessibilityLabel = row.title;
     button.accessibilityValue = current;
+    if (row.action) {
+        [button addAction:[UIAction actionWithHandler:^(UIAction *action) {
+            row.action();
+        }] forControlEvents:UIControlEventTouchDown | UIControlEventMenuActionTriggered];
+    }
     [button sizeToFit];
     return button;
 }

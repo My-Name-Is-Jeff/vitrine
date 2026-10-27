@@ -10,6 +10,7 @@ NSString *SGSanitizeEntityURI(NSString *raw);
 @interface SGAlbumQueueNotice : UIView
 + (void)showIn:(UIWindow *)window title:(NSString *)title detail:(NSString *)detail symbol:(NSString *)symbol;
 + (void)showIn:(UIWindow *)window title:(NSString *)title detail:(NSString *)detail symbol:(NSString *)symbol persistent:(BOOL)persistent;
++ (void)showIn:(UIWindow *)window title:(NSString *)title detail:(NSString *)detail symbol:(NSString *)symbol persistent:(BOOL)persistent action:(void (^)(void))action;
 @end
 
 // Spotify's ⋯ buttons. An album header's identifier ends in the album's id.
