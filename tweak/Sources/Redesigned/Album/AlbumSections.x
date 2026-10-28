@@ -198,7 +198,7 @@ static void logOnce(NSString *what) {
     }
     BOOL kept = isKept(content);
     BOOL visible = !kept && shown(cell, content, attributes.indexPath, NO);
-    if (!kept && !visible && settled && settled[1].doubleValue == 0 && fabs(settled[2].doubleValue - attributes.size.width) < 1) {
+    if (!kept && !visible && settled.count >= 3 && settled[1].doubleValue == 0 && fabs(settled[2].doubleValue - attributes.size.width) < 1) {
         UICollectionViewLayoutAttributes *fitted = [attributes copy];
         fitted.size = CGSizeMake(attributes.size.width, 0);
         return fitted;
@@ -206,7 +206,7 @@ static void logOnce(NSString *what) {
     // A kept cell is measured from the top and settled again below: content settle() moved down its lead measures
     // that much taller on every pass, and the collection view asks again until the answer holds still. Only the
     // lead is undone; a dropped cell's content is never squeezed to the cell's 0 (see the top of the file).
-    if (settled[1].doubleValue > 0) {
+    if (settled.count >= 2 && settled[1].doubleValue > 0) {
         CGRect frame = cell.contentView.frame;
         frame.origin.y = 0;
         cell.contentView.frame = frame;
@@ -233,7 +233,7 @@ static void logOnce(NSString *what) {
 - (void)layoutSubviews {
     %orig;
     NSArray<NSNumber *> *settled = objc_getAssociatedObject(self, &kSettledKey);
-    if (settled) settle((UICollectionViewCell *)self, settled[0].doubleValue, settled[1].doubleValue, settled[2].doubleValue);
+    if (settled.count >= 3) settle((UICollectionViewCell *)self, settled[0].doubleValue, settled[1].doubleValue, settled[2].doubleValue);
 }
 
 - (void)prepareForReuse {
