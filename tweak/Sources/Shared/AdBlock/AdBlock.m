@@ -172,7 +172,7 @@ static NSMutableDictionary<NSString *, NSNumber *> *countsLocked(void) {
 // Spotify leaves the screen. Called under the lock.
 static void saveLocked(void) {
     if (!sg_unsaved) return;
-    [NSUserDefaults.standardUserDefaults setObject:countsLocked() forKey:kCounts];
+    SGPrefsWriteUnmemoized(^{ [NSUserDefaults.standardUserDefaults setObject:countsLocked() forKey:kCounts]; });
     sg_unsaved = NO;
 }
 

@@ -31,10 +31,25 @@ static const SGBlockRule kRules[] = {
     {"doubleclick.net",                   NULL,                      "Google"},
 };
 static const size_t kRuleCount = sizeof(kRules) / sizeof(kRules[0]);
+// The rules as NSStrings, made once: the protocol is asked about nearly every request the app sends.
+static NSString *sg_domains[sizeof(kRules) / sizeof(kRules[0])], *sg_dotted[sizeof(kRules) / sizeof(kRules[0])],
+                *sg_paths[sizeof(kRules) / sizeof(kRules[0])], *sg_labels[sizeof(kRules) / sizeof(kRules[0])];
+
+static void boxRules(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        for (size_t i = 0; i < kRuleCount; i++) {
+            sg_domains[i] = @(kRules[i].host);
+            sg_dotted[i] = [@"." stringByAppendingString:sg_domains[i]];
+            sg_paths[i] = kRules[i].path ? @(kRules[i].path) : nil;
+            sg_labels[i] = @(kRules[i].label);
+        }
+    });
+}
 
 static NSString *const kCounts = @"spotifyglass.privacy.counts";
 static NSMutableDictionary<NSString *, NSNumber *> *sg_counts;
-static BOOL sg_unsaved;
+static BOOL sg_unsaved;   // blocks counted since the counts were last written
 
 @interface SGBlockProtocol : NSURLProtocol
 @end
@@ -53,6 +68,13 @@ static NSMutableDictionary<NSString *, NSNumber *> *countsLocked(void) {
     return sg_counts;
 }
 
+// Counted in memory and written when Spotify leaves the screen. Called under the lock.
+static void saveLocked(void) {
+    if (!sg_unsaved) return;
+    SGPrefsWriteUnmemoized(^{ [NSUserDefaults.standardUserDefaults setObject:countsLocked() forKey:kCounts]; });
+    sg_unsaved = NO;
+}
+
 static void countOne(NSString *label) {
     @synchronized (SGBlockProtocol.class) {
         NSMutableDictionary<NSString *, NSNumber *> *counts = countsLocked();
@@ -64,21 +86,24 @@ static void countOne(NSString *label) {
 static NSString *labelFor(NSURL *url) {
     NSString *host = url.host.lowercaseString;
     if (!host) return nil;
-    NSString *path = url.path ?: @"";
+    boxRules();
+    NSString *path = nil;
     for (size_t i = 0; i < kRuleCount; i++) {
-        NSString *domain = @(kRules[i].host);
-        if (![host isEqualToString:domain] && ![host hasSuffix:[@"." stringByAppendingString:domain]]) continue;
-        if (kRules[i].path && ![path containsString:@(kRules[i].path)]) continue;
-        return @(kRules[i].label);
+        if (![host isEqualToString:sg_domains[i]] && ![host hasSuffix:sg_dotted[i]]) continue;
+        if (sg_paths[i]) {
+            if (!path) path = url.path ?: @"";
+            if (![path containsString:sg_paths[i]]) continue;
+        }
+        return sg_labels[i];
     }
     return nil;
 }
 
 NSArray<NSString *> *SGBlockedLabels(void) {
+    boxRules();
     NSMutableArray<NSString *> *labels = [NSMutableArray array];
     for (size_t i = 0; i < kRuleCount; i++) {
-        NSString *label = @(kRules[i].label);
-        if (![labels containsObject:label]) [labels addObject:label];
+        if (![labels containsObject:sg_labels[i]]) [labels addObject:sg_labels[i]];
     }
     return labels;
 }
@@ -152,11 +177,7 @@ static NSURLSessionConfiguration *carryingProtocol(NSURLSessionConfiguration *co
         [NSURLProtocol registerClass:SGBlockProtocol.class];
         [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:nil
                                                     usingBlock:^(NSNotification *note) {
-            @synchronized (SGBlockProtocol.class) {
-                if (!sg_unsaved) return;
-                [NSUserDefaults.standardUserDefaults setObject:countsLocked() forKey:kCounts];
-                sg_unsaved = NO;
-            }
+            @synchronized (SGBlockProtocol.class) { saveLocked(); }
         }];
         %init;
     }
