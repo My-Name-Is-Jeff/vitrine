@@ -264,29 +264,19 @@ static float strength(void) {
     return (float)loadDouble(&sg_strengthBits);
 }
 
-static void engineStopped(void) {
-    atomic_store(&sg_engineStopped, false);
+static BOOL engineStopped(NSError *error) {
+    if (!atomic_exchange(&sg_engineStopped, false)
+        && (!error || (error.code != CHHapticErrorCodeEngineNotRunning && error.code != CHHapticErrorCodeServerInterrupted))) return NO;
     sg_engineRunning = NO;
     sg_rumble = nil;
     sg_rumbling = NO;
-}
-
-static void noteStopped(void) {
-    if (atomic_exchange(&sg_engineStopped, false)) engineStopped();
-}
-
-static BOOL stoppedError(NSError *error) {
-    return error.code == CHHapticErrorCodeEngineNotRunning || error.code == CHHapticErrorCodeServerInterrupted;
+    return YES;
 }
 
 static void stopRumble(NSTimeInterval at) {
-    noteStopped();
-    if (!sg_rumbling) return;
+    if (engineStopped(nil) || !sg_rumbling) return;
     NSError *error = nil;
-    if (![sg_rumble stopAtTime:at error:&error] && stoppedError(error)) {
-        engineStopped();
-        return;
-    }
+    if (![sg_rumble stopAtTime:at error:&error]) engineStopped(error);
     sg_rumbling = NO;
 }
 
@@ -318,7 +308,7 @@ static BOOL startEngine(void) {
             SGLog(@"music haptics: the engine was reset");
         };
     }
-    noteStopped();
+    engineStopped(nil);
     if (sg_engineRunning) return YES;
     double now = hostSeconds(mach_absolute_time());
     if (now < retryAt) return NO;
@@ -376,7 +366,7 @@ static void playTap(const SGMusicEvent *event) {
     if (!player || ![player startAtTime:at error:&error]) {
         static int logged;
         if (logged++ < 3) SGLog(@"music haptics: a tap did not play: %@", error);
-        if (stoppedError(error)) engineStopped();
+        engineStopped(error);
         return;
     }
     sg_stats.taps++;
@@ -403,7 +393,7 @@ static void playPreview(BOOL rumbles) {
     id<CHHapticPatternPlayer> player = pattern ? [sg_engine createPlayerWithPattern:pattern error:&error] : nil;
     if (!player || ![player startAtTime:CHHapticTimeImmediate error:&error]) {
         SGLog(@"music haptics: the preview did not play: %@", error);
-        if (stoppedError(error)) engineStopped();
+        engineStopped(error);
     }
 }
 
@@ -438,7 +428,7 @@ static void playLevel(const SGMusicEvent *event) {
         if (!sg_rumble) {
             static int logged;
             if (logged++ < 3) SGLog(@"music haptics: no rumble: %@", error);
-            if (stoppedError(error)) engineStopped();
+            engineStopped(error);
             return;
         }
     }
@@ -451,13 +441,12 @@ static void playLevel(const SGMusicEvent *event) {
         if (![sg_rumble startAtTime:at error:&error]) {
             static int logged;
             if (logged++ < 3) SGLog(@"music haptics: the rumble did not start: %@", error);
-            if (stoppedError(error)) engineStopped();
+            engineStopped(error);
             sg_rumble = nil;
             return;
         }
         sg_rumbling = YES;
-    } else if (![sg_rumble sendParameters:controls atTime:at error:&error] && stoppedError(error)) {
-        engineStopped();
+    } else if (![sg_rumble sendParameters:controls atTime:at error:&error] && engineStopped(error)) {
         return;
     }
     sg_rumbleSentAt = heard;
@@ -511,7 +500,7 @@ static void *playerLoop(void *unused) {
             }
             unsigned head = atomic_load(&sg_head), tail = atomic_load(&sg_tail);
             if (tail != head && startEngine()) {
-                for (; tail != head && (noteStopped(), sg_engineRunning); tail++) {
+                for (; tail != head && !engineStopped(nil) && sg_engineRunning; tail++) {
                     SGMusicEvent event = sg_ring[tail & (kRingSize - 1)];
                     if (event.kind == SGMusicEventLevel) {
                         if (rumbles) playLevel(&event);

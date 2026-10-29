@@ -286,10 +286,6 @@ BOOL SGRPlayerLyricsOpen(void) {
     return sg_open;
 }
 
-BOOL SGRPlayerLyricsAlone(void) {
-    return sg_alone;
-}
-
 // Puts the overlay's own views where the measurements say, without animating. The thumbnail is laid out
 // at the size and place Spotify draws its cover at and moved by its transform alone, so a pass that
 // runs while it is up leaves it exactly where the eye has it: the two are worked out from one
@@ -381,15 +377,18 @@ static NSArray<UIView *> *fadingViews(void) {
     return views;
 }
 
-void SGRPlayerLyricsFadeView(UIView *view, BOOL fits) {
-    if (!view) return;
-    view.alpha = 0;
+BOOL SGRPlayerLyricsFadeView(UIView *view, BOOL fits) {
     if (!fits || !sg_alone) {
+        if (!fits) view.alpha = 0;
         [sg_faded removeObject:view];
-        return;
+        return !fits;
     }
-    if (!sg_faded) sg_faded = [NSHashTable weakObjectsHashTable];
-    [sg_faded addObject:view];
+    if (view) {
+        view.alpha = 0;
+        if (!sg_faded) sg_faded = [NSHashTable weakObjectsHashTable];
+        [sg_faded addObject:view];
+    }
+    return YES;
 }
 
 static void fadeControls(BOOL faded) {

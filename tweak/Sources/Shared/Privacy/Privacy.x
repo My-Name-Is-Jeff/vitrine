@@ -175,10 +175,11 @@ static NSURLSessionConfiguration *carryingProtocol(NSURLSessionConfiguration *co
 %ctor {
     if (SGEnabled(SGKeyBlockTelemetry)) {
         [NSURLProtocol registerClass:SGBlockProtocol.class];
+        %init;
+        // Spotify leaving the screen writes what was counted since the last write.
         [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:nil
                                                     usingBlock:^(NSNotification *note) {
             @synchronized (SGBlockProtocol.class) { saveLocked(); }
         }];
-        %init;
     }
 }

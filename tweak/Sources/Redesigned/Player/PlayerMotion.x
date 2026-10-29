@@ -550,11 +550,8 @@ BOOL SGRPlayerMotionShowing(void) {
 
 static UIView *previewOf(NSURL *file, UIImage *poster) {
     static __weak SGRPlayerMotionView *sg_preview;
-    SGRPlayerMotionView *preview = sg_preview;
-    if (!preview) {
-        preview = [[SGRPlayerMotionView alloc] initWithFrame:CGRectZero];
-        sg_preview = preview;
-    }
+    SGRPlayerMotionView *preview = sg_preview ?: [[SGRPlayerMotionView alloc] initWithFrame:CGRectZero];
+    sg_preview = preview;
     [preview playFile:file poster:poster];
     [preview appear:NO then:^{}];
     return preview;

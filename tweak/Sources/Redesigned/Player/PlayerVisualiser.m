@@ -470,11 +470,8 @@ BOOL SGRPlayerVisualiserShowing(void) {
 
 UIView *SGRPlayerVisualiserPreview(void) {
     static __weak SGRVisualiserView *sg_preview;
-    SGRVisualiserView *preview = sg_preview;
-    if (!preview) {
-        preview = [[SGRVisualiserView alloc] initWithFrame:CGRectZero];
-        sg_preview = preview;
-    }
+    SGRVisualiserView *preview = sg_preview ?: [[SGRVisualiserView alloc] initWithFrame:CGRectZero];
+    sg_preview = preview;
     return preview;
 }
 

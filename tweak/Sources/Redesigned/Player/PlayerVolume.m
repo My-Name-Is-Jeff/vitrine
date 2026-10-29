@@ -361,6 +361,7 @@ BOOL SGRPlayerPlaceVolume(UIView *stack, UIView *controls, UIView *row, CGFloat 
     }
     if (!volume) {
         volume = [SGRVolumeRow new];
+        volume.alpha = 0;
         objc_setAssociatedObject(stack, &kVolumeKey, volume, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         SGRObserveLayout(stack, ^(UIView *laidOut) {
             SGRVolumeRow *placed = objc_getAssociatedObject(laidOut, &kVolumeKey);
@@ -393,8 +394,7 @@ BOOL SGRPlayerPlaceVolume(UIView *stack, UIView *controls, UIView *row, CGFloat 
     // The lyrics fade the stack's views by their alpha and bring back only the ones they faded.
     // The track is 7pt of the row's 32: it fits with the glyphs' and buttons' own clearance around it.
     BOOL fits = room >= height * 0.6;
-    if (!fits || SGRPlayerLyricsAlone()) SGRPlayerLyricsFadeView(volume, fits);
-    else if (volume.alpha < 0.01 && controls.alpha > 0.99) volume.alpha = 1;
+    if (!SGRPlayerLyricsFadeView(volume, fits) && volume.alpha < 0.01 && controls.alpha > 0.99) volume.alpha = 1;
     return fits;
 }
 
