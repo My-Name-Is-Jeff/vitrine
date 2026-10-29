@@ -71,7 +71,7 @@ static void tryLyrics(NSArray<NSNumber *> *songs, NSUInteger index, void (^done)
         done(nil);
         return;
     }
-    get(@"song/lyric/v1", @{@"id": songs[index].stringValue, @"lv": @"1", @"yv": @"1", @"tv": @"-1"}, ^(NSDictionary *root) {
+    get(@"song/lyric/v1", @{@"id": [NSString stringWithFormat:@"%@", songs[index]], @"lv": @"1", @"yv": @"1", @"tv": @"-1"}, ^(NSDictionary *root) {
         id yrc = [root[@"yrc"] isKindOfClass:NSDictionary.class] ? root[@"yrc"][@"lyric"] : nil;
         NSArray<SGKaraokeLine *> *lines = [yrc isKindOfClass:NSString.class] ? SGLyricsPieceLines(yrc, NO) : nil;
         if (lines) {
@@ -112,7 +112,9 @@ SGLyricsAsk SGNetEaseAsk = ^(SGLyricsQuery *query, void (^done)(SGLyricsResult *
         id songs = [root[@"result"] isKindOfClass:NSDictionary.class] ? root[@"result"][@"songs"] : nil;
         NSMutableArray<NSDictionary *> *fitting = [NSMutableArray array];
         for (NSDictionary *song in [songs isKindOfClass:NSArray.class] ? songs : @[]) {
-            if (![song isKindOfClass:NSDictionary.class] || ![song[@"id"] respondsToSelector:@selector(stringValue)]) continue;
+            if (![song isKindOfClass:NSDictionary.class]) continue;
+            id songID = song[@"id"];
+            if (!songID || songID == NSNull.null || (![songID isKindOfClass:NSNumber.class] && ![songID isKindOfClass:NSString.class])) continue;
             NSInteger length = secondsIn(song);
             if (length <= 0 || labs(length - seconds) > kLengthSlack) continue;
             id artists = song[@"artists"];

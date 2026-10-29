@@ -145,7 +145,9 @@ static BOOL betterRecord(NSDictionary *record, NSDictionary *best, NSInteger sec
     }
     NSString *text = (synced ? record[@"syncedLyrics"] : record[@"plainLyrics"]) ?: @"";
     NSString *wasText = (wasSynced ? best[@"syncedLyrics"] : best[@"plainLyrics"]) ?: @"";
-    return [text isKindOfClass:NSString.class] && (![wasText isKindOfClass:NSString.class] || text.length > wasText.length);
+    NSUInteger len = [text isKindOfClass:NSString.class] ? text.length : 0;
+    NSUInteger wasLen = [wasText isKindOfClass:NSString.class] ? wasText.length : 0;
+    return len > wasLen;
 }
 
 // The search ranks by its own lights, and its first hit is often another song of the artist's or the
