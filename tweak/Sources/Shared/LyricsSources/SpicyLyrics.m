@@ -97,8 +97,9 @@ static SGKaraokeLine *syllableLine(NSDictionary *part, NSString *field) {
     if (!words.count) return nil;
     SGKaraokeLine *line = [SGKaraokeLine new];
     line.words = words;
-    line.start = part[@"StartTime"] ? ms(part[@"StartTime"]) : words.firstObject.start;
-    line.end = MAX(part[@"EndTime"] ? ms(part[@"EndTime"]) : words.lastObject.end, line.start);
+    id start = part[@"StartTime"], end = part[@"EndTime"];
+    line.start = [start respondsToSelector:@selector(doubleValue)] ? ms(start) : words.firstObject.start;
+    line.end = MAX([end respondsToSelector:@selector(doubleValue)] ? ms(end) : words.lastObject.end, line.start);
     return line;
 }
 

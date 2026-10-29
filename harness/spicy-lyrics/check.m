@@ -129,8 +129,10 @@ int main(void) {
         CHECK([line.provider isEqualToString:@"Spotify via Spicy Lyrics"]);
         CHECK([SGKaraokeLineText(parse(@"{\"Body\":{\"Type\":\"Line\",\"Content\":[{\"Text\":\"東京\",\"TransliteratedText\":\"Tokyo\","
             "\"StartTime\":1,\"EndTime\":3,\"OppositeAligned\":null}]}}").karaokeLines[0].pronunciation) isEqualToString:@"Tokyo"]);
-        CHECK(parse(@"{\"Body\":{\"Type\":\"Syllable\",\"Content\":[{\"OppositeAligned\":null,\"Lead\":{\"Syllables\":["
-            "{\"Text\":\"ok\",\"StartTime\":1,\"EndTime\":2,\"IsPartOfWord\":null}]}}]}}").karaokeLines.count == 1);
+        SGKaraokeLine *nulled = parse(@"{\"Body\":{\"Type\":\"Syllable\",\"Content\":[{\"OppositeAligned\":null,\"Lead\":{"
+            "\"StartTime\":null,\"EndTime\":null,\"Syllables\":["
+            "{\"Text\":\"ok\",\"StartTime\":1,\"EndTime\":2,\"IsPartOfWord\":null}]}}]}}").karaokeLines.firstObject;
+        CHECK(nulled && nulled.start == 1000 && nulled.end == 2000);
 
         // With a language chosen, a translation the API names no language for is left out of both syncs.
         sg_language = @"es";

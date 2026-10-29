@@ -151,6 +151,7 @@ static UIColor *footColor(CGImageRef poster) {
 @end
 
 @implementation SGRPlayerMotionView {
+    NSURL *_file;
     AVQueuePlayer *_player;
     AVPlayerLooper *_looper;
     UIView *_picture;   // the clip over its foot, faded in as one
@@ -275,6 +276,8 @@ static UIBlurEffect *blurEffect(void) {
 }
 
 - (void)playFile:(NSURL *)file poster:(UIImage *)poster {
+    if ([_file isEqual:file] && _still.contents == (__bridge id)poster.CGImage) return;
+    _file = file;
     [_looper disableLooping];
     [_player pause];
     _aspect = poster.size.height / poster.size.width;
@@ -546,13 +549,13 @@ BOOL SGRPlayerMotionShowing(void) {
 }
 
 static UIView *previewOf(NSURL *file, UIImage *poster) {
-    static SGRPlayerMotionView *preview;
-    static NSURL *playing;
-    if (!preview) preview = [[SGRPlayerMotionView alloc] initWithFrame:CGRectZero];
-    if (![playing isEqual:file]) {
-        playing = file;
-        [preview playFile:file poster:poster];
+    static __weak SGRPlayerMotionView *sg_preview;
+    SGRPlayerMotionView *preview = sg_preview;
+    if (!preview) {
+        preview = [[SGRPlayerMotionView alloc] initWithFrame:CGRectZero];
+        sg_preview = preview;
     }
+    [preview playFile:file poster:poster];
     [preview appear:NO then:^{}];
     return preview;
 }

@@ -381,10 +381,13 @@ static NSArray<UIView *> *fadingViews(void) {
     return views;
 }
 
-void SGRPlayerLyricsFadeView(UIView *view) {
+void SGRPlayerLyricsFadeView(UIView *view, BOOL fits) {
     if (!view) return;
     view.alpha = 0;
-    if (!sg_alone) return;
+    if (!fits || !sg_alone) {
+        [sg_faded removeObject:view];
+        return;
+    }
     if (!sg_faded) sg_faded = [NSHashTable weakObjectsHashTable];
     [sg_faded addObject:view];
 }

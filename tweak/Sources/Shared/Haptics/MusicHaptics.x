@@ -401,7 +401,10 @@ static void playPreview(BOOL rumbles) {
     NSError *error = nil;
     CHHapticPattern *pattern = [[CHHapticPattern alloc] initWithEvents:events parameters:@[] error:&error];
     id<CHHapticPatternPlayer> player = pattern ? [sg_engine createPlayerWithPattern:pattern error:&error] : nil;
-    if (!player || ![player startAtTime:CHHapticTimeImmediate error:&error]) SGLog(@"music haptics: the preview did not play: %@", error);
+    if (!player || ![player startAtTime:CHHapticTimeImmediate error:&error]) {
+        SGLog(@"music haptics: the preview did not play: %@", error);
+        if (stoppedError(error)) engineStopped();
+    }
 }
 
 static void playLevel(const SGMusicEvent *event) {
@@ -508,7 +511,7 @@ static void *playerLoop(void *unused) {
             }
             unsigned head = atomic_load(&sg_head), tail = atomic_load(&sg_tail);
             if (tail != head && startEngine()) {
-                for (; tail != head && sg_engineRunning; tail++) {
+                for (; tail != head && (noteStopped(), sg_engineRunning); tail++) {
                     SGMusicEvent event = sg_ring[tail & (kRingSize - 1)];
                     if (event.kind == SGMusicEventLevel) {
                         if (rumbles) playLevel(&event);

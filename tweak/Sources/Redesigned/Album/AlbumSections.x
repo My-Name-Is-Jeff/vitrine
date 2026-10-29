@@ -64,9 +64,9 @@ static BOOL isKept(UIView *content) {
 
 // The content laid at `lead` down the cell, at the height it measured at, and the cell sized for both.
 // Kept on the cell so its own passes, which size the content to the cell again, do not undo it.
-static void settle(UICollectionViewCell *cell, CGFloat natural, CGFloat lead, CGFloat width) {
+static void settle(UICollectionViewCell *cell, CGFloat natural, CGFloat lead) {
     UIView *content = cell.contentView;
-    objc_setAssociatedObject(cell, &kSettledKey, @[@(natural), @(lead), @(width)], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(cell, &kSettledKey, @[@(natural), @(lead)], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     if (content.autoresizingMask & UIViewAutoresizingFlexibleHeight) content.autoresizingMask &= ~UIViewAutoresizingFlexibleHeight;
     CGRect frame = CGRectMake(0, lead, cell.bounds.size.width, natural);
     if (!CGRectEqualToRect(content.frame, frame)) content.frame = frame;
@@ -190,40 +190,33 @@ static void logOnce(NSString *what) {
 - (UICollectionViewLayoutAttributes *)preferredLayoutAttributesFittingAttributes:(UICollectionViewLayoutAttributes *)attributes {
     UICollectionViewCell *cell = (UICollectionViewCell *)self;
     UIView *content = cell.contentView.subviews.firstObject;
-    // Cells are reused across kinds, and one settled before can hold a track row now.
     NSArray<NSNumber *> *settled = objc_getAssociatedObject(cell, &kSettledKey);
+    // Cells are reused across kinds, and one settled before can hold a track row now.
     if (!isFooterContent(content) || !SGRAlbumPageOf(cell)) {
         if (settled) unsettle(cell);
         return %orig;
     }
-    BOOL kept = isKept(content);
-    BOOL visible = !kept && shown(cell, content, attributes.indexPath, NO);
-    if (!kept && !visible && settled.count >= 3 && settled[1].doubleValue == 0 && fabs(settled[2].doubleValue - attributes.size.width) < 1) {
-        UICollectionViewLayoutAttributes *fitted = [attributes copy];
-        fitted.size = CGSizeMake(attributes.size.width, 0);
-        return fitted;
-    }
     // A kept cell is measured from the top and settled again below: content settle() moved down its lead measures
     // that much taller on every pass, and the collection view asks again until the answer holds still. Only the
     // lead is undone; a dropped cell's content is never squeezed to the cell's 0 (see the top of the file).
-    if (settled.count >= 2 && settled[1].doubleValue > 0) {
+    if (settled[1].doubleValue > 0) {
         CGRect frame = cell.contentView.frame;
         frame.origin.y = 0;
         cell.contentView.frame = frame;
     }
     UICollectionViewLayoutAttributes *result = %orig;
-    CGFloat natural = MAX(1, result.size.height), width = result.size.width;
-    if (kept) {
+    CGFloat natural = MAX(1, result.size.height);
+    if (isKept(content)) {
         shown(cell, content, attributes.indexPath, YES);
-        settle(cell, natural, kLead, width);
-        result.size = CGSizeMake(width, natural + kLead);
+        settle(cell, natural, kLead);
+        result.size = CGSizeMake(result.size.width, natural + kLead);
         logOnce(@"the album's own line and its copyright kept under the tracks");
-    } else if (visible) {
+    } else if (shown(cell, content, attributes.indexPath, NO)) {
         if (settled) unsettle(cell);
         logOnce(@"a section under the tracks shown, its switch off");
     } else {
-        settle(cell, natural, 0, width);
-        result.size = CGSizeMake(width, 0);
+        settle(cell, natural, 0);
+        result.size = CGSizeMake(result.size.width, 0);
         logOnce(@"the sections under the tracks dropped");
     }
     return result;
@@ -233,7 +226,7 @@ static void logOnce(NSString *what) {
 - (void)layoutSubviews {
     %orig;
     NSArray<NSNumber *> *settled = objc_getAssociatedObject(self, &kSettledKey);
-    if (settled.count >= 3) settle((UICollectionViewCell *)self, settled[0].doubleValue, settled[1].doubleValue, settled[2].doubleValue);
+    if (settled) settle((UICollectionViewCell *)self, settled[0].doubleValue, settled[1].doubleValue);
 }
 
 - (void)prepareForReuse {
