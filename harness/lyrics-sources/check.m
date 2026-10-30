@@ -425,8 +425,13 @@ int main(int argc, char **argv) {
         got = lrclibAnswer(query, nil);
         CHECK(got && !got.synced);
         // Null instrumental and null duration: a word-synced record with null instrumental still reads its
-        // Lyricsfile, and when query.seconds > 0 but records have null duration, the fuller sheet wins.
+        // Lyricsfile, a known duration within slack beats a null duration, and when both have null duration
+        // the fuller sheet wins.
         query.seconds = 200;
+        found = @[@{@"id": @13, @"trackName": @"a", @"artistName": @"b", @"duration": NSNull.null, @"instrumental": NSNull.null, @"syncedLyrics": twoLines},
+                  @{@"id": @14, @"trackName": @"a", @"artistName": @"b", @"duration": @203, @"instrumental": NSNull.null, @"syncedLyrics": @"[00:01.00]a\n"}];
+        got = lrclibAnswer(query, nil);
+        CHECK(got.synced && got.karaokeLines.count == 1);
         found = @[@{@"id": @13, @"trackName": @"a", @"artistName": @"b", @"duration": NSNull.null, @"instrumental": NSNull.null, @"syncedLyrics": @"[00:01.00]a\n"},
                   @{@"id": @14, @"trackName": @"a", @"artistName": @"b", @"duration": NSNull.null, @"instrumental": NSNull.null, @"syncedLyrics": twoLines}];
         got = lrclibAnswer(query, nil);

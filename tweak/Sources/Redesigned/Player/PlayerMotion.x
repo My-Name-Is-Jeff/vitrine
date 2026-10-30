@@ -276,8 +276,11 @@ static UIBlurEffect *blurEffect(void) {
 }
 
 - (void)playFile:(NSURL *)file poster:(UIImage *)poster {
-    if ([_file isEqual:file] && _still.contents == (__bridge id)poster.CGImage) return;
-    _file = file;
+    if ([_file isEqual:file] && _still.contents == (__bridge id)poster.CGImage) {
+        [self updateMotion];
+        return;
+    }
+    _file = [file copy];
     [_looper disableLooping];
     [_player pause];
     _aspect = poster.size.height / poster.size.width;
@@ -550,10 +553,14 @@ BOOL SGRPlayerMotionShowing(void) {
 
 static UIView *previewOf(NSURL *file, UIImage *poster) {
     static __weak SGRPlayerMotionView *sg_preview;
-    SGRPlayerMotionView *preview = sg_preview ?: [[SGRPlayerMotionView alloc] initWithFrame:CGRectZero];
-    sg_preview = preview;
+    SGRPlayerMotionView *preview = sg_preview;
+    BOOL fresh = !preview;
+    if (fresh) {
+        preview = [[SGRPlayerMotionView alloc] initWithFrame:CGRectZero];
+        sg_preview = preview;
+    }
     [preview playFile:file poster:poster];
-    [preview appear:NO then:^{}];
+    if (fresh) [preview appear:NO then:^{}];
     return preview;
 }
 

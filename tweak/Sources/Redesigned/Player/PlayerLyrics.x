@@ -384,14 +384,11 @@ BOOL SGRPlayerLyricsFadeView(UIView *view, BOOL fits) {
         [sg_faded removeObject:view];
         return YES;
     }
-    if (sg_alone) {
-        view.alpha = 0;
-        if (!sg_faded) sg_faded = [NSHashTable weakObjectsHashTable];
-        [sg_faded addObject:view];
-        return YES;
-    }
-    [sg_faded removeObject:view];
-    return NO;
+    if (!sg_alone) return NO;
+    view.alpha = 0;
+    if (!sg_faded) sg_faded = [NSHashTable weakObjectsHashTable];
+    [sg_faded addObject:view];
+    return YES;
 }
 
 static void fadeControls(BOOL faded) {

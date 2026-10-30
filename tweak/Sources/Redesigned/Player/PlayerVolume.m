@@ -361,7 +361,6 @@ BOOL SGRPlayerPlaceVolume(UIView *stack, UIView *controls, UIView *row, CGFloat 
     }
     if (!volume) {
         volume = [SGRVolumeRow new];
-        volume.alpha = 0;
         objc_setAssociatedObject(stack, &kVolumeKey, volume, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         SGRObserveLayout(stack, ^(UIView *laidOut) {
             SGRVolumeRow *placed = objc_getAssociatedObject(laidOut, &kVolumeKey);

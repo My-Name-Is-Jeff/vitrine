@@ -272,10 +272,12 @@ static BOOL handleEngineStopped(NSError *error) {
     sg_engineRunning = NO;
     sg_rumble = nil;
     sg_rumbling = NO;
+    sg_quietSince = 0;
     return YES;
 }
 
 static void stopRumble(NSTimeInterval at) {
+    sg_quietSince = 0;
     if (handleEngineStopped(nil) || !sg_rumbling) return;
     NSError *error = nil;
     if (![sg_rumble stopAtTime:at error:&error]) handleEngineStopped(error);
@@ -502,7 +504,7 @@ static void *playerLoop(void *unused) {
             }
             unsigned head = atomic_load(&sg_head), tail = atomic_load(&sg_tail);
             if (tail != head && startEngine()) {
-                for (; tail != head && sg_engineRunning; tail++) {
+                for (; tail != head && !handleEngineStopped(nil) && sg_engineRunning; tail++) {
                     SGMusicEvent event = sg_ring[tail & (kRingSize - 1)];
                     if (event.kind == SGMusicEventLevel) {
                         if (rumbles) playLevel(&event);

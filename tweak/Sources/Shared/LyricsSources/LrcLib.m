@@ -143,10 +143,10 @@ static BOOL betterRecord(NSDictionary *record, NSDictionary *best, NSInteger sec
         NSInteger wasOff = wasLength > 0 ? labs(wasLength - seconds) : NSIntegerMax;
         if (off != wasOff) return off < wasOff;
     }
-    NSString *text = (synced ? record[@"syncedLyrics"] : record[@"plainLyrics"]) ?: @"";
-    NSString *wasText = (wasSynced ? best[@"syncedLyrics"] : best[@"plainLyrics"]) ?: @"";
-    NSUInteger len = [text isKindOfClass:NSString.class] ? text.length : 0;
-    NSUInteger wasLen = [wasText isKindOfClass:NSString.class] ? wasText.length : 0;
+    id text = synced ? record[@"syncedLyrics"] : record[@"plainLyrics"];
+    id wasText = wasSynced ? best[@"syncedLyrics"] : best[@"plainLyrics"];
+    NSUInteger len = [text isKindOfClass:NSString.class] ? [text length] : 0;
+    NSUInteger wasLen = [wasText isKindOfClass:NSString.class] ? [wasText length] : 0;
     return len > wasLen;
 }
 
