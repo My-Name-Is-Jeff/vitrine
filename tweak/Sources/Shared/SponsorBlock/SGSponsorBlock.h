@@ -4,6 +4,7 @@
 #import <UIKit/UIKit.h>
 
 #define SGKeySponsorBlockEnabled          @"spotifyglass.sponsorblock.enabled"
+#define SGKeySponsorBlockOverlay          @"spotifyglass.sponsorblock.overlay"
 #define SGKeySponsorBlockShowToast        @"spotifyglass.sponsorblock.showToast"
 #define SGKeySponsorBlockToastDuration    @"spotifyglass.sponsorblock.toastDuration"
 #define SGKeySponsorBlockPromptDuration   @"spotifyglass.sponsorblock.promptDuration"
@@ -16,9 +17,10 @@
 #define SGSponsorBlockPromptDurationInfinite 65.0
 
 typedef NS_ENUM(NSInteger, SGSponsorBlockBehavior) {
-    SGSponsorBlockBehaviorSkip = 0,    // Auto-skip
-    SGSponsorBlockBehaviorPrompt = 1,  // Prompt
-    SGSponsorBlockBehaviorOff = 2,     // Off
+    SGSponsorBlockBehaviorSkip = 0,      // Auto-skip
+    SGSponsorBlockBehaviorPrompt = 1,    // Prompt
+    SGSponsorBlockBehaviorShowOnly = 2,  // Show only
+    SGSponsorBlockBehaviorOff = 3,       // Off
 };
 
 @interface SGSponsorBlockSegment : NSObject
@@ -35,9 +37,11 @@ NSArray<NSString *> *SGSponsorBlockBehaviorNames(void);
 SGSponsorBlockBehavior SGSponsorBlockCategoryBehavior(NSString *category);
 void SGSetSponsorBlockCategoryBehavior(NSString *category, SGSponsorBlockBehavior behavior);
 void SGResetSponsorBlockCategoriesToDefaults(void);
+
 UIColor *SGSponsorBlockCategoryColor(NSString *category);
 NSString *SGSponsorBlockCategorySubtitle(NSString *category);
 NSString *SGSponsorBlockCategoryDisplayName(NSString *category);
+
 BOOL SGSponsorBlockSubSwitchEnabled(NSString *key);
 
 NSUInteger SGSponsorBlockSkipCount(void);
@@ -49,12 +53,15 @@ void SGResetSponsorBlockStats(void);
 
 NSTimeInterval SGSponsorBlockToastDuration(void);
 void SGSetSponsorBlockToastDuration(NSTimeInterval duration);
+
 NSTimeInterval SGSponsorBlockPromptDuration(void);
 void SGSetSponsorBlockPromptDuration(NSTimeInterval duration);
+
 NSTimeInterval SGSponsorBlockMinDuration(void);
 void SGSetSponsorBlockMinDuration(NSTimeInterval duration);
 
 NSString *SGSponsorBlockSummary(void);
 UIViewController *SGSponsorBlockSettingsPage(void);
+
 void SGSponsorBlockStart(void);
 void SGSponsorBlockPreferencesDidChange(void);

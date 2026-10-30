@@ -3,6 +3,7 @@
 #import "SGSponsorBlockSkipper.h"
 #import "SGSponsorBlockAPI.h"
 #import "SGSponsorBlockToast.h"
+#import "SGSponsorBlockOverlay.h"
 #import "Core/SGCore.h"
 #import "Shared/Lyrics/Lyrics.h"
 #import "Shared/Player/PlayerState.h"
@@ -73,6 +74,18 @@
     _fetchingCategories = @[];
     _playbackSpeed = 1.0;
     return self;
+}
+
+- (NSString *)currentEpisodeID {
+    return _currentEpisodeID;
+}
+
+- (NSArray<SGSponsorBlockSegment *> *)currentSegments {
+    return _currentSegments;
+}
+
+- (double)episodeDuration {
+    return _episodeDuration;
 }
 
 - (void)start {
@@ -242,6 +255,7 @@ static void performSeek(double targetSec) {
     _pendingSeekTarget = 0;
     _hasPreSeekPosition = NO;
     _preSeekPosition = 0;
+    [SGSponsorBlockOverlay refreshAll];
 }
 
 - (void)clearEpisodeState {
@@ -251,6 +265,7 @@ static void performSeek(double targetSec) {
 
 - (void)preferencesDidChange {
     dispatch_block_t work = ^{
+        [SGSponsorBlockOverlay refreshAll];
         self->_eeveeChecked = NO;
         if (!SGFlag(SGKeySponsorBlockEnabled, NO) || [self eeveeSponsorBlockActive]) {
             [self clearEpisodeState];
@@ -428,7 +443,10 @@ static void performSeek(double targetSec) {
     _playbackSpeed = speed;
     _isPlaying = isPlaying;
     if (isfinite(state.duration) && state.duration > 0) {
-        _episodeDuration = state.duration;
+        if (_episodeDuration != state.duration) {
+            _episodeDuration = state.duration;
+            [SGSponsorBlockOverlay refreshAll];
+        }
     }
 
     if (!isNewEpisode && _currentSegments.count == 0 && !_fetchInFlight && cats.count > 0) {
@@ -485,11 +503,13 @@ static void performSeek(double targetSec) {
             self->_currentSegments = @[];
             self->_failedEpisodeTimes[episodeKey] = @(CACurrentMediaTime());
             [self stopPolling];
+            [SGSponsorBlockOverlay refreshAll];
             return;
         }
         [self->_failedEpisodeTimes removeObjectForKey:episodeKey];
         self->_loadedCategories = cats;
         self->_currentSegments = segments ?: @[];
+        [SGSponsorBlockOverlay refreshAll];
         if (self->_currentSegments.count == 0) {
             [self->_emptyEpisodeKeys addObject:episodeKey];
             [self stopPolling];
@@ -702,7 +722,7 @@ static void performSeek(double targetSec) {
         if ([_playthroughAllowed containsObject:seg.uuid]) continue;
 
         SGSponsorBlockBehavior behavior = SGSponsorBlockCategoryBehavior(seg.category);
-        if (behavior == SGSponsorBlockBehaviorOff) continue;
+        if (behavior == SGSponsorBlockBehaviorOff || behavior == SGSponsorBlockBehaviorShowOnly) continue;
 
         BOOL isManualSeekDismissed = (respectManual && [_dismissedUUIDs containsObject:seg.uuid]);
         if (behavior != SGSponsorBlockBehaviorPrompt && !isManualSeekDismissed) continue;

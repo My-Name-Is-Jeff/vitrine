@@ -5,6 +5,7 @@
 #import "Settings/SGModPage.h"
 #import "Settings/SGPageStyle.h"
 #import "SGSponsorBlock.h"
+#import "SGSponsorBlockOverlay.h"
 
 typedef struct {
     __unsafe_unretained NSString *key;
@@ -27,6 +28,7 @@ static const SGCategorySpec kCategories[] = {
     { @"filler",           @"Filler & tangents",     @"Filler",               @"ellipsis.bubble",   @"Off-topic banter and tangents",                          SGSponsorBlockBehaviorOff,    0.47, 0.56, 0.61 },
     { @"exclusive_access", @"Exclusive access",      @"Exclusive access",     @"lock",              @"Bonus previews and subscriber-only pitches",             SGSponsorBlockBehaviorOff,    1.00, 0.63, 0.00 },
 };
+
 static const size_t kCategoryCount = sizeof(kCategories) / sizeof(kCategories[0]);
 
 static const SGCategorySpec *specForCategory(NSString *category) {
@@ -35,6 +37,21 @@ static const SGCategorySpec *specForCategory(NSString *category) {
         if ([kCategories[i].key isEqualToString:category]) return &kCategories[i];
     }
     return NULL;
+}
+
+static void ensureBehaviorMigration(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        if (!SGFlag(@"spotifyglass.sponsorblock.v2_migration", NO)) {
+            for (size_t i = 0; i < kCategoryCount; i++) {
+                NSString *prefKey = [@"spotifyglass.sponsorblock.behavior." stringByAppendingString:kCategories[i].key];
+                if (SGInt(prefKey, -1) == 2) {
+                    SGSetInt(prefKey, SGSponsorBlockBehaviorOff); // migrate legacy 2 (Off) to 3 (Off)
+                }
+            }
+            SGSetEnabled(@"spotifyglass.sponsorblock.v2_migration", YES);
+        }
+    });
 }
 
 NSArray<NSString *> *SGSponsorBlockAllCategories(void) {
@@ -49,7 +66,7 @@ NSArray<NSString *> *SGSponsorBlockAllCategories(void) {
 }
 
 NSArray<NSString *> *SGSponsorBlockBehaviorNames(void) {
-    return @[@"Auto-skip", @"Prompt", @"Off"];
+    return @[@"Auto-skip", @"Prompt", @"Show only", @"Off"];
 }
 
 UIColor *SGSponsorBlockCategoryColor(NSString *category) {
@@ -69,11 +86,12 @@ NSString *SGSponsorBlockCategoryDisplayName(NSString *category) {
 }
 
 SGSponsorBlockBehavior SGSponsorBlockCategoryBehavior(NSString *category) {
+    ensureBehaviorMigration();
     const SGCategorySpec *spec = specForCategory(category);
     if (!spec) return SGSponsorBlockBehaviorOff;
     NSString *prefKey = [@"spotifyglass.sponsorblock.behavior." stringByAppendingString:spec->key];
     NSInteger stored = SGInt(prefKey, -1);
-    return (stored >= 0 && stored <= 2) ? (SGSponsorBlockBehavior)stored : spec->defaultBehavior;
+    return (stored >= 0 && stored <= 3) ? (SGSponsorBlockBehavior)stored : spec->defaultBehavior;
 }
 
 void SGSetSponsorBlockCategoryBehavior(NSString *category, SGSponsorBlockBehavior behavior) {
@@ -105,7 +123,7 @@ BOOL SGSponsorBlockSubSwitchEnabled(NSString *key) {
 }
 
 static void ensureSubSwitchesInitialized(void) {
-    for (NSString *subKey in @[SGKeySponsorBlockShowToast, SGKeySponsorBlockHaptics, SGKeySponsorBlockRespectManual]) {
+    for (NSString *subKey in @[SGKeySponsorBlockOverlay, SGKeySponsorBlockShowToast, SGKeySponsorBlockHaptics, SGKeySponsorBlockRespectManual]) {
         if (!SGString(subKey)) SGSetEnabled(subKey, YES);
     }
 }
@@ -139,6 +157,9 @@ UIViewController *SGSponsorBlockSettingsPage(void) {
     }), @"arrow.counterclockwise");
     [categories addObject:resetCategoriesRow];
 
+    SGModRow *overlay = SGWithSymbol(SGSwitchRow(@"Show colored progress bar", @"Display colored segment bars along the episode scrubber", SGKeySponsorBlockOverlay), @"chart.bar.xaxis");
+    overlay.changed = ^(BOOL on) { SGSponsorBlockPreferencesDidChange(); };
+
     SGModRow *toast = SGWithSymbol(SGSwitchRow(@"Show skip notifications", @"Show an Undo banner after skipping a segment", SGKeySponsorBlockShowToast), @"bell");
     toast.changed = ^(BOOL on) { SGSponsorBlockPreferencesDidChange(); };
 
@@ -155,11 +176,11 @@ UIViewController *SGSponsorBlockSettingsPage(void) {
             return value >= SGSponsorBlockPromptDurationInfinite ? @"Until end" : [NSString stringWithFormat:@"%.0f s", value];
         });
 
-    SGModRow *haptics = SGWithSymbol(SGSwitchRow(@"Haptic feedback", @"Play haptics when skipping or showing a prompt", SGKeySponsorBlockHaptics), @"iphone.radiowaves.left.and.right");
-    haptics.changed = ^(BOOL on) { SGSponsorBlockPreferencesDidChange(); };
-
     SGModRow *respectManual = SGWithSymbol(SGSwitchRow(@"Respect manual scrub", @"Prompt instead of auto-skipping when scrubbing into a segment", SGKeySponsorBlockRespectManual), @"slider.horizontal.below.rectangle");
     respectManual.changed = ^(BOOL on) { SGSponsorBlockPreferencesDidChange(); };
+
+    SGModRow *haptics = SGWithSymbol(SGSwitchRow(@"Haptic feedback", @"Play haptics when skipping or showing a prompt", SGKeySponsorBlockHaptics), @"iphone.radiowaves.left.and.right");
+    haptics.changed = ^(BOOL on) { SGSponsorBlockPreferencesDidChange(); };
 
     SGModRow *minDuration = SGSliderRow(@"Minimum segment duration", nil, 0.0, 5.0, 0.5,
         ^double { return SGSponsorBlockMinDuration(); },
@@ -187,15 +208,15 @@ UIViewController *SGSponsorBlockSettingsPage(void) {
     }), @"trash");
 
     NSString *categoryFooter = @"Auto-skip jumps past segments automatically. "
-                               @"Prompt shows a banner so you can choose when to skip.";
-
+                               @"Prompt shows a banner so you can choose when to skip. "
+                               @"Show only marks segments on the progress bar without skipping.";
     NSString *footer = @"Segment timestamps come from Spot-SponsorBlock (spotsponsorblock.org) on the SponsorBlock "
                        @"database (sponsor.ajay.app). Because segments are submitted by listeners, newer or less common "
                        @"episodes may not be marked yet.";
 
     SGModPage *page = [[SGModPage alloc] initWithTitle:@"SponsorBlock" intro:nil sections:@[
         SGNotedSection(@"Categories to skip", categories, categoryFooter),
-        SGSection(@"Behavior", @[toast, undoDuration, promptDuration, haptics, respectManual, minDuration]),
+        SGSection(@"Behavior", @[overlay, toast, undoDuration, promptDuration, respectManual, haptics, minDuration]),
         SGSection(@"Statistics", @[statRow, timeRow, resetRow]),
     ] footer:footer];
     weakPage = page;
