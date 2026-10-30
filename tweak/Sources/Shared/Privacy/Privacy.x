@@ -50,7 +50,6 @@ static void boxRules(void) {
 static NSString *const kCounts = @"spotifyglass.privacy.counts";
 static NSMutableDictionary<NSString *, NSNumber *> *sg_counts;
 static BOOL sg_unsaved;   // blocks counted since the counts were last written
-static CFAbsoluteTime sg_savedAt;
 
 @interface SGBlockProtocol : NSURLProtocol
 @end
@@ -69,15 +68,11 @@ static NSMutableDictionary<NSString *, NSNumber *> *countsLocked(void) {
     return sg_counts;
 }
 
-// Counted in memory and written as AdBlock.m writes its counts: when Spotify leaves the screen and at most
-// every 30 s while counting goes on, so a kill in the background (no notification comes) loses half a
-// minute at most. Each write also wakes every defaults observer and empties the prefs memo. Called under
-// the lock.
-static void saveLocked(BOOL now) {
-    if (!sg_unsaved || (!now && CFAbsoluteTimeGetCurrent() - sg_savedAt < 30)) return;
+// Counted in memory and written when Spotify leaves the screen. Called under the lock.
+static void saveLocked(void) {
+    if (!sg_unsaved) return;
     SGPrefsWriteUnmemoized(^{ [NSUserDefaults.standardUserDefaults setObject:countsLocked() forKey:kCounts]; });
     sg_unsaved = NO;
-    sg_savedAt = CFAbsoluteTimeGetCurrent();
 }
 
 static void countOne(NSString *label) {
@@ -85,7 +80,6 @@ static void countOne(NSString *label) {
         NSMutableDictionary<NSString *, NSNumber *> *counts = countsLocked();
         counts[label] = @(counts[label].unsignedIntegerValue + 1);
         sg_unsaved = YES;
-        saveLocked(NO);
     }
 }
 
@@ -185,7 +179,7 @@ static NSURLSessionConfiguration *carryingProtocol(NSURLSessionConfiguration *co
         // Spotify leaving the screen writes what was counted since the last write.
         [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:nil
                                                     usingBlock:^(NSNotification *note) {
-            @synchronized (SGBlockProtocol.class) { saveLocked(YES); }
+            @synchronized (SGBlockProtocol.class) { saveLocked(); }
         }];
     }
 }

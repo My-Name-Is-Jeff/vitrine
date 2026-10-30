@@ -134,7 +134,6 @@ static NSString *const labels[] = {
 };
 static NSMutableDictionary<NSString *, NSNumber *> *sg_counts;
 static BOOL sg_unsaved;   // stops or checks counted since the counts were last written
-static CFAbsoluteTime sg_savedAt;
 
 // Made once per label: the hooks count on every request and page component.
 static NSString *checkedKey(NSString *label) {
@@ -163,20 +162,18 @@ static NSMutableDictionary<NSString *, NSNumber *> *countsLocked(void) {
         if (sg_counts.count && !sg_counts[checkedKey(@"Requests")]) {
             [sg_counts removeAllObjects];
             sg_counts[checkedKey(@"Requests")] = @0;
-            SGPrefsWriteUnmemoized(^{ [NSUserDefaults.standardUserDefaults setObject:sg_counts forKey:kCounts]; });
+            sg_unsaved = YES;
         }
     }
     return sg_counts;
 }
 
-// Counted in memory, as a stop can come several times a second, and written when Spotify leaves the screen
-// and at most every 30 s while counting goes on, so a kill in the background (no notification comes) loses
-// half a minute at most. Called under the lock.
-static void saveLocked(BOOL now) {
-    if (!sg_unsaved || (!now && CFAbsoluteTimeGetCurrent() - sg_savedAt < 30)) return;
+// Counted in memory, as a stop or check can come on a worker thread during launch, and written when
+// Spotify leaves the screen. Called under the lock.
+static void saveLocked(void) {
+    if (!sg_unsaved) return;
     SGPrefsWriteUnmemoized(^{ [NSUserDefaults.standardUserDefaults setObject:countsLocked() forKey:kCounts]; });
     sg_unsaved = NO;
-    sg_savedAt = CFAbsoluteTimeGetCurrent();
 }
 
 void SGAdBlockCountOne(NSString *label) {
@@ -184,7 +181,6 @@ void SGAdBlockCountOne(NSString *label) {
         NSMutableDictionary<NSString *, NSNumber *> *counts = countsLocked();
         counts[label] = @(counts[label].unsignedIntegerValue + 1);
         sg_unsaved = YES;
-        saveLocked(NO);
     }
 }
 
@@ -194,7 +190,6 @@ void SGAdBlockSawOne(NSString *label) {
         NSString *key = checkedKey(label);
         counts[key] = @(counts[key].unsignedIntegerValue + 1);
         sg_unsaved = YES;
-        saveLocked(NO);
     }
 }
 
@@ -208,7 +203,7 @@ NSUInteger SGAdBlockChecked(NSString *label) {
 __attribute__((constructor)) static void saveChecksOnLeaving(void) {
     [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:nil
                                                 usingBlock:^(NSNotification *note) {
-        @synchronized (kCounts) { saveLocked(YES); }
+        @synchronized (kCounts) { saveLocked(); }
     }];
 }
 

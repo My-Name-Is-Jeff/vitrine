@@ -66,12 +66,18 @@ NSArray<SGKaraokeLine *> *SGLyricsPieceLines(NSString *body, BOOL krc) {
     return lines.count ? lines : nil;
 }
 
-static void tryLyrics(NSArray<NSNumber *> *songs, NSUInteger index, void (^done)(NSArray<SGKaraokeLine *> *)) {
+static NSString *stringIn(id value) {
+    if ([value isKindOfClass:NSString.class]) return value;
+    if ([value isKindOfClass:NSNumber.class]) return [value stringValue];
+    return nil;
+}
+
+static void tryLyrics(NSArray<NSString *> *songs, NSUInteger index, void (^done)(NSArray<SGKaraokeLine *> *)) {
     if (index >= songs.count) {
         done(nil);
         return;
     }
-    get(@"song/lyric/v1", @{@"id": songs[index].stringValue, @"lv": @"1", @"yv": @"1", @"tv": @"-1"}, ^(NSDictionary *root) {
+    get(@"song/lyric/v1", @{@"id": songs[index], @"lv": @"1", @"yv": @"1", @"tv": @"-1"}, ^(NSDictionary *root) {
         id yrc = [root[@"yrc"] isKindOfClass:NSDictionary.class] ? root[@"yrc"][@"lyric"] : nil;
         NSArray<SGKaraokeLine *> *lines = [yrc isKindOfClass:NSString.class] ? SGLyricsPieceLines(yrc, NO) : nil;
         if (lines) {
@@ -81,6 +87,11 @@ static void tryLyrics(NSArray<NSNumber *> *songs, NSUInteger index, void (^done)
             tryLyrics(songs, index + 1, done);
         }
     });
+}
+
+static NSInteger secondsIn(NSDictionary *song) {
+    id duration = song[@"duration"];
+    return [duration respondsToSelector:@selector(integerValue)] ? [duration integerValue] / 1000 : 0;
 }
 
 // A recording is only taken when its length is this close to the track's, so the words fall on the
@@ -107,7 +118,9 @@ SGLyricsAsk SGNetEaseAsk = ^(SGLyricsQuery *query, void (^done)(SGLyricsResult *
         id songs = [root[@"result"] isKindOfClass:NSDictionary.class] ? root[@"result"][@"songs"] : nil;
         NSMutableArray<NSDictionary *> *fitting = [NSMutableArray array];
         for (NSDictionary *song in [songs isKindOfClass:NSArray.class] ? songs : @[]) {
-            if (![song isKindOfClass:NSDictionary.class] || labs([song[@"duration"] integerValue] / 1000 - seconds) > kLengthSlack) continue;
+            if (![song isKindOfClass:NSDictionary.class] || !stringIn(song[@"id"]).length) continue;
+            NSInteger length = secondsIn(song);
+            if (length <= 0 || labs(length - seconds) > kLengthSlack) continue;
             id artists = song[@"artists"];
             for (NSDictionary *credited in [artists isKindOfClass:NSArray.class] ? artists : @[]) {
                 NSString *name = [credited isKindOfClass:NSDictionary.class] && [credited[@"name"] isKindOfClass:NSString.class] ? [credited[@"name"] lowercaseString] : nil;
@@ -118,9 +131,13 @@ SGLyricsAsk SGNetEaseAsk = ^(SGLyricsQuery *query, void (^done)(SGLyricsResult *
             }
         }
         [fitting sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
-            return [@(labs([a[@"duration"] integerValue] / 1000 - seconds)) compare:@(labs([b[@"duration"] integerValue] / 1000 - seconds))];
+            return [@(labs(secondsIn(a) - seconds)) compare:@(labs(secondsIn(b) - seconds))];
         }];
-        NSArray *ids = [[fitting valueForKey:@"id"] subarrayWithRange:NSMakeRange(0, MIN(fitting.count, kTriedSongs))];
+        NSMutableArray<NSString *> *ids = [NSMutableArray array];
+        for (NSDictionary *song in fitting) {
+            [ids addObject:stringIn(song[@"id"])];
+            if (ids.count >= kTriedSongs) break;
+        }
         if (!ids.count) SGLog(@"netease: no recording of %@ by %@ within %lds of %lds", title, lead, (long)kLengthSlack, (long)seconds);
         tryLyrics(ids, 0, answer);
     });
