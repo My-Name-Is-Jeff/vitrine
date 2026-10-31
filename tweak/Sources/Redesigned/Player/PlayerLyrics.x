@@ -273,7 +273,8 @@ static void placeQueueBottomChrome(UIView *host, BOOL queueOpen) {
 
             CGRect rawBar = SGFrameIn(dur, host);
             rawBar = CGRectOffset(rawBar, -dur.transform.tx, -dur.transform.ty);
-            CGFloat dy = round((targetSliderY - sliderLocalY) - CGRectGetMinY(rawBar));
+            // Lift dur by an extra 3.7 pt to place the slider track top edge exactly at screen y = 546.0 pt
+            CGFloat dy = round((targetSliderY - sliderLocalY) - CGRectGetMinY(rawBar)) - 3.7;
             CGAffineTransform up = CGAffineTransformMakeTranslation(0.0, dy);
             if (!CGAffineTransformEqualToTransform(dur.transform, up)) dur.transform = up;
         } else {

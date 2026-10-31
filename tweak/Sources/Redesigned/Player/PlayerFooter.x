@@ -123,6 +123,45 @@ SGRGlyphButton *SGRPlayerLyricsGlyphIn(UIView *host) {
 
 #pragma mark - queue
 
+static UIImage *SGRQueueActiveKnockoutIconImage(CGSize size) {
+    UIGraphicsImageRendererFormat *fmt = [UIGraphicsImageRendererFormat preferredFormat];
+    fmt.opaque = NO;
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:size format:fmt];
+    return [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
+        CGContextRef cg = ctx.CGContext;
+        // Background capsule at rgba(255, 255, 255, 0.62)
+        CGRect rect = CGRectMake(0, 0, size.width, size.height);
+        UIBezierPath *circle = [UIBezierPath bezierPathWithOvalInRect:rect];
+        [[UIColor colorWithWhite:1.0 alpha:0.62] setFill];
+        [circle fill];
+
+        // Knockout list.bullet glyph using DestinationOut (19.3 pt wide, 2.0 pt bar thickness)
+        CGContextSetBlendMode(cg, kCGBlendModeDestinationOut);
+        [[UIColor colorWithWhite:0.0 alpha:1.0] setFill];
+
+        CGFloat iconW = 19.3;
+        CGFloat iconH = 12.0;
+        CGFloat startX = (size.width - iconW) * 0.5;
+        CGFloat startY = (size.height - iconH) * 0.5;
+
+        // 3 horizontal bars and 3 bullet dots
+        CGFloat barH = 2.0;
+        CGFloat dotW = 2.4;
+        CGFloat dotH = 2.0;
+        CGFloat barX = startX + 5.0;
+        CGFloat barW = iconW - 5.0;
+        CGFloat stepY = 5.0;
+
+        for (int i = 0; i < 3; i++) {
+            CGFloat y = startY + i * stepY;
+            UIBezierPath *dot = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(startX, y, dotW, dotH) cornerRadius:1.0];
+            [dot fill];
+            UIBezierPath *bar = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(barX, y, barW, barH) cornerRadius:1.0];
+            [bar fill];
+        }
+    }];
+}
+
 void SGRPlayerQueueChanged(void) {
     SGRPlayerMotionLyricsChanged();
     SGRPlayerVisualiserUpdate();
@@ -132,8 +171,15 @@ void SGRPlayerQueueChanged(void) {
     BOOL open = SGRPlayerQueueOpen();
     BOOL animated = glyph.window && !SGRPlayerIsTransitioning();
     void (^mark)(void) = ^{
-        glyph.glyph.tintColor = open ? [UIColor colorWithWhite:0.08 alpha:0.95] : [UIColor colorWithWhite:1.0 alpha:0.65];
-        glyph.backgroundColor = open ? [UIColor colorWithWhite:1.0 alpha:0.72] : UIColor.clearColor;
+        if (open) {
+            glyph.glyph.image = SGRQueueActiveKnockoutIconImage(CGSizeMake(38.0, 38.0));
+            glyph.glyph.tintColor = nil;
+            glyph.backgroundColor = UIColor.clearColor;
+        } else {
+            glyph.glyph.image = [UIImage systemImageNamed:kQueueSymbol withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:kLyricsGlyphSize weight:UIImageSymbolWeightRegular]];
+            glyph.glyph.tintColor = [UIColor colorWithWhite:1.0 alpha:0.65];
+            glyph.backgroundColor = UIColor.clearColor;
+        }
         glyph.layer.cornerRadius = 19.0;
         glyph.layer.cornerCurve = kCACornerCurveContinuous;
         glyph.clipsToBounds = YES;
@@ -151,16 +197,12 @@ SGRGlyphButton *SGRPlayerQueueGlyphIn(UIView *host) {
     SGRGlyphButton *glyph = objc_getAssociatedObject(host, &kQueueGlyphKey);
     if (!glyph) {
         glyph = [SGRGlyphButton buttonWithSymbol:kQueueSymbol pointSize:kLyricsGlyphSize title:@"Queue"];
-        glyph.glyph.tintColor = SGRPlayerQueueOpen() ? [UIColor colorWithWhite:0.08 alpha:0.95] : [UIColor colorWithWhite:1.0 alpha:0.65];
-        glyph.backgroundColor = SGRPlayerQueueOpen() ? [UIColor colorWithWhite:1.0 alpha:0.72] : UIColor.clearColor;
-        glyph.layer.cornerRadius = 19.0;
-        glyph.layer.cornerCurve = kCACornerCurveContinuous;
-        glyph.clipsToBounds = YES;
         glyph.onTap = ^{ SGRPlayerToggleQueue(); };
         objc_setAssociatedObject(host, &kQueueGlyphKey, glyph, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     if (glyph.superview != host) [host addSubview:glyph];
     sg_queueGlyph = glyph;
+    SGRPlayerQueueChanged();
     return glyph;
 }
 

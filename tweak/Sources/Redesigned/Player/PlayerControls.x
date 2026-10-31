@@ -24,7 +24,7 @@
 #import "Shared/Lyrics/Lyrics.h"
 #import "Player.h"
 
-static const CGFloat kSkipGlyphSize = 26.0, kPlayGlyphSize = 44.0;
+static const CGFloat kSkipGlyphSize = 29.5, kPlayGlyphSize = 40.0;
 // A spinner that is still up this long after a state change is buffering, not a track starting.
 static const NSTimeInterval kSpinnerCheck = 0.6;
 
@@ -530,17 +530,19 @@ static void durationLaidOut(UIViewController *unit) {
     if (slider && [slider isKindOfClass:UISlider.class]) {
         BOOL queueOpen = SGRPlayerQueueOpen();
         if (queueOpen) {
-            CGFloat side = 32.0;
+            // Screen margins: 32.0 pt. Since host (DurationElementUnit) has x = 25.0 pt and width = 340.0 pt,
+            // inside host the slider must be inset by 7.0 pt (25 + 7 = 32 pt) with width = 326.0 pt (340 - 14 pt).
+            CGFloat localLeft = 7.0;
             CGFloat w = host.bounds.size.width;
-            CGFloat targetW = w - side * 2.0;
-            if (fabs(slider.frame.origin.x - side) > 0.5 || fabs(slider.frame.size.width - targetW) > 0.5) {
-                slider.frame = CGRectMake(side, slider.frame.origin.y, targetW, slider.frame.size.height);
+            CGFloat targetW = w - localLeft * 2.0;
+            if (fabs(slider.frame.origin.x - localLeft) > 0.5 || fabs(slider.frame.size.width - targetW) > 0.5) {
+                slider.frame = CGRectMake(localLeft, slider.frame.origin.y, targetW, slider.frame.size.height);
             }
-            if (taken && (fabs(taken.frame.origin.x - side) > 0.5)) {
-                taken.frame = CGRectMake(side, taken.frame.origin.y, taken.frame.size.width, taken.frame.size.height);
+            if (taken && (fabs(taken.frame.origin.x - localLeft) > 0.5)) {
+                taken.frame = CGRectMake(localLeft, taken.frame.origin.y, taken.frame.size.width, taken.frame.size.height);
             }
-            if (remaining && (fabs(CGRectGetMaxX(remaining.frame) - (w - side)) > 0.5)) {
-                remaining.frame = CGRectMake(w - side - remaining.frame.size.width, remaining.frame.origin.y, remaining.frame.size.width, remaining.frame.size.height);
+            if (remaining && (fabs(CGRectGetMaxX(remaining.frame) - (w - localLeft)) > 0.5)) {
+                remaining.frame = CGRectMake(w - localLeft - remaining.frame.size.width, remaining.frame.origin.y, remaining.frame.size.width, remaining.frame.size.height);
             }
         }
         slider.minimumTrackTintColor = [UIColor colorWithWhite:1.0 alpha:0.55];
@@ -549,11 +551,11 @@ static void durationLaidOut(UIViewController *unit) {
 
     if (taken) {
         taken.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightSemibold];
-        taken.textColor = [UIColor colorWithWhite:1.0 alpha:0.45];
+        taken.textColor = [UIColor colorWithWhite:1.0 alpha:0.42];
     }
     if (remaining) {
         remaining.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightSemibold];
-        remaining.textColor = [UIColor colorWithWhite:1.0 alpha:0.45];
+        remaining.textColor = [UIColor colorWithWhite:1.0 alpha:0.42];
         if ([remaining.text containsString:@"-"] && ![remaining.text containsString:@"\u2212"]) {
             remaining.text = [remaining.text stringByReplacingOccurrencesOfString:@"-" withString:@"\u2212"];
         }

@@ -1600,16 +1600,16 @@ static UIImage *SGRExplicitBadgeImageNP(void) {
     static UIImage *badge = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        CGSize size = CGSizeMake(15.0, 15.0);
+        CGSize size = CGSizeMake(14.0, 14.0);
         UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:size];
         badge = [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
             CGContextRef cg = ctx.CGContext;
-            UIBezierPath *bg = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, size.width, size.height) cornerRadius:3.5];
+            UIBezierPath *bg = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, size.width, size.height) cornerRadius:3.3];
             [[UIColor colorWithWhite:1.0 alpha:0.62] setFill];
             [bg fill];
 
             CGContextSetBlendMode(cg, kCGBlendModeClear);
-            UIFont *font = [UIFont systemFontOfSize:9.8 weight:UIFontWeightHeavy];
+            UIFont *font = [UIFont systemFontOfSize:9.2 weight:UIFontWeightHeavy];
             NSDictionary *attrs = @{
                 NSFontAttributeName: font,
                 NSForegroundColorAttributeName: UIColor.blackColor,
@@ -1634,7 +1634,7 @@ static UIImage *SGRExplicitBadgeImageRow(void) {
         UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:size];
         badge = [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
             CGContextRef cg = ctx.CGContext;
-            UIBezierPath *bg = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, size.width, size.height) cornerRadius:3.0];
+            UIBezierPath *bg = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, size.width, size.height) cornerRadius:2.7];
             [[UIColor colorWithWhite:1.0 alpha:0.62] setFill];
             [bg fill];
 
@@ -1657,54 +1657,90 @@ static UIImage *SGRExplicitBadgeImageRow(void) {
 }
 
 // Draws Apple Music's exact overlapping two-circles AutoMix/Transitions glyph into the current context,
-// centered at `center` (left 55%-opacity stroked ring occluded on the right by a 100%-opacity solid donut).
-static void SGRDrawTransitionsOverlappingCircles(CGContextRef cg, CGPoint center, UIColor *inkColor) {
-    CGFloat leftX = center.x - 4.5;
-    CGFloat rightX = center.x + 4.5;
-    CGFloat leftR = 6.2;
-    CGFloat rightOuterR = 6.2;
-    CGFloat rightInnerR = 2.0;
+// centered at `center`. In active mode, draws with DestinationOut knockout so the warm background bleeds through.
+static void SGRDrawTransitionsOverlappingCircles(CGContextRef cg, CGPoint center, BOOL active) {
+    // 14% scaled down from 22x14 -> 19x12 pt
+    CGFloat leftX = center.x - 3.9;
+    CGFloat rightX = center.x + 3.9;
+    CGFloat leftR = 5.3;
+    CGFloat rightOuterR = 5.3;
+    CGFloat rightInnerR = 1.7;
 
-    // Render into a transparency layer so the right disc cleanly occludes the overlapping arc of the left ring
-    CGContextSaveGState(cg);
-    CGContextBeginTransparencyLayer(cg, NULL);
+    if (active) {
+        // Cut out directly through the translucent capsule so background shows through!
+        CGContextSetBlendMode(cg, kCGBlendModeDestinationOut);
 
-    // 1. Left circle ring at 55% alpha
-    UIBezierPath *leftRing = [UIBezierPath bezierPathWithArcCenter:CGPointMake(leftX, center.y)
-                                                            radius:leftR
-                                                        startAngle:0
-                                                          endAngle:(CGFloat)(M_PI * 2.0)
-                                                         clockwise:YES];
-    leftRing.lineWidth = 1.8;
-    [[inkColor colorWithAlphaComponent:0.55] setStroke];
-    [leftRing stroke];
+        // 1. Left circle ring at 55% knockout
+        UIBezierPath *leftRing = [UIBezierPath bezierPathWithArcCenter:CGPointMake(leftX, center.y)
+                                                                radius:leftR
+                                                            startAngle:0
+                                                              endAngle:(CGFloat)(M_PI * 2.0)
+                                                             clockwise:YES];
+        leftRing.lineWidth = 1.5;
+        [[UIColor colorWithWhite:0.0 alpha:0.55] setStroke];
+        [leftRing stroke];
 
-    // 2. Clear overlapping interior of the left ring directly beneath the right solid donut
-    CGContextSetBlendMode(cg, kCGBlendModeClear);
-    UIBezierPath *occluder = [UIBezierPath bezierPathWithArcCenter:CGPointMake(rightX, center.y)
-                                                            radius:rightOuterR
-                                                        startAngle:0
-                                                          endAngle:(CGFloat)(M_PI * 2.0)
-                                                         clockwise:YES];
-    [occluder fill];
+        // 2. Clear overlapping interior of the left ring directly beneath the right donut
+        UIBezierPath *occluder = [UIBezierPath bezierPathWithArcCenter:CGPointMake(rightX, center.y)
+                                                                radius:rightOuterR
+                                                            startAngle:0
+                                                              endAngle:(CGFloat)(M_PI * 2.0)
+                                                             clockwise:YES];
+        [[UIColor colorWithWhite:0.0 alpha:1.0] setFill];
+        [occluder fill];
 
-    // 3. Draw right solid donut (outer disc minus center hole)
-    CGContextSetBlendMode(cg, kCGBlendModeNormal);
-    UIBezierPath *rightDonut = [UIBezierPath bezierPathWithArcCenter:CGPointMake(rightX, center.y)
-                                                              radius:rightOuterR
-                                                          startAngle:0
-                                                            endAngle:(CGFloat)(M_PI * 2.0)
-                                                           clockwise:YES];
-    [rightDonut appendPath:[[UIBezierPath bezierPathWithArcCenter:CGPointMake(rightX, center.y)
-                                                           radius:rightInnerR
-                                                       startAngle:0
-                                                         endAngle:(CGFloat)(M_PI * 2.0)
-                                                        clockwise:YES] bezierPathByReversingPath]];
-    [inkColor setFill];
-    [rightDonut fill];
+        // 3. Right donut at 100% knockout
+        UIBezierPath *rightDonut = [UIBezierPath bezierPathWithArcCenter:CGPointMake(rightX, center.y)
+                                                                  radius:rightOuterR
+                                                              startAngle:0
+                                                                endAngle:(CGFloat)(M_PI * 2.0)
+                                                               clockwise:YES];
+        [rightDonut appendPath:[[UIBezierPath bezierPathWithArcCenter:CGPointMake(rightX, center.y)
+                                                               radius:rightInnerR
+                                                           startAngle:0
+                                                             endAngle:(CGFloat)(M_PI * 2.0)
+                                                            clockwise:YES] bezierPathByReversingPath]];
+        [[UIColor colorWithWhite:0.0 alpha:1.0] setFill];
+        [rightDonut fill];
+    } else {
+        // Inactive: normal rendering in pure white
+        CGContextSaveGState(cg);
+        CGContextBeginTransparencyLayer(cg, NULL);
 
-    CGContextEndTransparencyLayer(cg);
-    CGContextRestoreGState(cg);
+        UIBezierPath *leftRing = [UIBezierPath bezierPathWithArcCenter:CGPointMake(leftX, center.y)
+                                                                radius:leftR
+                                                            startAngle:0
+                                                              endAngle:(CGFloat)(M_PI * 2.0)
+                                                             clockwise:YES];
+        leftRing.lineWidth = 1.5;
+        [[UIColor colorWithWhite:1.0 alpha:0.55] setStroke];
+        [leftRing stroke];
+
+        CGContextSetBlendMode(cg, kCGBlendModeClear);
+        UIBezierPath *occluder = [UIBezierPath bezierPathWithArcCenter:CGPointMake(rightX, center.y)
+                                                                radius:rightOuterR
+                                                            startAngle:0
+                                                              endAngle:(CGFloat)(M_PI * 2.0)
+                                                             clockwise:YES];
+        [occluder fill];
+
+        CGContextSetBlendMode(cg, kCGBlendModeNormal);
+        UIBezierPath *rightDonut = [UIBezierPath bezierPathWithArcCenter:CGPointMake(rightX, center.y)
+                                                                  radius:rightOuterR
+                                                              startAngle:0
+                                                                endAngle:(CGFloat)(M_PI * 2.0)
+                                                               clockwise:YES];
+        [rightDonut appendPath:[[UIBezierPath bezierPathWithArcCenter:CGPointMake(rightX, center.y)
+                                                               radius:rightInnerR
+                                                           startAngle:0
+                                                             endAngle:(CGFloat)(M_PI * 2.0)
+                                                            clockwise:YES] bezierPathByReversingPath]];
+        [UIColor.whiteColor setFill];
+        [rightDonut fill];
+
+        CGContextEndTransparencyLayer(cg);
+        CGContextRestoreGState(cg);
+    }
 }
 
 static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *symbolName, BOOL isTransitionsGlyph) {
@@ -1724,22 +1760,33 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
         [capsule fill];
 
         CGPoint center = CGPointMake(size.width * 0.5, size.height * 0.5);
-        // Active icon: dark knocked-out canvas tint [UIColor colorWithWhite:0.08 alpha:0.95] (NO neon green)
-        // Inactive icon: 100% pure white [UIColor colorWithWhite:1.0 alpha:1.0]
-        UIColor *inkColor = active ? [UIColor colorWithWhite:0.08 alpha:0.95] : [UIColor colorWithWhite:1.0 alpha:1.0];
 
         if (isTransitionsGlyph) {
-            SGRDrawTransitionsOverlappingCircles(cg, center, inkColor);
+            SGRDrawTransitionsOverlappingCircles(cg, center, active);
         } else if (symbolName.length) {
             UIImageSymbolWeight weight = [symbolName isEqualToString:@"infinity"] ? UIImageSymbolWeightHeavy : UIImageSymbolWeightBold;
             UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:16.0 weight:weight];
-            UIImage *sym = [[UIImage systemImageNamed:symbolName withConfiguration:cfg] imageWithTintColor:inkColor renderingMode:UIImageRenderingModeAlwaysOriginal];
-            if (sym) {
-                CGRect symRect = CGRectMake(center.x - sym.size.width * 0.5,
-                                            center.y - sym.size.height * 0.5,
-                                            sym.size.width,
-                                            sym.size.height);
-                [sym drawInRect:symRect];
+            if (active) {
+                // Render symbol masked out via DestinationOut knockout
+                UIImage *sym = [[UIImage systemImageNamed:symbolName withConfiguration:cfg] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+                if (sym) {
+                    CGRect symRect = CGRectMake(center.x - sym.size.width * 0.5,
+                                                center.y - sym.size.height * 0.5,
+                                                sym.size.width,
+                                                sym.size.height);
+                    CGContextSetBlendMode(cg, kCGBlendModeDestinationOut);
+                    [[UIColor colorWithWhite:0.0 alpha:0.95] setFill];
+                    [sym drawInRect:symRect];
+                }
+            } else {
+                UIImage *sym = [[UIImage systemImageNamed:symbolName withConfiguration:cfg] imageWithTintColor:UIColor.whiteColor renderingMode:UIImageRenderingModeAlwaysOriginal];
+                if (sym) {
+                    CGRect symRect = CGRectMake(center.x - sym.size.width * 0.5,
+                                                center.y - sym.size.height * 0.5,
+                                                sym.size.width,
+                                                sym.size.height);
+                    [sym drawInRect:symRect];
+                }
             }
         }
     }];
@@ -1842,7 +1889,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     _artView = [[UIImageView alloc] initWithFrame:CGRectMake(kSideMargin, 4.0, 48.0, 48.0)];
     _artView.contentMode = UIViewContentModeScaleAspectFill;
     _artView.clipsToBounds = YES;
-    _artView.layer.cornerRadius = 6.0;
+    _artView.layer.cornerRadius = 7.0;
     _artView.layer.cornerCurve = kCACornerCurveContinuous;
     _artView.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.10];
     [_rowContentView addSubview:_artView];
@@ -2430,7 +2477,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     _npArtView = [[UIImageView alloc] initWithFrame:CGRectMake(kSideMargin, 6.0, 72.0, 72.0)];
     _npArtView.contentMode = UIViewContentModeScaleAspectFill;
     _npArtView.clipsToBounds = YES;
-    _npArtView.layer.cornerRadius = 8.0;
+    _npArtView.layer.cornerRadius = 11.0;
     _npArtView.layer.cornerCurve = kCACornerCurveContinuous;
     _npArtView.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.12];
     _npArtView.userInteractionEnabled = YES;
@@ -2453,7 +2500,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     [_npDetailsView addSubview:_npExplicitView];
 
     _npArtistLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _npArtistLabel.font = [UIFont systemFontOfSize:16.0 weight:UIFontWeightRegular];
+    _npArtistLabel.font = [UIFont systemFontOfSize:15.5 weight:UIFontWeightRegular];
     _npArtistLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.60];
     _npArtistLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     [_npDetailsView addSubview:_npArtistLabel];
@@ -2487,12 +2534,12 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
 
     _continueTitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     _continueTitleLabel.text = @"Continue Playing";
-    _continueTitleLabel.font = [UIFont systemFontOfSize:19.0 weight:UIFontWeightBold];
+    _continueTitleLabel.font = [UIFont systemFontOfSize:18.5 weight:UIFontWeightBold];
     _continueTitleLabel.textColor = UIColor.whiteColor;
     [_continueHeaderView addSubview:_continueTitleLabel];
 
     _continueSubtitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _continueSubtitleLabel.font = [UIFont systemFontOfSize:15.0 weight:UIFontWeightRegular];
+    _continueSubtitleLabel.font = [UIFont systemFontOfSize:14.5 weight:UIFontWeightRegular];
     _continueSubtitleLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.55];
     _continueSubtitleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     [_continueHeaderView addSubview:_continueSubtitleLabel];
@@ -2792,9 +2839,18 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     _bottomFadeMask.frame = _viewportClipView.bounds;
-    CGFloat fadeStart = MAX(0.78, (viewportH - 36.0) / viewportH);
-    CGFloat fadeMid = MAX(0.88, (viewportH - 14.0) / viewportH);
-    _bottomFadeMask.locations = @[@0.0, @(fadeStart), @(fadeMid), @1.0];
+    // Fade starts at y = 498.0 pt (418.0 pt in viewport, top of Row 5) and ramps down to y = 546.0 pt (466.0 pt, progress bar)
+    CGFloat locStart = MAX(0.0, MIN(1.0, (viewportH - 48.0) / viewportH));
+    CGFloat locMid1  = MAX(0.0, MIN(1.0, (viewportH - 26.0) / viewportH));
+    CGFloat locMid2  = MAX(0.0, MIN(1.0, (viewportH - 11.0) / viewportH));
+    _bottomFadeMask.locations = @[@0.0, @(locStart), @(locMid1), @(locMid2), @1.0];
+    _bottomFadeMask.colors = @[
+        (id)[UIColor colorWithWhite:1.0 alpha:1.0].CGColor,
+        (id)[UIColor colorWithWhite:1.0 alpha:1.0].CGColor,
+        (id)[UIColor colorWithWhite:1.0 alpha:0.55].CGColor,
+        (id)[UIColor colorWithWhite:1.0 alpha:0.25].CGColor,
+        (id)[UIColor colorWithWhite:1.0 alpha:0.05].CGColor
+    ];
     [CATransaction commit];
 
     _scrollView.frame = _viewportClipView.bounds;
@@ -2817,15 +2873,15 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     CGFloat npMaxRight = w - kSideMargin - 32.0 - 8.0;
     CGFloat npAvailW = MAX(40.0, npMaxRight - npTextLeft);
     BOOL npHasExp = !_npExplicitView.hidden;
-    CGFloat npBadgeW = npHasExp ? (15.0 + 5.0) : 0.0;
-    CGSize npTitleNat = [_npTitleLabel sizeThatFits:CGSizeMake(npAvailW - npBadgeW, 26.0)];
+    CGFloat npBadgeW = npHasExp ? (14.0 + 5.0) : 0.0;
+    CGSize npTitleNat = [_npTitleLabel sizeThatFits:CGSizeMake(npAvailW - npBadgeW, 24.0)];
     CGFloat npTitleW = MIN(npAvailW - npBadgeW, ceil(npTitleNat.width));
-    CGFloat titleY = round((72.0 - 46.0) * 0.5);
-    _npTitleLabel.frame = CGRectMake(npTextLeft, titleY, npTitleW, 24.0);
+    CGFloat titleY = 14.5;
+    _npTitleLabel.frame = CGRectMake(npTextLeft, titleY, npTitleW, 22.0);
     if (npHasExp) {
-        _npExplicitView.frame = CGRectMake(npTextLeft + npTitleW + 5.0, titleY + 4.5, 15.0, 15.0);
+        _npExplicitView.frame = CGRectMake(npTextLeft + npTitleW + 5.0, titleY + 4.0, 14.0, 14.0);
     }
-    _npArtistLabel.frame = CGRectMake(npTextLeft, titleY + 24.0 + 2.0, npAvailW, 20.0);
+    _npArtistLabel.frame = CGRectMake(npTextLeft, titleY + 22.0 + 1.0, npAvailW, 19.0);
 
     // Section 2 Header subviews: configurable pills (height = 38, cornerRadius = 19, x = 32 .. w - 32) + Continue Playing title & subtitle
     NSArray<NSNumber *> *activeSlots = [self activePillSlots];
@@ -2917,7 +2973,8 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
 
     // 2. Section 1: Now Playing Card clipped strictly between top clip plane (screenY = 84.7 pt) and rising Continue Header
     // so "Now Playing" NEVER peeks above the pinned 4-pill bar!
-    CGFloat npClipTopDocY = MAX(kNowPlayingDocY, scrollY + kContinueHeaderPinOffset);
+    // When scrollY <= 0.0, npClipTopDocY must be 0.0 so the top 2pt of artwork is not clipped!
+    CGFloat npClipTopDocY = (scrollY > 0.0) ? (scrollY + kContinueHeaderPinOffset) : 0.0;
     CGFloat npClipBottomDocY = MIN(kNowPlayingDocY + kNowPlayingHeight, queueHeaderDocY);
     CGFloat npClipH = MAX(0.0, npClipBottomDocY - npClipTopDocY);
     _nowPlayingClipView.frame = CGRectMake(0.0, npClipTopDocY, w, npClipH);
