@@ -307,13 +307,25 @@ void SGRPlayerPlayGlyphIn(UIView *host) {
             prevCenter.x -= prev.transform.tx;
             CGPoint nextCenter = [next.superview convertPoint:next.center toView:host];
             nextCenter.x -= next.transform.tx;
-            CGAffineTransform prevT = CGAffineTransformMakeTranslation(round(targetPrevX - prevCenter.x), 0.0);
-            CGAffineTransform nextT = CGAffineTransformMakeTranslation(round(targetNextX - nextCenter.x), 0.0);
+            CGFloat prevMove = round(targetPrevX - prevCenter.x);
+            CGFloat nextMove = round(targetNextX - nextCenter.x);
+            CGAffineTransform prevT = CGAffineTransformMakeTranslation(prevMove, 0.0);
+            CGAffineTransform nextT = CGAffineTransformMakeTranslation(nextMove, 0.0);
             if (!CGAffineTransformEqualToTransform(prev.transform, prevT)) prev.transform = prevT;
             if (!CGAffineTransformEqualToTransform(next.transform, nextT)) next.transform = nextT;
+
+            // Also translate arranged container in UIStackView if present so button is not clipped
+            if (prev.superview && prev.superview != row && [prev.superview.superview isKindOfClass:UIStackView.class]) {
+                if (!CGAffineTransformEqualToTransform(prev.superview.transform, prevT)) prev.superview.transform = prevT;
+            }
+            if (next.superview && next.superview != row && [next.superview.superview isKindOfClass:UIStackView.class]) {
+                if (!CGAffineTransformEqualToTransform(next.superview.transform, nextT)) next.superview.transform = nextT;
+            }
         } else {
             if (!CGAffineTransformIsIdentity(prev.transform)) prev.transform = CGAffineTransformIdentity;
             if (!CGAffineTransformIsIdentity(next.transform)) next.transform = CGAffineTransformIdentity;
+            if (prev.superview && !CGAffineTransformIsIdentity(prev.superview.transform)) prev.superview.transform = CGAffineTransformIdentity;
+            if (next.superview && !CGAffineTransformIsIdentity(next.superview.transform)) next.superview.transform = CGAffineTransformIdentity;
         }
     }
 }
@@ -530,20 +542,21 @@ static void durationLaidOut(UIViewController *unit) {
     if (slider && [slider isKindOfClass:UISlider.class]) {
         BOOL queueOpen = SGRPlayerQueueOpen();
         if (queueOpen) {
-            // Screen margins: 32.0 pt. Since host (DurationElementUnit) has x = 25.0 pt and width = 340.0 pt,
-            // inside host the slider must be inset by 7.0 pt (25 + 7 = 32 pt) with width = 326.0 pt (340 - 14 pt).
-            CGFloat localLeft = 7.0;
-            CGFloat w = host.bounds.size.width;
-            CGFloat targetW = w - localLeft * 2.0;
-            if (fabs(slider.frame.origin.x - localLeft) > 0.5 || fabs(slider.frame.size.width - targetW) > 0.5) {
-                slider.frame = CGRectMake(localLeft, slider.frame.origin.y, targetW, slider.frame.size.height);
-            }
-            if (taken && (fabs(taken.frame.origin.x - localLeft) > 0.5)) {
-                taken.frame = CGRectMake(localLeft, taken.frame.origin.y, taken.frame.size.width, taken.frame.size.height);
-            }
-            if (remaining && (fabs(CGRectGetMaxX(remaining.frame) - (w - localLeft)) > 0.5)) {
-                remaining.frame = CGRectMake(w - localLeft - remaining.frame.size.width, remaining.frame.origin.y, remaining.frame.size.width, remaining.frame.size.height);
-            }
+            // Apply scale transform so progress bar width contracts from 340 pt to 326 pt,
+            // placing its left and right edges at exactly screen x = 32.0 pt and 358.0 pt (matching Row 5 artwork).
+            CGFloat targetScale = 326.0 / 340.0;
+            CGAffineTransform scaleT = CGAffineTransformMakeScale(targetScale, 1.0);
+            if (!CGAffineTransformEqualToTransform(slider.transform, scaleT)) slider.transform = scaleT;
+
+            CGAffineTransform takenT = CGAffineTransformMakeTranslation(7.0, 0.0);
+            if (taken && !CGAffineTransformEqualToTransform(taken.transform, takenT)) taken.transform = takenT;
+
+            CGAffineTransform remT = CGAffineTransformMakeTranslation(-7.0, 0.0);
+            if (remaining && !CGAffineTransformEqualToTransform(remaining.transform, remT)) remaining.transform = remT;
+        } else {
+            if (!CGAffineTransformIsIdentity(slider.transform)) slider.transform = CGAffineTransformIdentity;
+            if (taken && !CGAffineTransformIsIdentity(taken.transform)) taken.transform = CGAffineTransformIdentity;
+            if (remaining && !CGAffineTransformIdentity(remaining.transform)) remaining.transform = CGAffineTransformIdentity;
         }
         slider.minimumTrackTintColor = [UIColor colorWithWhite:1.0 alpha:0.55];
         slider.maximumTrackTintColor = [UIColor colorWithWhite:1.0 alpha:0.16];

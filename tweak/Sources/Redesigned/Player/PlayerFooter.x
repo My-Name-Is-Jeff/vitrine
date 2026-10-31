@@ -135,29 +135,17 @@ static UIImage *SGRQueueActiveKnockoutIconImage(CGSize size) {
         [[UIColor colorWithWhite:1.0 alpha:0.62] setFill];
         [circle fill];
 
-        // Knockout list.bullet glyph using DestinationOut (19.3 pt wide, 2.0 pt bar thickness)
-        CGContextSetBlendMode(cg, kCGBlendModeDestinationOut);
-        [[UIColor colorWithWhite:0.0 alpha:1.0] setFill];
-
-        CGFloat iconW = 19.3;
-        CGFloat iconH = 12.0;
-        CGFloat startX = (size.width - iconW) * 0.5;
-        CGFloat startY = (size.height - iconH) * 0.5;
-
-        // 3 horizontal bars and 3 bullet dots
-        CGFloat barH = 2.0;
-        CGFloat dotW = 2.4;
-        CGFloat dotH = 2.0;
-        CGFloat barX = startX + 5.0;
-        CGFloat barW = iconW - 5.0;
-        CGFloat stepY = 5.0;
-
-        for (int i = 0; i < 3; i++) {
-            CGFloat y = startY + i * stepY;
-            UIBezierPath *dot = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(startX, y, dotW, dotH) cornerRadius:1.0];
-            [dot fill];
-            UIBezierPath *bar = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(barX, y, barW, barH) cornerRadius:1.0];
-            [bar fill];
+        // Knockout SF Symbol list.bullet using DestinationOut for pixel-perfect match to Apple Music
+        UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:17.5 weight:UIImageSymbolWeightRegular];
+        UIImage *sym = [[UIImage systemImageNamed:kQueueSymbol withConfiguration:cfg] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+        if (sym) {
+            CGContextSetBlendMode(cg, kCGBlendModeDestinationOut);
+            [[UIColor colorWithWhite:0.0 alpha:1.0] setFill];
+            CGRect symRect = CGRectMake(round((size.width - sym.size.width) * 0.5),
+                                        round((size.height - sym.size.height) * 0.5),
+                                        sym.size.width,
+                                        sym.size.height);
+            [sym drawInRect:symRect];
         }
     }];
 }

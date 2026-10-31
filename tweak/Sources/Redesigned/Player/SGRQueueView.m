@@ -1670,14 +1670,14 @@ static void SGRDrawTransitionsOverlappingCircles(CGContextRef cg, CGPoint center
         // Cut out directly through the translucent capsule so background shows through!
         CGContextSetBlendMode(cg, kCGBlendModeDestinationOut);
 
-        // 1. Left circle ring at 55% knockout
+        // 1. Left circle ring at 85% knockout so it is clearly visible against the warm background
         UIBezierPath *leftRing = [UIBezierPath bezierPathWithArcCenter:CGPointMake(leftX, center.y)
                                                                 radius:leftR
                                                             startAngle:0
                                                               endAngle:(CGFloat)(M_PI * 2.0)
                                                              clockwise:YES];
-        leftRing.lineWidth = 1.5;
-        [[UIColor colorWithWhite:0.0 alpha:0.55] setStroke];
+        leftRing.lineWidth = 1.8;
+        [[UIColor colorWithWhite:0.0 alpha:0.85] setStroke];
         [leftRing stroke];
 
         // 2. Clear overlapping interior of the left ring directly beneath the right donut
