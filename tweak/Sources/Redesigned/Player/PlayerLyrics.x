@@ -259,16 +259,21 @@ static CGRect validCoverFrameIn(UIView *host) {
 
 static CGFloat queueDurationTopIn(UIView *host) {
     CGFloat safeBottom = host.window ? host.window.safeAreaInsets.bottom : host.safeAreaInsets.bottom;
-    return host.bounds.size.height - (266.0 + safeBottom);
+    return host.bounds.size.height - (264.0 + safeBottom);
 }
 
 static void placeQueueBottomChrome(UIView *host, BOOL queueOpen) {
     UIView *dur = sg_duration.viewIfLoaded;
     if (dur && host) {
         if (queueOpen) {
+            CGFloat targetSliderY = queueDurationTopIn(host); // exactly 546.0 pt on 844 pt screen
+            static char kSliderSearchKey;
+            UIView *slider = SGRFindByIdentifier(dur, @"SPTNowPlayingSliderV2", &kSliderSearchKey);
+            CGFloat sliderLocalY = slider ? [dur convertRect:slider.bounds fromView:slider].origin.y : 14.7;
+
             CGRect rawBar = SGFrameIn(dur, host);
             rawBar = CGRectOffset(rawBar, -dur.transform.tx, -dur.transform.ty);
-            CGFloat dy = round(queueDurationTopIn(host) - CGRectGetMinY(rawBar));
+            CGFloat dy = round((targetSliderY - sliderLocalY) - CGRectGetMinY(rawBar));
             CGAffineTransform up = CGAffineTransformMakeTranslation(0.0, dy);
             if (!CGAffineTransformEqualToTransform(dur.transform, up)) dur.transform = up;
         } else {
@@ -394,13 +399,11 @@ static SGRLyricsLayout layoutIn(UIView *host, SGRPlayerInlineMode mode) {
     CGRect row = untransformed(info, host), bar = untransformed(duration, host);
 
     if (mode == SGRPlayerInlineModeQueue) {
-        CGFloat safeTop = host.safeAreaInsets.top;
-        if (safeTop < 20.0) safeTop = 47.0;
-        // Grabber sits at y = safeTop + 8 (55 pt on 47 pt safe-area screen), queue viewport at y = 72..538 pt (height 466 pt).
-        CGFloat top = safeTop + 8.0;
-        CGFloat bottom = queueDurationTopIn(host) - 6.0;
+        // Grabber at y = 54.0 pt, queue viewport at y = 80.0..546.0 pt (height 466 pt flush to progress bar).
+        CGFloat top = 54.0;
+        CGFloat bottom = queueDurationTopIn(host);
         l.cover = validCoverFrameIn(host);
-        l.thumb = CGRectMake(28.0, top + 17.0 + 14.7, 62.0, 62.0);
+        l.thumb = CGRectMake(32.0, 80.0, 72.0, 72.0);
         l.stage = CGRectMake(0.0, top, host.bounds.size.width, MAX(0.0, bottom - top));
         l.lift = -100.0;
         l.shift = 0.0;

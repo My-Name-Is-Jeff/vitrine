@@ -132,9 +132,9 @@ void SGRPlayerQueueChanged(void) {
     BOOL open = SGRPlayerQueueOpen();
     BOOL animated = glyph.window && !SGRPlayerIsTransitioning();
     void (^mark)(void) = ^{
-        glyph.glyph.tintColor = open ? SGRPrimary() : SGRSecondary();
-        glyph.backgroundColor = open ? [UIColor colorWithWhite:1.0 alpha:0.18] : UIColor.clearColor;
-        glyph.layer.cornerRadius = glyph.bounds.size.height > 0 ? glyph.bounds.size.height / 2.0 : 22.0;
+        glyph.glyph.tintColor = open ? [UIColor colorWithWhite:0.08 alpha:0.95] : [UIColor colorWithWhite:1.0 alpha:0.65];
+        glyph.backgroundColor = open ? [UIColor colorWithWhite:1.0 alpha:0.72] : UIColor.clearColor;
+        glyph.layer.cornerRadius = 19.0;
         glyph.layer.cornerCurve = kCACornerCurveContinuous;
         glyph.clipsToBounds = YES;
     };
@@ -151,8 +151,11 @@ SGRGlyphButton *SGRPlayerQueueGlyphIn(UIView *host) {
     SGRGlyphButton *glyph = objc_getAssociatedObject(host, &kQueueGlyphKey);
     if (!glyph) {
         glyph = [SGRGlyphButton buttonWithSymbol:kQueueSymbol pointSize:kLyricsGlyphSize title:@"Queue"];
-        glyph.glyph.tintColor = SGRPlayerQueueOpen() ? SGRPrimary() : SGRSecondary();
-        glyph.backgroundColor = SGRPlayerQueueOpen() ? [UIColor colorWithWhite:1.0 alpha:0.18] : UIColor.clearColor;
+        glyph.glyph.tintColor = SGRPlayerQueueOpen() ? [UIColor colorWithWhite:0.08 alpha:0.95] : [UIColor colorWithWhite:1.0 alpha:0.65];
+        glyph.backgroundColor = SGRPlayerQueueOpen() ? [UIColor colorWithWhite:1.0 alpha:0.72] : UIColor.clearColor;
+        glyph.layer.cornerRadius = 19.0;
+        glyph.layer.cornerCurve = kCACornerCurveContinuous;
+        glyph.clipsToBounds = YES;
         glyph.onTap = ^{ SGRPlayerToggleQueue(); };
         objc_setAssociatedObject(host, &kQueueGlyphKey, glyph, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
@@ -173,7 +176,7 @@ static SGRGlyphView *standIn(UIView *drawn, NSString *symbol) {
         glyph = [[SGRGlyphView alloc] initWithSymbol:symbol pointSize:kLyricsGlyphSize weight:UIImageSymbolWeightRegular];
         glyph.userInteractionEnabled = NO;
         glyph.isAccessibilityElement = NO;
-        glyph.tintColor = SGRSecondary();   // at rest, as the Lyrics glyph while it is off
+        glyph.tintColor = [UIColor colorWithWhite:1.0 alpha:0.65];   // neutral translucent white matching lyrics
         // Kept centered when Spotify resizes the view between the footer's passes (a new Connect image of another size).
         glyph.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin
                                | UIViewAutoresizingFlexibleTopMargin | UIViewAutoresizingFlexibleBottomMargin;
@@ -208,19 +211,16 @@ static UIImage *litImage(SGRGlyphView *glyph, UIImage *symbol, UIColor *color) {
     return [bitmap imageWithAlignmentRectInsets:symbol.alignmentRectInsets];
 }
 
-// Spotify's new Connect glyph: its color onto the stand-in, drawn into the stand-in's image so Follow the cover
-// repaints it the way it did Spotify's, and a clear image of the same size in its place, so nothing moves.
+// Spotify's new Connect glyph: matches the left Lyrics icon in neutral translucent white (rgba(255, 255, 255, 0.65)),
+// and a clear image of the same size in its place, so nothing moves.
 static void takeConnectImage(UIImageView *drawn) {
     UIImage *image = drawn.image;
     UIImage *clear = objc_getAssociatedObject(drawn, &kClearKey);
     if (!image.CGImage || image == clear) return;
     SGRGlyphView *glyph = objc_getAssociatedObject(drawn, &kStandInKey);
     UIImage *symbol = [UIImage systemImageNamed:glyph.symbol withConfiguration:glyph.preferredSymbolConfiguration];
-    UIColor *ink = inkOf(drawn, image);
-    BOOL lit = SGRPlayerAccentLike(ink);
-    glyph.image = lit ? litImage(glyph, symbol, ink) : symbol;
-    // Spotify hands the new image over with no layout pass, so Follow the cover is told here, or a lit glyph keeps the accent.
-    if (lit) SGRPlayerPaintCover(glyph);
+    glyph.image = symbol;
+    glyph.tintColor = [UIColor colorWithWhite:1.0 alpha:0.65];
     if (!clear || !CGSizeEqualToSize(clear.size, image.size) || clear.scale != image.scale) {
         UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat preferredFormat];
         format.scale = image.scale;

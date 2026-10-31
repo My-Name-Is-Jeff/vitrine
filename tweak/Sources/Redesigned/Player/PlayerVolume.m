@@ -387,6 +387,15 @@ BOOL SGRPlayerPlaceVolume(UIView *stack, UIView *controls, UIView *row, CGFloat 
     CGFloat below = [row convertPoint:CGPointMake(CGRectGetMidX(row.bounds), CGRectGetMidY(row.bounds)) toView:stack].y - kGlyphsHalf;
     CGFloat height = kRowHeight, room = below - above;
     CGRect frame = CGRectMake(margin, round((above + below - height) / 2), MAX(0, stack.bounds.size.width - 2 * margin), height);
+    if (SGRPlayerQueueOpen()) {
+        // Apple Music target: volume track at y = 722.7 pt on 844 pt screen (height - (87.3 + safeBottom)).
+        UIWindow *window = stack.window;
+        CGFloat safeBottom = window ? window.safeAreaInsets.bottom : 34.0;
+        CGFloat targetTrackScreenY = (window ? window.bounds.size.height : 844.0) - (87.3 + safeBottom);
+        CGFloat stackScreenY = [stack.superview convertPoint:stack.frame.origin toView:window].y;
+        CGFloat targetFrameY = (targetTrackScreenY - 12.5) - stackScreenY;
+        frame.origin.y = round(targetFrameY);
+    }
     BOOL moved = !CGRectEqualToRect(volume.frame, frame);
     if (moved) volume.frame = frame;
     settle(stack, row, moved, frame);

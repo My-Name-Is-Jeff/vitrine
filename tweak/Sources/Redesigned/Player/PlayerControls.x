@@ -24,7 +24,7 @@
 #import "Shared/Lyrics/Lyrics.h"
 #import "Player.h"
 
-static const CGFloat kSkipGlyphSize = 32, kPlayGlyphSize = 44;
+static const CGFloat kSkipGlyphSize = 26.0, kPlayGlyphSize = 44.0;
 // A spinner that is still up this long after a state change is buffering, not a track starting.
 static const NSTimeInterval kSpinnerCheck = 0.6;
 
@@ -294,6 +294,28 @@ void SGRPlayerPlayGlyphIn(UIView *host) {
     skipGlyph(host, @"SPTNowPlayingNextTrackButton", &kNextKey, @"forward.fill");
     SGRPlayerPlayGlyphIn(host);
     hideShuffleAndRepeat(host, row);
+
+    BOOL queueOpen = SGRPlayerQueueOpen();
+    UIView *prev = SGRFindByIdentifier(host, @"SPTNowPlayingPreviousTrackButton", &kPreviousKey);
+    UIView *next = SGRFindByIdentifier(host, @"SPTNowPlayingNextTrackButton", &kNextKey);
+    if (prev && next) {
+        if (queueOpen) {
+            CGFloat w = host.bounds.size.width;
+            CGFloat targetPrevX = round(w * 0.5 - 104.5);
+            CGFloat targetNextX = round(w * 0.5 + 104.5);
+            CGPoint prevCenter = [prev.superview convertPoint:prev.center toView:host];
+            prevCenter.x -= prev.transform.tx;
+            CGPoint nextCenter = [next.superview convertPoint:next.center toView:host];
+            nextCenter.x -= next.transform.tx;
+            CGAffineTransform prevT = CGAffineTransformMakeTranslation(round(targetPrevX - prevCenter.x), 0.0);
+            CGAffineTransform nextT = CGAffineTransformMakeTranslation(round(targetNextX - nextCenter.x), 0.0);
+            if (!CGAffineTransformEqualToTransform(prev.transform, prevT)) prev.transform = prevT;
+            if (!CGAffineTransformEqualToTransform(next.transform, nextT)) next.transform = nextT;
+        } else {
+            if (!CGAffineTransformIsIdentity(prev.transform)) prev.transform = CGAffineTransformIdentity;
+            if (!CGAffineTransformIsIdentity(next.transform)) next.transform = CGAffineTransformIdentity;
+        }
+    }
 }
 %end
 
@@ -502,12 +524,58 @@ static void durationLaidOut(UIViewController *unit) {
     if (!host) return;
     watchSlider(host);
     UILabel *taken = monospaced(host, @"now-playing-time-take-label-internal", &kTakeKey);
-    monospaced(host, @"now-playing-time-remaning-label-internal", &kRemainingKey);
+    UILabel *remaining = monospaced(host, @"now-playing-time-remaning-label-internal", &kRemainingKey);
+
+    UISlider *slider = (UISlider *)SGRFindByIdentifier(host, @"SPTNowPlayingSliderV2", &kSliderKey);
+    if (slider && [slider isKindOfClass:UISlider.class]) {
+        BOOL queueOpen = SGRPlayerQueueOpen();
+        if (queueOpen) {
+            CGFloat side = 32.0;
+            CGFloat w = host.bounds.size.width;
+            CGFloat targetW = w - side * 2.0;
+            if (fabs(slider.frame.origin.x - side) > 0.5 || fabs(slider.frame.size.width - targetW) > 0.5) {
+                slider.frame = CGRectMake(side, slider.frame.origin.y, targetW, slider.frame.size.height);
+            }
+            if (taken && (fabs(taken.frame.origin.x - side) > 0.5)) {
+                taken.frame = CGRectMake(side, taken.frame.origin.y, taken.frame.size.width, taken.frame.size.height);
+            }
+            if (remaining && (fabs(CGRectGetMaxX(remaining.frame) - (w - side)) > 0.5)) {
+                remaining.frame = CGRectMake(w - side - remaining.frame.size.width, remaining.frame.origin.y, remaining.frame.size.width, remaining.frame.size.height);
+            }
+        }
+        slider.minimumTrackTintColor = [UIColor colorWithWhite:1.0 alpha:0.55];
+        slider.maximumTrackTintColor = [UIColor colorWithWhite:1.0 alpha:0.16];
+    }
+
+    if (taken) {
+        taken.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightSemibold];
+        taken.textColor = [UIColor colorWithWhite:1.0 alpha:0.45];
+    }
+    if (remaining) {
+        remaining.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightSemibold];
+        remaining.textColor = [UIColor colorWithWhite:1.0 alpha:0.45];
+        if ([remaining.text containsString:@"-"] && ![remaining.text containsString:@"\u2212"]) {
+            remaining.text = [remaining.text stringByReplacingOccurrencesOfString:@"-" withString:@"\u2212"];
+        }
+    }
+
     // Whether Spotify's font has digits of one width shows in the descriptor's feature settings.
     if (!taken) return;
     static dispatch_once_t once;
     dispatch_once(&once, ^{ SGLog(@"redesign player: monospaced times in %@ %.0fpt, features %@", taken.font.fontName, taken.font.pointSize, taken.font.fontDescriptor.fontAttributes[UIFontDescriptorFeatureSettingsAttribute]); });
 }
+
+%hook UILabel
+- (void)setText:(NSString *)text {
+    if (text.length && [text hasPrefix:@"-"] && ![text hasPrefix:@"\u2212"]) {
+        NSString *ident = self.accessibilityIdentifier;
+        if ([ident isEqualToString:@"now-playing-time-remaning-label-internal"]) {
+            text = [text stringByReplacingOccurrencesOfString:@"-" withString:@"\u2212"];
+        }
+    }
+    %orig(text);
+}
+%end
 
 %hook _TtC20NowPlaying_ModesImpl19DurationElementUnit
 - (void)viewDidLayoutSubviews {
