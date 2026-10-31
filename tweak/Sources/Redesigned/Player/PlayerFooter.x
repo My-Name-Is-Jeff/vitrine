@@ -188,29 +188,6 @@ static SGRGlyphView *standIn(UIView *drawn, NSString *symbol) {
     return glyph;
 }
 
-// The color Spotify drew its glyph in (SGRPlayerImageInk, kept on the image, so an image Spotify hands over again costs
-// a lookup). One drawn from the tint answers the tint.
-static UIColor *inkOf(UIImageView *view, UIImage *image) {
-    if (image.isSymbolImage || image.renderingMode == UIImageRenderingModeAlwaysTemplate) return view.tintColor;
-    return SGRPlayerImageInk(image) ?: SGRPrimary();
-}
-
-// A lit glyph as a bitmap in its color, the way Spotify draws its own: Follow the cover finds lit controls by their
-// pixels, and a symbol image has none to read. The symbol's alignment insets are kept, so it sits where it did.
-// Drawn in the glyph's traits (Bold Text, contrast), as its template image is.
-static UIImage *litImage(SGRGlyphView *glyph, UIImage *symbol, UIColor *color) {
-    UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat formatForTraitCollection:glyph.traitCollection];
-    format.scale = symbol.scale;
-    UIImage *tinted = [symbol imageWithTintColor:color renderingMode:UIImageRenderingModeAlwaysOriginal];
-    __block UIImage *bitmap;
-    [glyph.traitCollection performAsCurrentTraitCollection:^{
-        bitmap = [[[UIGraphicsImageRenderer alloc] initWithSize:symbol.size format:format] imageWithActions:^(UIGraphicsImageRendererContext *context) {
-            [tinted drawAtPoint:CGPointZero];
-        }];
-    }];
-    return [bitmap imageWithAlignmentRectInsets:symbol.alignmentRectInsets];
-}
-
 // Spotify's new Connect glyph: matches the left Lyrics icon in neutral translucent white (rgba(255, 255, 255, 0.65)),
 // and a clear image of the same size in its place, so nothing moves.
 static void takeConnectImage(UIImageView *drawn) {
