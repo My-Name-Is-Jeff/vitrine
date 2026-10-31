@@ -1,8 +1,17 @@
 // Player redesign: Animated artwork, the track's Canvas or Apple Music's animated cover behind the player,
-// the way the Music app draws it. The clip runs edge to edge from the top, sharp to near its foot, where
-// it dissolves into the color of its last rows, drawn on down to the bottom of the field, so it ends in
-// its own color rather than on the Fluid field. A blur comes in from the seam (from above the controls for a
-// Canvas as tall as the screen) and lies under the controls; behind the lyrics the whole clip is blurred.
+// the way the lock screen draws it (measured off recordings, 2026-10-22). A cover runs the width of the screen,
+// starting a little way down; past each end its own edge rows, playing with it, are stretched on to the top and
+// the bottom of the screen, mirrored so they meet the cover row for row, the way the lock screen carries a
+// picture's folds and edges on as streaks (nothing is made up). They are copies of the cover's own layer that a
+// replicator draws (CAReplicatorLayer), so they show the very frame the cover does: player layers of their own
+// for them, on the same player, now and then drew a frame the cover was not on, and the seam showed as a line. Both ends blur, easing off across the cover's
+// edges, with one variable Gaussian blur on the clip itself (Core Animation's variableBlur filter, its strength
+// read from a mask), drawn by the render server with every frame and with no material's gray over it; a
+// material (UIVisualEffectView) is kept only for an OS without the filter. A Canvas is drawn to the full height
+// and only its foot is carried on and blurred, under the controls; behind the lyrics the whole clip is blurred.
+// Tried and dropped: a still band (the poster's top, stretched or blurred) stood still while the clip moved; the
+// whole cover mirrored over the band put a dark shape of it there; fading the cover over the band drew both at
+// once, a gray stripe; and the foot dissolved into the album page's color drew no picture there at all.
 // The player's square cover goes while a clip plays, so a track without one keeps its cover over Fluid
 // (PlayerField.x keeps the field Fluid for this choice). The player's ⋯ menu switches between Animated
 // and Fluid at once (Shared/Player/SpeedPitch.h).
@@ -19,9 +28,7 @@
 // hidden (the field's covered): the field's color is what shows above the clip on the pull that dismisses.
 //
 // The clip is dimmed by how bright it is (SGRPlayerClipDim): three of its frames are measured as it comes in,
-// so a white Canvas is drawn darker than a black one and the white text over it keeps its contrast. The dim
-// lies only where text does, a band under the header and from above the title down, as the Music app's does:
-// over the whole clip it took up to four fifths of its light (issue #101). Behind the lyrics it covers the clip.
+// so a white Canvas is drawn darker than a black one and the white text over it keeps its contrast.
 //
 // A track that changes while the player cannot be seen (out of a window, or with the app not in front, which a
 // locked phone's player is while it stays in its window) takes the last clip away at once, without a fade, so
@@ -44,36 +51,69 @@
 #import "Shared/Player/SpeedPitch.h"
 #import "Player.h"
 
-// Where the clip starts dissolving into its foot, as a share of its height.
+// Where the blur under the controls may start at the latest, as a share of the clip's height.
 static const CGFloat kFootFrom = 0.9;
-// The share of the poster's height, at its bottom, whose mean color the foot is.
-static const CGFloat kFootRows = 0.03;
-// A clip this much taller than wide is a Canvas (9:16), drawn to the window's full height and centered, cut at its
-// sides. Apple Music's tall cover (3:4) keeps its own height from the top, whole, as the Music app draws it
-// (issues #40 and #57: drawn to the window's height it lost two fifths of its width).
+// How far down a cover starts, as a share of the screen (the lock screen's, measured off recordings 2026-10-22),
+// and how far into it the blur over the band above reaches before it is gone. A Canvas still starts at the top.
+static const CGFloat kCoverDrop = 0.087, kTopBlurRamp = 45;
+// How much the clip's reflections past its ends are stretched: the lock screen mirrors the cover at both ends and
+// stretches the reflection away from the edge, about twice (its owner's unblurred photos, 2026-10-24: a mouth 110px
+// tall came back 220px below the cover's foot, its blur starting just under the mouth, about 60pt above the foot).
+static const CGFloat kMirrorStretch = 2;
+// The variable blur's radius where it is whole, in pixels (the filter's own): the lock screen's strongest, about a
+// 23px Gaussian, found by blurring its unblurred screen by known amounts until each row kept the detail its blurred
+// screen keeps (Gracie Abrams, 2026-10-24). Read as a share of detail lost instead, it came out at 90-120px, and the
+// foot smeared to one color. The whole radius is the top band's: three times the foot's, whose shares are a third.
+static const CGFloat kVariableBlurRadius = 72;
+// The scrim over a cover's band, the album page's (AlbumHeader.x) strength over a little more height: black
+// this strong at the top, gone this far down, so the status bar and the header keep on a white band.
+static const CGFloat kTopScrim = 180, kTopScrimAlpha = 0.28;
+
+@interface CAFilter : NSObject
++ (instancetype)filterWithType:(NSString *)type;
+@end
+// A clip this much taller than wide is drawn to the window's full height and centered, cut at its sides: a Canvas
+// (9:16). Apple Music's tall cover (3:4) and a square one keep their own height, the width of the screen from the
+// top, as the lock screen draws them; drawn to the full height, a 3:4 cover was cut to the middle of its width.
 static const CGFloat kCanvasAspect = 1.5;
 // The blur starts at the seam, or this share of the screen down where that is higher, so it is under the
 // controls whatever the clip's shape; it is whole kBlurRamp points below its start.
 static const CGFloat kBlurByControls = 0.6, kBlurRamp = 96;
+// A cover's foot blurs out instead, as the lock screen's does: from a height on the screen, not the cover's foot, since
+// the lock screen's starts at the same height whatever the cover (a mouth sharp there on one, gloves soft just below
+// it on another, their feet at different heights; 2026-10-24).
+// Where the controls' dim is placed by, kept where it was before the blur moved down: from kFootBlurFrom, whole at
+// kDimWholeAt.
+static const CGFloat kFootBlurFrom = 0.57, kDimWholeAt = 0.69;
+// The lock screen's blur by height on the screen, as shares of kVariableBlurRadius, calibrated the same way: none down to
+// 57% of the screen, 2px at 60.7%, 6px at 62.8%, 10px at 65.9%, 14px at 69%, 17px at 75.3% and its whole from 83.7%.
+// Over the band above a cover it is barely there, about 1.5px to 15% of the screen: the band reads soft because it is
+// a stretched reflection, and a heavy blur there drew a flat band with a hard edge.
+// Tuned by eye from there with its owner (2026-10-24): starting at 55% of the screen and growing very slowly, barely
+// there until 65% (where it starts is settled), then on to the whole radius at the bottom, as the lock screen's
+// reflection is a smooth wash under its controls (the calibration read too little there, the wash having no detail).
+static const CGFloat kFootBlur[][2] = {{0.55, 0}, {0.6, 0.01}, {0.65, 0.03}, {0.7, 0.07}, {0.75, 0.25}, {0.8, 0.5},
+                                       {0.9, 1}};
+// The band above a cover, which the calibration could not read (a stretched reflection has no fine detail to lose):
+// about 10px at the cover's edge, easing off over the cover's top 45pt (to kTopBlurEnd of the screen), where it starts
+// and ends settled; heavier up at the status bar, where the lock screen smears the hair to blobs (2026-10-24).
+static const CGFloat kTopBlurTop = 0.6, kTopBlurEdge = 0.133, kTopBlurHold = 0.108, kTopBlurHeld = 0.07, kTopBlurEnd = 0.134;
 // Seconds a clip may be on screen in front without drawing a frame before it is given up.
 static const NSTimeInterval kGiveUp = 5;
 // Seconds the last track's clip stays on a skip for the next one's to come in over it.
 static const NSTimeInterval kHandOver = 0.4;
 // The dim's floor and ceiling, and what the lyrics add to it.
 static const CGFloat kDimLeast = 0.10, kDimMost = 0.80, kDimLyrics = 0.15;
-// The dim's band at the top, under the status bar and the header: whole down to this share of the screen, so
-// the header's text gets all of it, then gone over kDimFade points.
-static const CGFloat kDimTop = 0.14, kDimFade = 48;
+// The dim is whole only where the text is, from where the blur under the controls is whole down; above, it eases
+// off to nothing by this share of the screen below the clip's top, so the cover reads as bright as the lock screen
+// draws it. Behind the lyrics, which run the whole height, it is whole throughout.
+static const CGFloat kDimEaseFrom = 0.25;
+// The share of the dim kept under the controls: the whole of it, worked out for small white text at 4.5:1, turned the
+// clip's colors there to one dark brown, so the blurred foot showed none of the picture the lock screen shows (device,
+// 2026-10-24). The title is large text, readable at less. Behind the lyrics, and with Increase Contrast, it is whole.
+static const CGFloat kDimUnderControls = 0.55;
 // The frames measured for the dim besides the poster, in seconds into the clip (one past its end is skipped).
 static const double kMeasuredAt[] = {1, 2};
-// Behind the lyrics the clip itself is blurred, a plain Gaussian blur with no material's gray tint over it
-// (issue #101), so it keeps its colors as the Fluid field does; the dim keeps the text's contrast.
-static NSString *const kLyricsBlurPath = @"filters.gaussianBlur.inputRadius";
-static const CGFloat kLyricsBlurRadius = 30;
-
-@interface CAFilter : NSObject
-+ (instancetype)filterWithType:(NSString *)type;
-@end
 
 CGFloat SGRPlayerClipDim(CGFloat luminance, BOOL contrast, BOOL lyrics) {
     // White is 1, so (1 + 0.05) / (L + 0.05) >= ratio puts the clip's luminance at `most` or under.
@@ -120,27 +160,6 @@ static CGFloat brightEnd(NSData *luminances) {
     return ((const float *)sorted.bytes)[(count - 1) * 3 / 4];
 }
 
-// The mean color of the poster's last rows (kFootRows): drawn 16 pixels wide and averaged. A row's own colors
-// stretched on down read as vertical streaks (issue #40).
-static UIColor *footColor(CGImageRef poster) {
-    enum { kWide = 16 };
-    size_t height = CGImageGetHeight(poster), rows = MAX(1, (size_t)(height * kFootRows));
-    CGImageRef strip = CGImageCreateWithImageInRect(poster, CGRectMake(0, height - rows, CGImageGetWidth(poster), rows));
-    uint8_t pixels[kWide * 4] = {0};
-    CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-    CGContextRef context = CGBitmapContextCreate(pixels, kWide, 1, 8, kWide * 4, space, (CGBitmapInfo)kCGImageAlphaNoneSkipLast);
-    CGColorSpaceRelease(space);
-    CGContextSetInterpolationQuality(context, kCGInterpolationHigh);
-    CGContextDrawImage(context, CGRectMake(0, 0, kWide, 1), strip);
-    CGContextRelease(context);
-    CGImageRelease(strip);
-    CGFloat sum[3] = {0};
-    for (int i = 0; i < kWide; i++) {
-        for (int c = 0; c < 3; c++) sum[c] += pixels[i * 4 + c];
-    }
-    return [UIColor colorWithRed:sum[0] / (kWide * 255.0) green:sum[1] / (kWide * 255.0) blue:sum[2] / (kWide * 255.0) alpha:1];
-}
-
 @interface SGRPlayerMotionView : UIView <SGPlayerStateObserver>
 @property (nonatomic) CGFloat screenHeight;
 // Runs when the clip has drawn nothing kGiveUp seconds after it was first on screen in front.
@@ -156,26 +175,24 @@ static UIColor *footColor(CGImageRef poster) {
     UIView *_picture;   // the clip over its foot, faded in as one
     CALayer *_still;    // the poster, with the video drawn over it
     AVPlayerLayer *_clip;
-    CAGradientLayer *_clipMask, *_seamMask;
-    CALayer *_foot;   // the color of the poster's last rows, from the seam down
-    CAGradientLayer *_dim;   // black over the clip's top and from above the title down, as dark as the clip is bright
+    CAGradientLayer *_seamMask;
+    CAReplicatorLayer *_footCopy;   // the clip and its head again, mirrored and stretched down from its foot
+    CAReplicatorLayer *_headCopy;   // the clip again, mirrored and stretched up from a cover's top edge
+    CAGradientLayer *_scrim;   // over a cover's band, for the status bar and the header
+    UIVisualEffectView *_topBlur;   // over the head and the top of the cover
+    CAGradientLayer *_topMask;
+    BOOL _variable;   // the variableBlur filter is there, so the materials stay off
+    NSString *_blurKey;   // the stops the variable blur's mask was drawn for
+    CAGradientLayer *_dim;   // black over the clip and its foot, as dark as the clip is bright where the text is
     NSMutableData *_luminances;   // of the frames measured so far
     BOOL _lyricsUp;
-    NSUInteger _blurTurn;   // counts the lyrics' turns, so a fade cut short leaves the filter to the turn after it
-    UIVisualEffectView *_seamBlur;
+    UIVisualEffectView *_seamBlur, *_lyricsBlur;
     CGFloat _aspect;
     BOOL _timing;   // the give-up's count is running
 }
 
 // What fades is the effect views' effect, never their alpha or an ancestor's: UIKit draws a blur under a
 // fading alpha or a mask wrongly or not at all.
-// The dim's stops: black at the top and from above the title down, clear between; black all over behind the
-// lyrics, which run down the whole screen.
-static NSArray *dimColors(BOOL whole) {
-    id black = (__bridge id)UIColor.blackColor.CGColor, between = whole ? black : (__bridge id)UIColor.clearColor.CGColor;
-    return @[black, black, between, between, black];
-}
-
 static UIBlurEffect *blurEffect(void) {
     return [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterialDark];
 }
@@ -186,8 +203,6 @@ static UIBlurEffect *blurEffect(void) {
     self.accessibilityElementsHidden = YES;
     _picture = [[UIView alloc] initWithFrame:frame];
     [self addSubview:_picture];
-    _foot = [CALayer layer];
-    [_picture.layer addSublayer:_foot];
     // An AVPlayerLayer draws nothing until its first frame is decoded, so the poster, the clip's first
     // frame and where the looper starts, is the contents of the layer the video draws in: there is a
     // picture from the first frame, and the video covers it exactly.
@@ -197,15 +212,23 @@ static UIBlurEffect *blurEffect(void) {
     _clip = [AVPlayerLayer layer];
     _clip.videoGravity = AVLayerVideoGravityResizeAspectFill;
     [_still addSublayer:_clip];
-    _clipMask = [CAGradientLayer layer];
-    _clipMask.colors = @[(id)UIColor.blackColor.CGColor, (id)UIColor.blackColor.CGColor, (id)UIColor.clearColor.CGColor];
-    _clipMask.locations = @[@0, @(kFootFrom), @1];
-    _still.mask = _clipMask;
-    [_picture.layer addSublayer:_still];
+    // Anchored at their origin, so a copy's transform is made about a point given in the picture's own terms.
+    _headCopy = [CAReplicatorLayer layer];
+    _headCopy.anchorPoint = CGPointZero;
+    [_headCopy addSublayer:_still];
+    _footCopy = [CAReplicatorLayer layer];
+    _footCopy.anchorPoint = CGPointZero;
+    [_footCopy addSublayer:_headCopy];
+    [_picture.layer addSublayer:_footCopy];
+    // The copies reach far past the field, stretched as they are; nothing past it is drawn or blurred.
+    _picture.layer.masksToBounds = YES;
     _dim = [CAGradientLayer layer];
-    _dim.colors = dimColors(NO);
+    _dim.colors = @[(id)UIColor.blackColor.CGColor, (id)UIColor.blackColor.CGColor];
     _dim.opacity = kDimLeast;
     [_picture.layer addSublayer:_dim];
+    _scrim = [CAGradientLayer layer];
+    _scrim.colors = @[(id)[UIColor colorWithWhite:0 alpha:kTopScrimAlpha].CGColor, (id)UIColor.clearColor.CGColor];
+    [_picture.layer addSublayer:_scrim];
 
     _seamBlur = [[UIVisualEffectView alloc] initWithEffect:nil];
     _seamBlur.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
@@ -215,6 +238,20 @@ static UIBlurEffect *blurEffect(void) {
     [mask.layer addSublayer:_seamMask];
     _seamBlur.maskView = mask;
     [self addSubview:_seamBlur];
+    _topBlur = [[UIVisualEffectView alloc] initWithEffect:nil];
+    _topBlur.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+    UIView *topMask = [UIView new];
+    _topMask = [CAGradientLayer layer];
+    _topMask.colors = @[(id)UIColor.blackColor.CGColor, (id)UIColor.blackColor.CGColor, (id)UIColor.clearColor.CGColor];
+    [topMask.layer addSublayer:_topMask];
+    _topBlur.maskView = topMask;
+    [self addSubview:_topBlur];
+    _variable = [NSClassFromString(@"CAFilter") filterWithType:@"variableBlur"] != nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ SGLog(@"redesign player: animated artwork blurs %@", self->_variable ? @"with variableBlur" : @"with a material"); });
+    _lyricsBlur = [[UIVisualEffectView alloc] initWithEffect:nil];
+    _lyricsBlur.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+    [self addSubview:_lyricsBlur];
 
     NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
     for (NSNotificationName name in @[UIApplicationDidBecomeActiveNotification, UIApplicationWillResignActiveNotification,
@@ -222,7 +259,6 @@ static UIBlurEffect *blurEffect(void) {
         [center addObserver:self selector:@selector(updateMotionSoon) name:name object:nil];
     }
     [center addObserver:self selector:@selector(updateDim) name:UIAccessibilityDarkerSystemColorsStatusDidChangeNotification object:nil];
-    [center addObserver:self selector:@selector(updateDim) name:UIAccessibilityReduceTransparencyStatusDidChangeNotification object:nil];
     SGRObservePlayerTransition(self, ^(id owner) { [owner updateMotion]; }, ^(id owner) { [owner updateMotion]; });
     SGAddPlayerStateObserver(self);
     return self;
@@ -249,30 +285,68 @@ static UIBlurEffect *blurEffect(void) {
     CGFloat screen = _screenHeight > 0 ? _screenHeight : total;
     CGFloat height = round(width * _aspect);
     if (_aspect > kCanvasAspect) height = MAX(height, screen);
-    CGFloat seam = round(height * kFootFrom), blurFrom = MIN(seam, round(screen * kBlurByControls));
+    CGFloat top = _aspect > kCanvasAspect ? 0 : round(screen * kCoverDrop);
+    CGFloat seam = top + round(height * kFootFrom), blurFrom = MIN(seam, round(screen * kBlurByControls));
+    CGFloat blurRamp = kBlurRamp;
+    if (top > 0) {
+        // The controls' dim is whole where the lock screen's blur is half.
+        blurFrom = round(screen * kFootBlurFrom);
+        blurRamp = round(screen * kDimWholeAt) - blurFrom;
+    }
     _picture.frame = bounds;
     _seamBlur.frame = bounds;
     _seamBlur.maskView.frame = bounds;
+    _topBlur.frame = bounds;
+    _topBlur.maskView.frame = bounds;
+    _topBlur.hidden = top == 0;
+    _lyricsBlur.frame = bounds;
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
-    _still.frame = CGRectMake(0, 0, width, height);
+    _still.frame = CGRectMake(0, top, width, height);
     _clip.frame = _still.bounds;
-    _clipMask.frame = _still.bounds;
-    _foot.frame = CGRectMake(0, seam, width, MAX(0, total - seam));
+    // The cover's copy above it: flipped about its top edge and stretched kMirrorStretch times away from it, a row y
+    // below that edge landing kMirrorStretch * y above it. The rest of the copy is past the field.
+    _footCopy.frame = bounds;
+    _headCopy.frame = bounds;
+    _headCopy.instanceCount = top > 0 ? 2 : 1;
+    _headCopy.instanceTransform = flipAbout(top, kMirrorStretch);
+    _scrim.hidden = top == 0;
+    _scrim.frame = CGRectMake(0, 0, width, kTopScrim);
+    _topMask.frame = bounds;
+    _topMask.locations = @[@0, @(top / total), @(MIN(1, (top + kTopBlurRamp) / total))];
+    // The same below, about the clip's foot, down to the bottom of the field. The copy of the head this makes lands
+    // far below the field.
+    CGFloat below = MAX(0, total - top - height);
+    _footCopy.instanceCount = below > 0 ? 2 : 1;
+    _footCopy.instanceTransform = flipAbout(top + height, kMirrorStretch);
     _dim.frame = bounds;
-    NSNumber *(^at)(CGFloat) = ^NSNumber *(CGFloat y) { return @(MIN(1, y / total)); };
-    // Whole again by where the seam's blur starts, so over the title and the controls below it.
-    CGFloat topEnd = MIN(screen * kDimTop, blurFrom), rampFrom = MAX(topEnd, blurFrom - kBlurRamp);
-    _dim.locations = @[@0, at(topEnd), at(MIN(topEnd + kDimFade, rampFrom)), at(rampFrom), at(blurFrom)];
+    _dim.locations = @[@(MIN(1, (top + screen * kDimEaseFrom) / total)), @(MIN(1, (blurFrom + blurRamp) / total))];
     _seamMask.frame = bounds;
-    _seamMask.locations = @[at(blurFrom), at(blurFrom + kBlurRamp)];
+    _seamMask.locations = @[@(MIN(1, blurFrom / total)), @(MIN(1, (blurFrom + blurRamp) / total))];
+    if (_variable) {
+        // At its strength down to the cover's top edge and easing off inside it, so the cover keeps nearly all its height.
+        // The lock screen's, by height on the screen (kFootBlur, kTopBlur...).
+        BOOL band = top > 0;
+        CGFloat hold = MAX(top, round(screen * kTopBlurHold)), end = MAX(hold + 1, round(screen * kTopBlurEnd));
+        CGFloat stops[12][2] = {{0, band ? kTopBlurTop : 0}, {top, band ? kTopBlurEdge : 0}, {hold, band ? kTopBlurHeld : 0}, {end, 0}};
+        NSUInteger count = 4;
+        for (NSUInteger i = 0; i < sizeof(kFootBlur) / sizeof(kFootBlur[0]); i++) {
+            stops[count][0] = round(screen * kFootBlur[i][0]);
+            stops[count][1] = kFootBlur[i][1];
+            count++;
+        }
+        stops[count][0] = total;
+        stops[count][1] = kFootBlur[sizeof(kFootBlur) / sizeof(kFootBlur[0]) - 1][1];
+        count++;
+        [self variableBlur:stops count:count size:bounds.size];
+    }
     [CATransaction commit];
 }
 
 - (void)playFile:(NSURL *)file poster:(UIImage *)poster {
     _aspect = poster.size.height / poster.size.width;
-    _foot.backgroundColor = footColor(poster.CGImage).CGColor;
     _still.contents = (__bridge id)poster.CGImage;
+    [self setNeedsLayout];
     _player = [AVQueuePlayer new];
     _player.muted = YES;
     _player.preventsDisplaySleepDuringVideoPlayback = NO;
@@ -313,10 +387,51 @@ static UIBlurEffect *blurEffect(void) {
 }
 
 - (void)updateDim {
-    // Reduce Transparency puts the lyrics on black, as the material it replaced went opaque there.
-    CGFloat dim = _lyricsUp && SGRReduceTransparency() ? 1
-        : SGRPlayerClipDim(brightEnd(_luminances), UIAccessibilityDarkerSystemColorsEnabled(), _lyricsUp);
-    _dim.opacity = (float)dim;
+    BOOL contrast = UIAccessibilityDarkerSystemColorsEnabled();
+    CGFloat dim = SGRPlayerClipDim(brightEnd(_luminances), contrast, _lyricsUp);
+    _dim.opacity = (float)(_lyricsUp || contrast ? dim : dim * kDimUnderControls);
+    CGFloat top = _lyricsUp ? 1 : 0;
+    _dim.colors = @[(id)[UIColor colorWithWhite:0 alpha:top].CGColor, (id)UIColor.blackColor.CGColor];
+}
+
+// The variable blur on the clip, whole where a stop says 1 and none where it says 0, eased between, each stop at a
+// height in points. Its mask, drawn at a point a pixel, is drawn again only when the stops or the size change.
+- (void)variableBlur:(CGFloat (*)[2])stops count:(NSUInteger)count size:(CGSize)size {
+    if (size.width < 1 || size.height < 1) return;
+    NSMutableString *key = [NSMutableString stringWithFormat:@"%.0fx%.0f", size.width, size.height];
+    for (NSUInteger i = 0; i < count; i++) [key appendFormat:@" %.0f:%.0f", stops[i][0], stops[i][1]];
+    if ([key isEqualToString:_blurKey]) return;
+    _blurKey = key;
+    NSMutableArray *colors = [NSMutableArray array];
+    CGFloat locations[12];
+    for (NSUInteger i = 0; i < count && i < 12; i++) {
+        [colors addObject:(id)[UIColor colorWithWhite:0 alpha:stops[i][1]].CGColor];
+        locations[i] = MIN(1, MAX(0, stops[i][0] / size.height));
+    }
+    const CGFloat *at = locations;   // run at once, below: a block cannot take the array itself
+    UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat preferredFormat];
+    format.scale = 1;
+    format.opaque = NO;
+    UIImage *mask = [[[UIGraphicsImageRenderer alloc] initWithSize:size format:format] imageWithActions:^(UIGraphicsImageRendererContext *context) {
+        CGColorSpaceRef space = CGColorSpaceCreateDeviceGray();
+        CGGradientRef gradient = CGGradientCreateWithColors(space, (__bridge CFArrayRef)colors, at);
+        CGContextDrawLinearGradient(context.CGContext, gradient, CGPointZero, CGPointMake(0, size.height), 0);
+        CGGradientRelease(gradient);
+        CGColorSpaceRelease(space);
+    }];
+    CAFilter *blur = [NSClassFromString(@"CAFilter") filterWithType:@"variableBlur"];
+    [blur setValue:@(kVariableBlurRadius) forKey:@"inputRadius"];
+    [blur setValue:(__bridge id)mask.CGImage forKey:@"inputMaskImage"];
+    [blur setValue:@YES forKey:@"inputNormalizeEdges"];
+    _picture.layer.filters = blur ? @[blur] : nil;
+}
+
+// A copy flipped about the row `y` and stretched `stretch` times from it, for a replicator anchored at its origin: a
+// point `d` past the row lands `stretch * d` before it.
+static CATransform3D flipAbout(CGFloat y, CGFloat stretch) {
+    CATransform3D t = CATransform3DMakeTranslation(0, -y, 0);
+    t = CATransform3DConcat(t, CATransform3DMakeScale(1, -MAX(1, stretch), 1));
+    return CATransform3DConcat(t, CATransform3DMakeTranslation(0, y, 0));
 }
 
 // `done` runs once the clip is opaque, unless something cut the fade in short.
@@ -324,7 +439,9 @@ static UIBlurEffect *blurEffect(void) {
     _picture.alpha = 0;
     void (^apply)(void) = ^{
         self->_picture.alpha = 1;
+        if (self->_variable) return;
         self->_seamBlur.effect = blurEffect();
+        self->_topBlur.effect = blurEffect();
     };
     if (animated) {
         SGRAnimate(SGRMotionFade, apply, ^(BOOL finished) {
@@ -336,62 +453,27 @@ static UIBlurEffect *blurEffect(void) {
     }
 }
 
-// The clip and the seam's blur fade out; `done` runs once they have.
+// The clip and both blurs fade out; `done` runs once they have.
 - (void)disappear:(void (^)(void))done {
     SGRAnimate(SGRMotionFade, ^{
         self->_picture.alpha = 0;
         self->_seamBlur.effect = nil;
+        self->_topBlur.effect = nil;
+        self->_lyricsBlur.effect = nil;
     }, ^(BOOL finished) { done(); });
 }
 
-// The lyrics' blur, and their share of the dim, which a layer's own animation carries over the same fade. The
-// filter is on the clip only while the lyrics are up, so a closed lyrics page costs no blur pass a frame.
+// The lyrics' blur, and their share of the dim, which a layer's own animation carries over the same fade.
 - (void)setBlurred:(BOOL)blurred animated:(BOOL)animated {
-    // Asked again on every footer layout pass: the same state again would restart the fade.
-    if (blurred == _lyricsUp) return;
     _lyricsUp = blurred;
-    NSUInteger turn = ++_blurTurn;
-    CALayer *layer = _picture.layer;
-    if (blurred && !layer.filters && !SGRReduceTransparency()) {
-        CAFilter *blur = [NSClassFromString(@"CAFilter") filterWithType:@"gaussianBlur"];
-        [blur setValue:@0 forKey:@"inputRadius"];
-        // The clip's edges blur against themselves, not against the clear around it.
-        [blur setValue:@YES forKey:@"inputNormalizeEdges"];
-        if (blur) {
-            layer.filters = @[blur];
-            // The clip changes every video frame, so the blur runs every frame either way: rendered at one pixel a
-            // point it blurs a ninth of a 3x screen's pixels, as cheap as the material's quarter-scale backdrop
-            // was. Nothing sharp is left to lose.
-            layer.rasterizationScale = 1;
-            layer.shouldRasterize = YES;
-        }
-    }
-    id shown = [layer.presentationLayer valueForKeyPath:kLyricsBlurPath];
-    CGFloat from = [shown isKindOfClass:NSNumber.class] ? [shown doubleValue] : 0, to = blurred ? kLyricsBlurRadius : 0;
+    void (^apply)(void) = ^{ self->_lyricsBlur.effect = blurred ? blurEffect() : nil; };
     [CATransaction begin];
     [CATransaction setDisableActions:!animated];
     [CATransaction setAnimationDuration:SGRCrossfade];
-    _dim.colors = dimColors(blurred);
     [self updateDim];
-    if (layer.filters) {
-        __weak SGRPlayerMotionView *weakSelf = self;
-        [CATransaction setCompletionBlock:^{
-            SGRPlayerMotionView *view = weakSelf;
-            if (!view || view->_blurTurn != turn || view->_lyricsUp) return;
-            view->_picture.layer.filters = nil;
-            view->_picture.layer.shouldRasterize = NO;
-        }];
-        [layer setValue:@(to) forKeyPath:kLyricsBlurPath];
-        if (animated) {
-            CABasicAnimation *ease = [CABasicAnimation animationWithKeyPath:kLyricsBlurPath];
-            ease.fromValue = @(from);
-            ease.toValue = @(to);
-            ease.duration = SGRCrossfade;
-            ease.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-            [layer addAnimation:ease forKey:@"lyricsBlur"];
-        }
-    }
     [CATransaction commit];
+    if (animated) SGRAnimate(SGRMotionFade, apply, nil);
+    else apply();
 }
 
 // The power state is reported off the main thread.
