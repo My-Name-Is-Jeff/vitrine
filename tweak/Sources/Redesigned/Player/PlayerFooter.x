@@ -132,9 +132,9 @@ void SGRPlayerQueueChanged(void) {
     BOOL open = SGRPlayerQueueOpen();
     BOOL animated = glyph.window && !SGRPlayerIsTransitioning();
     void (^mark)(void) = ^{
-        glyph.glyph.tintColor = open ? [UIColor colorWithWhite:0.08 alpha:0.95] : SGRSecondary();
-        glyph.backgroundColor = open ? [UIColor colorWithWhite:1.0 alpha:0.88] : UIColor.clearColor;
-        glyph.layer.cornerRadius = glyph.bounds.size.height > 0 ? glyph.bounds.size.height / 2.0 : 19.0;
+        glyph.glyph.tintColor = open ? SGRPrimary() : SGRSecondary();
+        glyph.backgroundColor = open ? [UIColor colorWithWhite:1.0 alpha:0.18] : UIColor.clearColor;
+        glyph.layer.cornerRadius = glyph.bounds.size.height > 0 ? glyph.bounds.size.height / 2.0 : 22.0;
         glyph.layer.cornerCurve = kCACornerCurveContinuous;
         glyph.clipsToBounds = YES;
     };
@@ -151,7 +151,8 @@ SGRGlyphButton *SGRPlayerQueueGlyphIn(UIView *host) {
     SGRGlyphButton *glyph = objc_getAssociatedObject(host, &kQueueGlyphKey);
     if (!glyph) {
         glyph = [SGRGlyphButton buttonWithSymbol:kQueueSymbol pointSize:kLyricsGlyphSize title:@"Queue"];
-        glyph.glyph.tintColor = SGRPlayerQueueOpen() ? [UIColor colorWithWhite:0.08 alpha:0.95] : SGRSecondary();
+        glyph.glyph.tintColor = SGRPlayerQueueOpen() ? SGRPrimary() : SGRSecondary();
+        glyph.backgroundColor = SGRPlayerQueueOpen() ? [UIColor colorWithWhite:1.0 alpha:0.18] : UIColor.clearColor;
         glyph.onTap = ^{ SGRPlayerToggleQueue(); };
         objc_setAssociatedObject(host, &kQueueGlyphKey, glyph, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }

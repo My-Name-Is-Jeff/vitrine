@@ -108,16 +108,16 @@ static id SGRShareItemForSpotifyURI(NSString *uri) {
 // Constants & Geometry (Measured 1:1 from Apple Music @ 390x844 pt)
 // ============================================================================
 
-static const CGFloat kGrabberWidth = 36.0;
-static const CGFloat kGrabberHeight = 5.0;
+static const CGFloat kGrabberWidth = 60.0;
+static const CGFloat kGrabberHeight = 4.0;
 static const CGFloat kViewportTopOffset = 17.0;       // Grabber at y=0 (screenY=55), Viewport at y=17 (screenY=72)
-static const CGFloat kSideMargin = 28.0;              // Left/right column alignment across artwork, pills, headers & rows
-static const CGFloat kNowPlayingDocY = 14.7;          // screenY = 72.0 + 14.7 = 86.7 at scrollY = 0
-static const CGFloat kNowPlayingHeight = 76.0;        // 62pt thumbnail at y=0..62 + breathing room above 4-pill bar
-static const CGFloat kContinueHeaderDocY = 99.7;      // screenY = 171.7 at scrollY = 0
-static const CGFloat kContinueHeaderPinOffset = 12.7; // Pins at viewportY = 12.7 (screenY = 84.7, bottom = 174.7)
-static const CGFloat kContinueHeaderHeight = 90.0;    // 36pt pills + 11pt gap + 43pt title/subtitle
-static const CGFloat kQueueRowsStartDocY = 196.5;     // Fits 5 full 56pt queue rows inside y = 72..538 (466pt viewport)
+static const CGFloat kSideMargin = 32.0;              // Left/right column alignment across artwork, pills, headers & rows
+static const CGFloat kNowPlayingDocY = 10.0;          // screenY = 72.0 + 10.0 = 82.0 at scrollY = 0
+static const CGFloat kNowPlayingHeight = 84.0;        // 72pt thumbnail + vertical centering
+static const CGFloat kContinueHeaderDocY = 102.0;     // Now playing (10.0 + 84.0 = 94.0) + 8pt gap
+static const CGFloat kContinueHeaderPinOffset = 10.0; // Pins at viewportY = 10.0 (screenY = 82.0)
+static const CGFloat kContinueHeaderHeight = 103.0;   // 38pt pills + 18pt gap + 45pt title/subtitle
+static const CGFloat kQueueRowsStartDocY = 219.0;     // kContinueHeaderDocY + kContinueHeaderHeight + 14pt gap
 static const CGFloat kQueueRowPitch = 56.0;
 static const CGFloat kHistoryHeaderHeight = 46.0;
 static const CGFloat kHistoryHeaderClipOffset = 31.0; // Clips scrolling History rows at screenY = 79.0 + 31.0 = 110.0 pt
@@ -1629,11 +1629,11 @@ static UIImage *SGRExplicitBadgeImage(void) {
 // Draws Apple Music's exact overlapping two-circles AutoMix/Transitions glyph into the current context,
 // centered at `center` (left 58%-opacity stroked ring occluded on the right by a 100%-opacity solid donut).
 static void SGRDrawTransitionsOverlappingCircles(CGContextRef cg, CGPoint center, UIColor *inkColor) {
-    CGFloat leftX = center.x - 4.2;
-    CGFloat rightX = center.x + 4.2;
-    CGFloat leftR = 5.6;
-    CGFloat rightOuterR = 6.6;
-    CGFloat rightInnerR = 2.2;
+    CGFloat leftX = center.x - 4.5;
+    CGFloat rightX = center.x + 4.5;
+    CGFloat leftR = 6.2;
+    CGFloat rightOuterR = 6.2;
+    CGFloat rightInnerR = 2.0;
 
     // Render into a transparency layer so the right disc cleanly occludes the overlapping arc of the left ring
     CGContextSaveGState(cg);
@@ -1645,7 +1645,7 @@ static void SGRDrawTransitionsOverlappingCircles(CGContextRef cg, CGPoint center
                                                         startAngle:0
                                                           endAngle:(CGFloat)(M_PI * 2.0)
                                                          clockwise:YES];
-    leftRing.lineWidth = 2.0;
+    leftRing.lineWidth = 1.8;
     [[inkColor colorWithAlphaComponent:0.58] setStroke];
     [leftRing stroke];
 
@@ -1678,7 +1678,7 @@ static void SGRDrawTransitionsOverlappingCircles(CGContextRef cg, CGPoint center
 }
 
 static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *symbolName, BOOL isTransitionsGlyph) {
-    if (size.width < 10.0 || size.height < 10.0) size = CGSizeMake(76.0, 36.0);
+    if (size.width < 10.0 || size.height < 10.0) size = CGSizeMake(72.5, 38.0);
     UIGraphicsImageRendererFormat *fmt = [UIGraphicsImageRendererFormat preferredFormat];
     fmt.opaque = NO;
     UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:size format:fmt];
@@ -1687,28 +1687,27 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
         CGRect rect = CGRectMake(0, 0, size.width, size.height);
         UIBezierPath *capsule = [UIBezierPath bezierPathWithRoundedRect:rect cornerRadius:size.height * 0.5];
 
-        // Inactive: rgba(255,255,255,0.12) + 100% white icon
-        // Active:   rgba(255,255,255,0.88) + destinationOut knocked-out icon
-        UIColor *fill = active ? [UIColor colorWithWhite:1.0 alpha:0.88] : [UIColor colorWithWhite:1.0 alpha:0.12];
+        // Inactive: rgba(255,255,255,0.12) + 85% white icon
+        // Active:   rgba(255,255,255,0.92) + crisp accented/Apple Music Red icon
+        UIColor *fill = active ? [UIColor colorWithWhite:1.0 alpha:0.92] : [UIColor colorWithWhite:1.0 alpha:0.12];
         [fill setFill];
         [capsule fill];
 
         CGPoint center = CGPointMake(size.width * 0.5, size.height * 0.5);
-        if (active) {
-            CGContextSetBlendMode(cg, kCGBlendModeDestinationOut);
-        }
+        UIColor *inkColor = active ? (SGRAccentColor() ?: [UIColor colorWithRed:250.0/255.0 green:45.0/255.0 blue:72.0/255.0 alpha:1.0])
+                                   : [UIColor colorWithWhite:1.0 alpha:0.85];
 
         if (isTransitionsGlyph) {
-            SGRDrawTransitionsOverlappingCircles(cg, center, UIColor.whiteColor);
+            SGRDrawTransitionsOverlappingCircles(cg, center, inkColor);
         } else if (symbolName.length) {
-            UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:15.5 weight:UIImageSymbolWeightBold];
-            UIImage *sym = [[UIImage systemImageNamed:symbolName withConfiguration:cfg] imageWithTintColor:UIColor.whiteColor renderingMode:UIImageRenderingModeAlwaysOriginal];
+            UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:16.0 weight:UIImageSymbolWeightBold];
+            UIImage *sym = [[UIImage systemImageNamed:symbolName withConfiguration:cfg] imageWithTintColor:inkColor renderingMode:UIImageRenderingModeAlwaysOriginal];
             if (sym) {
                 CGRect symRect = CGRectMake(center.x - sym.size.width * 0.5,
                                             center.y - sym.size.height * 0.5,
                                             sym.size.width,
                                             sym.size.height);
-                [sym drawInRect:symRect blendMode:(active ? kCGBlendModeDestinationOut : kCGBlendModeNormal) alpha:1.0];
+                [sym drawInRect:symRect];
             }
         }
     }];
@@ -1808,16 +1807,16 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     _rowContentView.backgroundColor = UIColor.clearColor;
     [self addSubview:_rowContentView];
 
-    _artView = [[UIImageView alloc] initWithFrame:CGRectMake(kSideMargin, 5.5, 45.0, 45.0)];
+    _artView = [[UIImageView alloc] initWithFrame:CGRectMake(kSideMargin, 4.0, 48.0, 48.0)];
     _artView.contentMode = UIViewContentModeScaleAspectFill;
     _artView.clipsToBounds = YES;
-    _artView.layer.cornerRadius = 5.5;
+    _artView.layer.cornerRadius = 6.0;
     _artView.layer.cornerCurve = kCACornerCurveContinuous;
     _artView.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.10];
     [_rowContentView addSubview:_artView];
 
     _titleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _titleLabel.font = [UIFont systemFontOfSize:16.5 weight:UIFontWeightRegular];
+    _titleLabel.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightSemibold];
     _titleLabel.textColor = UIColor.whiteColor;
     _titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     [_rowContentView addSubview:_titleLabel];
@@ -1838,7 +1837,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     [_rowContentView addSubview:_handleHitView];
 
     _handleBarsLayer = [CAShapeLayer layer];
-    _handleBarsLayer.fillColor = [UIColor colorWithWhite:1.0 alpha:0.36].CGColor;
+    _handleBarsLayer.fillColor = [UIColor colorWithWhite:1.0 alpha:0.35].CGColor;
     [_handleHitView.layer addSublayer:_handleBarsLayer];
 
     _reorderPan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleReorderPan:)];
@@ -1913,23 +1912,23 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     _highlightBand.frame = self.bounds;
     _rowContentView.frame = CGRectMake(_swipeOffsetX, 0, w, h);
 
-    CGFloat artY = round((h - 45.0) * 0.5 * 2.0) * 0.5;
-    _artView.frame = CGRectMake(kSideMargin, artY, 45.0, 45.0);
+    CGFloat artY = round((h - 48.0) * 0.5 * 2.0) * 0.5;
+    _artView.frame = CGRectMake(kSideMargin, artY, 48.0, 48.0);
 
-    // 3-line handle aligned to right margin (bars at x = w - 49 .. w - 28)
+    // 3-line handle aligned to right margin (bars at x = w - kSideMargin - 21.0 .. w - kSideMargin)
     CGFloat handleTouchW = 54.0;
-    _handleHitView.frame = CGRectMake(w - 60.0, 0, handleTouchW, h);
-    CGFloat barLeft = 60.0 - 49.0;
-    CGFloat barTop = (h - 10.0) * 0.5;
+    _handleHitView.frame = CGRectMake(w - kSideMargin - 21.0 - 15.0, 0, handleTouchW, h);
+    CGFloat barLeft = 15.0;
+    CGFloat barTop = round((h - 10.5) * 0.5);
     UIBezierPath *bars = [UIBezierPath bezierPath];
     for (int i = 0; i < 3; i++) {
-        CGRect r = CGRectMake(barLeft, barTop + i * 4.2, 21.0, 1.6);
-        [bars appendPath:[UIBezierPath bezierPathWithRoundedRect:r cornerRadius:0.8]];
+        CGRect r = CGRectMake(barLeft, barTop + i * 4.5, 21.0, 1.5);
+        [bars appendPath:[UIBezierPath bezierPathWithRoundedRect:r cornerRadius:0.75]];
     }
     _handleBarsLayer.path = bars.CGPath;
 
-    CGFloat textLeft = kSideMargin + 45.0 + 14.0; // 87.0 pt
-    CGFloat maxRight = _showsHandle ? (w - 64.0) : (w - kSideMargin);
+    CGFloat textLeft = kSideMargin + 48.0 + 14.0; // 94.0 pt
+    CGFloat maxRight = _showsHandle ? (w - kSideMargin - 21.0 - 10.0) : (w - kSideMargin);
     CGFloat availW = MAX(40.0, maxRight - textLeft);
 
     BOOL hasExp = !_explicitView.hidden;
@@ -1937,9 +1936,9 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     CGSize naturalTitle = [_titleLabel sizeThatFits:CGSizeMake(availW - badgeW, 24.0)];
     CGFloat titleW = MIN(availW - badgeW, ceil(naturalTitle.width));
 
-    _titleLabel.frame = CGRectMake(textLeft, 8.5, titleW, 20.5);
+    _titleLabel.frame = CGRectMake(textLeft, 7.5, titleW, 21.0);
     if (hasExp) {
-        _explicitView.frame = CGRectMake(textLeft + titleW + 5.0, 12.0, 13.5, 13.5);
+        _explicitView.frame = CGRectMake(textLeft + titleW + 5.0, 11.5, 13.5, 13.5);
     }
     _subtitleLabel.frame = CGRectMake(textLeft, 29.5, availW, 18.0);
 
@@ -2395,10 +2394,10 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     [_nowPlayingCard addInteraction:npCardMenu];
     [_nowPlayingClipView addSubview:_nowPlayingCard];
 
-    _npArtView = [[UIImageView alloc] initWithFrame:CGRectMake(kSideMargin, 0.0, 62.0, 62.0)];
+    _npArtView = [[UIImageView alloc] initWithFrame:CGRectMake(kSideMargin, 6.0, 72.0, 72.0)];
     _npArtView.contentMode = UIViewContentModeScaleAspectFill;
     _npArtView.clipsToBounds = YES;
-    _npArtView.layer.cornerRadius = 8.0;
+    _npArtView.layer.cornerRadius = 10.0;
     _npArtView.layer.cornerCurve = kCACornerCurveContinuous;
     _npArtView.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.12];
     _npArtView.userInteractionEnabled = YES;
@@ -2410,7 +2409,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     [_nowPlayingCard addSubview:_npDetailsView];
 
     _npTitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _npTitleLabel.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightSemibold];
+    _npTitleLabel.font = [UIFont systemFontOfSize:19.5 weight:UIFontWeightBold];
     _npTitleLabel.textColor = UIColor.whiteColor;
     _npTitleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     [_npDetailsView addSubview:_npTitleLabel];
@@ -2422,15 +2421,15 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
 
     _npArtistLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     _npArtistLabel.font = [UIFont systemFontOfSize:15.5 weight:UIFontWeightRegular];
-    _npArtistLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.58];
+    _npArtistLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.56];
     _npArtistLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     [_npDetailsView addSubview:_npArtistLabel];
 
     // Bare white ellipsis button matching Apple Music's Now Playing mini-card; single-tap opens the full system menu
     _npMoreButton = [UIButton buttonWithType:UIButtonTypeCustom];
     _npMoreButton.backgroundColor = UIColor.clearColor;
-    UIImageSymbolConfiguration *moreCfg = [UIImageSymbolConfiguration configurationWithPointSize:16.5 weight:UIImageSymbolWeightBold];
-    [_npMoreButton setImage:[[UIImage systemImageNamed:@"ellipsis" withConfiguration:moreCfg] imageWithTintColor:UIColor.whiteColor renderingMode:UIImageRenderingModeAlwaysOriginal] forState:UIControlStateNormal];
+    UIImageSymbolConfiguration *moreCfg = [UIImageSymbolConfiguration configurationWithPointSize:18.0 weight:UIImageSymbolWeightBold];
+    [_npMoreButton setImage:[[UIImage systemImageNamed:@"ellipsis" withConfiguration:moreCfg] imageWithTintColor:[UIColor colorWithWhite:1.0 alpha:0.90] renderingMode:UIImageRenderingModeAlwaysOriginal] forState:UIControlStateNormal];
     [_npDetailsView addSubview:_npMoreButton];
     SGRPlayerMenuWatchProxy(_npMoreButton);
 
@@ -2455,12 +2454,12 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
 
     _continueTitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     _continueTitleLabel.text = @"Continue Playing";
-    _continueTitleLabel.font = [UIFont systemFontOfSize:18.5 weight:UIFontWeightBold];
+    _continueTitleLabel.font = [UIFont systemFontOfSize:20.0 weight:UIFontWeightBold];
     _continueTitleLabel.textColor = UIColor.whiteColor;
     [_continueHeaderView addSubview:_continueTitleLabel];
 
     _continueSubtitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _continueSubtitleLabel.font = [UIFont systemFontOfSize:14.5 weight:UIFontWeightRegular];
+    _continueSubtitleLabel.font = [UIFont systemFontOfSize:15.0 weight:UIFontWeightRegular];
     _continueSubtitleLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.56];
     _continueSubtitleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     [_continueHeaderView addSubview:_continueSubtitleLabel];
@@ -2472,7 +2471,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     UIButton *pill = [UIButton buttonWithType:UIButtonTypeCustom];
     pill.tag = (NSInteger)slot;
     pill.backgroundColor = UIColor.clearColor;
-    pill.layer.cornerRadius = 18.0;
+    pill.layer.cornerRadius = 19.0;
     pill.layer.cornerCurve = kCACornerCurveContinuous;
     pill.clipsToBounds = YES;
     [pill addTarget:self action:@selector(handlePillTap:) forControlEvents:UIControlEventTouchUpInside];
@@ -2529,7 +2528,8 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
 }
 
 - (CGRect)nowPlayingArtworkFrameInView:(UIView *)targetView {
-    CGRect localArt = CGRectMake(kSideMargin, kViewportTopOffset + kNowPlayingDocY, 62.0, 62.0);
+    CGFloat artY = round((kNowPlayingHeight - 72.0) * 0.5);
+    CGRect localArt = CGRectMake(kSideMargin, kViewportTopOffset + kNowPlayingDocY + artY, 72.0, 72.0);
     return targetView ? [self convertRect:localArt toView:targetView] : localArt;
 }
 
@@ -2752,7 +2752,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     if (w < 100.0 || h < 100.0) return;
 
     _grabberPill.bounds = CGRectMake(0.0, 0.0, kGrabberWidth, kGrabberHeight);
-    _grabberPill.center = CGPointMake(w * 0.5, kGrabberHeight * 0.5);
+    _grabberPill.center = CGPointMake(w * 0.5, 6.0);
 
     CGFloat viewportH = MAX(100.0, h - kViewportTopOffset);
     _viewportClipView.frame = CGRectMake(0.0, kViewportTopOffset, w, viewportH);
@@ -2775,54 +2775,56 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
         [self applyHistoryInsetPreservingOffset];
     }
 
-    // Section 1: Now Playing Card subviews (62x62 art at x=28, docY=14.7 -> screen (28.0, 86.7))
-    _npArtView.frame = CGRectMake(kSideMargin, 0.0, 62.0, 62.0);
+    // Section 1: Now Playing Card subviews (72x72 art at x=32, centered in kNowPlayingHeight = 84pt)
+    CGFloat npArtY = round((kNowPlayingHeight - 72.0) * 0.5);
+    _npArtView.frame = CGRectMake(kSideMargin, npArtY, 72.0, 72.0);
     _npDetailsView.bounds = CGRectMake(0.0, 0.0, w, kNowPlayingHeight);
     _npDetailsView.center = CGPointMake(w * 0.5, kNowPlayingHeight * 0.5);
-    _npMoreButton.frame = CGRectMake(w - 57.0, 13.0, 36.0, 36.0);
+    _npMoreButton.frame = CGRectMake(w - kSideMargin - 32.0, round((kNowPlayingHeight - 32.0) * 0.5), 32.0, 32.0);
 
-    CGFloat npTextLeft = kSideMargin + 62.0 + 14.0; // 104.0 pt
-    CGFloat npMaxRight = w - 62.0;
+    CGFloat npTextLeft = kSideMargin + 72.0 + 14.0; // 118.0 pt
+    CGFloat npMaxRight = w - kSideMargin - 32.0 - 8.0;
     CGFloat npAvailW = MAX(40.0, npMaxRight - npTextLeft);
     BOOL npHasExp = !_npExplicitView.hidden;
     CGFloat npBadgeW = npHasExp ? (13.5 + 5.0) : 0.0;
-    CGSize npTitleNat = [_npTitleLabel sizeThatFits:CGSizeMake(npAvailW - npBadgeW, 24.0)];
+    CGSize npTitleNat = [_npTitleLabel sizeThatFits:CGSizeMake(npAvailW - npBadgeW, 26.0)];
     CGFloat npTitleW = MIN(npAvailW - npBadgeW, ceil(npTitleNat.width));
-    _npTitleLabel.frame = CGRectMake(npTextLeft, 10.0, npTitleW, 21.0);
+    CGFloat titleY = round((kNowPlayingHeight - 44.0) * 0.5);
+    _npTitleLabel.frame = CGRectMake(npTextLeft, titleY, npTitleW, 23.0);
     if (npHasExp) {
-        _npExplicitView.frame = CGRectMake(npTextLeft + npTitleW + 5.0, 14.0, 13.5, 13.5);
+        _npExplicitView.frame = CGRectMake(npTextLeft + npTitleW + 5.0, titleY + 5.0, 13.5, 13.5);
     }
-    _npArtistLabel.frame = CGRectMake(npTextLeft, 32.5, npAvailW, 19.0);
+    _npArtistLabel.frame = CGRectMake(npTextLeft, titleY + 24.0, npAvailW, 20.0);
 
-    // Section 2 Header subviews: configurable pills (height = 36, cornerRadius = 18, x = 28 .. w - 28) + Continue Playing title & subtitle
+    // Section 2 Header subviews: configurable pills (height = 38, cornerRadius = 19, x = 32 .. w - 32) + Continue Playing title & subtitle
     NSArray<NSNumber *> *activeSlots = [self activePillSlots];
     NSUInteger numPills = activeSlots.count;
     for (NSUInteger i = 0; i < 4; i++) {
         _pillButtons[i].hidden = YES;
     }
-    CGFloat pillW = 76.0;
+    CGFloat pillW = 72.5;
     if (numPills > 0) {
-        CGFloat pillGap = 9.0;
+        CGFloat pillGap = 12.0;
         pillW = floor(((w - kSideMargin * 2.0 - pillGap * (numPills - 1)) / (CGFloat)numPills) * 2.0) * 0.5;
         for (NSUInteger idx = 0; idx < numPills; idx++) {
             NSUInteger slot = [activeSlots[idx] unsignedIntegerValue];
             UIButton *p = _pillButtons[slot];
             p.hidden = NO;
-            p.bounds = CGRectMake(0.0, 0.0, pillW, 36.0);
-            p.center = CGPointMake(kSideMargin + idx * (pillW + pillGap) + pillW * 0.5, 18.0);
+            p.bounds = CGRectMake(0.0, 0.0, pillW, 38.0);
+            p.center = CGPointMake(kSideMargin + idx * (pillW + pillGap) + pillW * 0.5, 19.0);
         }
     }
-    CGSize pillSize = CGSizeMake(pillW, 36.0);
+    CGSize pillSize = CGSizeMake(pillW, 38.0);
     if (!CGSizeEqualToSize(pillSize, _lastPillRenderSize)) {
         _lastPillRenderSize = pillSize;
         [self updatePlaybackPillsWithState:SGPlayerState()];
     }
 
     BOOL hasPills = (numPills > 0);
-    _continueTitleLabel.frame = CGRectMake(kSideMargin, hasPills ? 47.0 : 0.0, w - kSideMargin * 2.0, 22.0);
-    _continueSubtitleLabel.frame = CGRectMake(kSideMargin, hasPills ? 69.0 : 22.0, w - kSideMargin * 2.0, 18.0);
+    _continueTitleLabel.frame = CGRectMake(kSideMargin, hasPills ? 56.0 : 0.0, w - kSideMargin * 2.0, 24.0);
+    _continueSubtitleLabel.frame = CGRectMake(kSideMargin, hasPills ? 82.0 : 26.0, w - kSideMargin * 2.0, 19.0);
 
-    // Section 0 Header subviews: "History" + "Clear" aligned at x = 28 .. w - 28
+    // Section 0 Header subviews: "History" + "Clear" aligned at x = 32 .. w - 32
     _historyTitleLabel.frame = CGRectMake(kSideMargin, 6.0, 160.0, 24.0);
     _historyClearButton.frame = CGRectMake(w - kSideMargin - 52.0, 2.0, 52.0, 32.0);
     _historyClearButton.contentHorizontalAlignment = UIControlContentHorizontalAlignmentRight;
@@ -2846,11 +2848,11 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
 }
 
 - (CGFloat)continueHeaderHeight {
-    return [self activePillSlots].count > 0 ? kContinueHeaderHeight : 43.0;
+    return [self activePillSlots].count > 0 ? kContinueHeaderHeight : 47.0;
 }
 
 - (CGFloat)queueRowsStartDocY {
-    return [self activePillSlots].count > 0 ? kQueueRowsStartDocY : (kQueueRowsStartDocY - 47.0);
+    return [self activePillSlots].count > 0 ? kQueueRowsStartDocY : (kQueueRowsStartDocY - 56.0);
 }
 
 - (NSArray<NSNumber *> *)activePillSlots {
@@ -3021,7 +3023,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     CGSize sz = pill.bounds.size;
     if (sz.width < 10.0 || sz.height < 10.0) {
         CGFloat w = MAX(320.0, self.bounds.size.width);
-        sz = CGSizeMake(floor(((w - kSideMargin * 2.0 - 27.0) / 4.0) * 2.0) * 0.5, 36.0);
+        sz = CGSizeMake(floor(((w - kSideMargin * 2.0 - 36.0) / 4.0) * 2.0) * 0.5, 38.0);
     }
     UIImage *bgImg = SGRRenderPillCapsuleImage(sz, active, symbol, isTransitions);
     [pill setBackgroundImage:bgImg forState:UIControlStateNormal];
