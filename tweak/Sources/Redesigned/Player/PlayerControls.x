@@ -298,12 +298,10 @@ static void updateTransportPositionsForQueue(UIView *host) {
 
     BOOL queueOpen = SGRPlayerQueueOpen();
     if (queueOpen) {
-        // Spotify distributes 5 equal columns across 390 pt width:
-        // Slot 1 (Previous) center = 117.0 pt. Moving by -26.5 pt places center at exactly x = 90.5 pt.
-        // Slot 3 (Next) center = 273.0 pt. Moving by +26.5 pt places center at exactly x = 299.5 pt.
-        // Distance from screen center (195.0 pt) is exactly 104.5 pt on both sides, matching Apple Music.
-        CGAffineTransform prevT = CGAffineTransformMakeTranslation(-26.5, 0.0);
-        CGAffineTransform nextT = CGAffineTransformMakeTranslation(26.5, 0.0);
+        // Centering previous triangles at 88.2 pt and next triangles at 301.5 pt:
+        // Moving by -22.0 pt and +22.0 pt centers controls at exactly 106.8 pt from screen center (195.0 pt), matching Apple Music 1:1.
+        CGAffineTransform prevT = CGAffineTransformMakeTranslation(-22.0, 0.0);
+        CGAffineTransform nextT = CGAffineTransformMakeTranslation(22.0, 0.0);
         if (!CGAffineTransformEqualToTransform(prev.transform, prevT)) prev.transform = prevT;
         if (!CGAffineTransformEqualToTransform(next.transform, nextT)) next.transform = nextT;
 

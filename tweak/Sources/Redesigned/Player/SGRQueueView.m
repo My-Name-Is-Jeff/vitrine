@@ -2542,7 +2542,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
 
     _continueTitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     _continueTitleLabel.text = @"Continue Playing";
-    _continueTitleLabel.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightBold];
+    _continueTitleLabel.font = [UIFont systemFontOfSize:16.5 weight:UIFontWeightBold];
     _continueTitleLabel.textColor = UIColor.whiteColor;
     [_continueHeaderView addSubview:_continueTitleLabel];
 
@@ -2898,11 +2898,12 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     _npDetailsView.center = CGPointMake(w * 0.5, 36.0);
     CGFloat moreW = 32.0;
     CGFloat starW = 28.0;
+    CGFloat saveGap = 18.0;
     _npMoreButton.frame = CGRectMake(w - kSideMargin - moreW, round((72.0 - moreW) * 0.5), moreW, moreW);
-    _npStarButton.frame = CGRectMake(w - kSideMargin - moreW - 10.0 - starW, round((72.0 - starW) * 0.5), starW, starW);
+    _npStarButton.frame = CGRectMake(w - kSideMargin - moreW - saveGap - starW, round((72.0 - starW) * 0.5), starW, starW);
 
     CGFloat npTextLeft = kSideMargin + 72.0 + 13.0; // 117.0 pt
-    CGFloat npMaxRight = w - kSideMargin - moreW - 10.0 - starW - 8.0;
+    CGFloat npMaxRight = w - kSideMargin - moreW - saveGap - starW - 8.0;
     CGFloat npAvailW = MAX(40.0, npMaxRight - npTextLeft);
     BOOL npHasExp = !_npExplicitView.hidden;
     CGFloat npBadgeW = npHasExp ? (14.0 + 5.0) : 0.0;
@@ -2941,7 +2942,7 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
 
     BOOL hasPills = (numPills > 0);
     _continueTitleLabel.frame = CGRectMake(kSideMargin, hasPills ? 56.3 : 0.0, w - kSideMargin * 2.0, 21.0);
-    _continueSubtitleLabel.frame = CGRectMake(kSideMargin, hasPills ? 78.5 : 22.0, w - kSideMargin * 2.0, 16.0);
+    _continueSubtitleLabel.frame = CGRectMake(kSideMargin, hasPills ? 78.0 : 22.0, w - kSideMargin * 2.0, 16.0);
 
     // Section 0 Header subviews: "History" + "Clear" aligned at x = 32 .. w - 32
     _historyTitleLabel.frame = CGRectMake(kSideMargin, 6.0, 160.0, 24.0);
