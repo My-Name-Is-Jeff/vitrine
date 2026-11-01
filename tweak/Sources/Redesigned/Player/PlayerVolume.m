@@ -402,11 +402,13 @@ BOOL SGRPlayerPlaceVolume(UIView *stack, UIView *controls, UIView *row, CGFloat 
     CGRect frame = CGRectMake(margin, round((above + below - height) / 2), MAX(0, stack.bounds.size.width - 2 * margin), height);
     if (SGRPlayerQueueOpen()) {
         // Apple Music target: volume track at y = 722.7 pt on 844 pt screen (height - (87.3 + safeBottom)).
-        UIWindow *window = stack.window;
+        UIView *player = stack.superview;
+        UIWindow *window = stack.window ?: player.window;
         CGFloat safeBottom = window ? window.safeAreaInsets.bottom : 34.0;
-        CGFloat targetTrackScreenY = (window ? window.bounds.size.height : 844.0) - (87.3 + safeBottom);
-        CGFloat stackScreenY = [stack convertPoint:CGPointZero toView:nil].y;
-        CGFloat targetCenterY = targetTrackScreenY - stackScreenY;
+        CGFloat playerHeight = player ? player.bounds.size.height : (window ? window.bounds.size.height : 844.0);
+        CGFloat targetTrackY = playerHeight - (87.3 + safeBottom);
+        CGFloat stackY = player ? [stack convertPoint:CGPointZero toView:player].y : stack.frame.origin.y;
+        CGFloat targetCenterY = targetTrackY - stackY;
         frame.origin.y = round(targetCenterY - height * 0.5);
     }
     BOOL moved = !CGRectEqualToRect(volume.frame, frame);
@@ -416,9 +418,9 @@ BOOL SGRPlayerPlaceVolume(UIView *stack, UIView *controls, UIView *row, CGFloat 
     }
     // The lyrics fade the stack's views by their alpha and bring back only the ones they faded.
     // The track is 7pt of the row's 32: it fits with the glyphs' and buttons' own clearance around it.
-    BOOL fits = room >= height * 0.6;
+    BOOL fits = SGRPlayerQueueOpen() ? YES : (room >= height * 0.6);
     if (!fits) volume.alpha = 0;
-    else if (volume.alpha < 0.01 && controls.alpha > 0.99) volume.alpha = 1;
+    else if (volume.alpha < 0.01 && (SGRPlayerQueueOpen() || controls.alpha > 0.99)) volume.alpha = 1;
     return fits;
 }
 

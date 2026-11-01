@@ -181,7 +181,7 @@ void SGRPlayerQueueChanged(void) {
 
 void SGRPlayerLayoutFooterForQueue(void) {
     UIView *row = sg_footerRow;
-    if (row.window) SGRPlayerLowerRow(row);
+    if (row) SGRPlayerLowerRow(row);
 }
 
 SGRGlyphButton *SGRPlayerQueueGlyphIn(UIView *host) {
@@ -362,16 +362,17 @@ static UIView *rowAbove(UIView *row) {
 
 void SGRPlayerLowerRow(UIView *row) {
     UIView *stack = row.superview, *player = stack.superview;
-    UIWindow *window = row.window;
-    if (![stack isKindOfClass:UIStackView.class] || !player || !window) return;
+    UIWindow *window = row.window ?: player.window;
+    if (![stack isKindOfClass:UIStackView.class] || !player) return;
     sg_footerRow = row;
     BOOL queueOpen = SGRPlayerQueueOpen();
     // Where the stack put the row, the row's own transform left out, and where it belongs.
     CGFloat middle = [stack convertPoint:row.center toView:player].y;
     CGFloat height = player.bounds.size.height;
+    CGFloat safeBottom = window ? window.safeAreaInsets.bottom : 34.0;
     CGFloat aboveSafe = queueOpen ? 32.0 : kRowAboveSafeArea;
     CGFloat minBottom = queueOpen ? 44.0 : kRowMinBottom;
-    CGFloat target = height - MAX(window.safeAreaInsets.bottom + aboveSafe, minBottom);
+    CGFloat target = height - MAX(safeBottom + aboveSafe, minBottom);
     CGFloat move = queueOpen ? round(target - middle) : MAX(0, round(target - middle));
     CGAffineTransform down = CGAffineTransformMakeTranslation(0, move);
     if (!CGAffineTransformEqualToTransform(row.transform, down)) row.transform = down;
@@ -397,7 +398,7 @@ void SGRPlayerLowerRow(UIView *row) {
     if (queueOpen && controlsView) {
         // In Queue view, center the 3-button transport row at Apple Music's y = 638.2 pt (height - (171.8 + safeBottom) on 844pt)
         CGFloat ctrlMiddle = [stack convertPoint:controlsView.center toView:player].y;
-        CGFloat targetCtrlMiddle = height - (171.8 + window.safeAreaInsets.bottom);
+        CGFloat targetCtrlMiddle = height - (171.8 + safeBottom);
         CGAffineTransform queueFollow = CGAffineTransformMakeTranslation(0, round(targetCtrlMiddle - ctrlMiddle));
         if (!CGAffineTransformEqualToTransform(controlsView.transform, queueFollow)) controlsView.transform = queueFollow;
     } else {

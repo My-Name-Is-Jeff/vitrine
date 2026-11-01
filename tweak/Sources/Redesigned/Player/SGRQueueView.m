@@ -2351,6 +2351,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(handleNowPlayingArtworkChanged:) name:SGRNowPlayingArtworkDidChangeNotification object:nil];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(handleSessionUpdated:) name:SGRQueueSessionDidUpdateNotification object:nil];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(handlePillsChanged:) name:SGRQueuePillsDidChangeNotification object:nil];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(updateNowPlayingSaveStateOnly) name:SGRPlayerCoverAccentDidChangeNotification object:nil];
     [NSNotificationCenter.defaultCenter addObserverForName:NSUserDefaultsDidChangeNotification object:nil queue:nil usingBlock:^(__unused NSNotification *note) {
         dispatch_async(dispatch_get_main_queue(), ^{
             SGPrefsChanged();
@@ -2723,14 +2724,24 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     if (plain) {
         UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:19.0 weight:UIImageSymbolWeightBold];
         NSString *sym = isSaved ? @"checkmark" : @"plus";
-        UIColor *tint = isSaved ? SGRAccent() : UIColor.whiteColor;
+        UIColor *tint = isSaved ? SGRPlayerCurrentAccent() : UIColor.whiteColor;
         return [[UIImage systemImageNamed:sym withConfiguration:cfg] imageWithTintColor:tint renderingMode:UIImageRenderingModeAlwaysOriginal];
     } else {
         UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:21.0 weight:UIImageSymbolWeightRegular];
         NSString *sym = isSaved ? @"checkmark.circle.fill" : @"plus.circle";
-        UIColor *tint = isSaved ? SGRAccent() : UIColor.whiteColor;
+        UIColor *tint = isSaved ? SGRPlayerCurrentAccent() : UIColor.whiteColor;
         return [[UIImage systemImageNamed:sym withConfiguration:cfg] imageWithTintColor:tint renderingMode:UIImageRenderingModeAlwaysOriginal];
     }
+}
+
+- (void)updateNowPlayingSaveStateOnly {
+    SGRQueueSession *session = [SGRQueueSession shared];
+    SGRQueueItem *np = session.nowPlayingItem;
+    NSString *trackURI = np.uri ?: @"";
+    BOOL isSaved = [session isTrackSaved:trackURI];
+    [_npStarButton setImage:SGRNowPlayingSaveImage(isSaved) forState:UIControlStateNormal];
+    _npStarButton.hidden = (trackURI.length == 0);
+    _npStarButton.accessibilityLabel = isSaved ? @"Remove from Your Library" : @"Add to Your Library";
 }
 
 - (void)updateNowPlayingCardWithItem:(SGRQueueItem *)item subtitle:(NSString *)subtitle {
