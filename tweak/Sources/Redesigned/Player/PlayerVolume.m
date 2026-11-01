@@ -412,7 +412,11 @@ BOOL SGRPlayerPlaceVolume(UIView *stack, UIView *controls, UIView *row, CGFloat 
         frame.origin.y = round(targetCenterY - height * 0.5);
     }
     BOOL moved = !CGRectEqualToRect(volume.frame, frame);
-    if (moved) volume.frame = frame;
+    if (moved) {
+        volume.frame = frame;
+        [volume setNeedsLayout];
+        [volume layoutIfNeeded];
+    }
     if (!SGRPlayerQueueOpen()) {
         settle(stack, row, moved, frame);
     }

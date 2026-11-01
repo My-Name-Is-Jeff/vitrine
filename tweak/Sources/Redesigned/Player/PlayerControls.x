@@ -101,8 +101,7 @@ static void skipGlyph(UIView *host, NSString *identifier, const void *findKey, N
     }
     static Class icon;
     if (!icon) icon = NSClassFromString(@"SPTEncoreIconView");
-    CGFloat pointSize = SGRPlayerQueueOpen() ? 25.0 : kSkipGlyphSize;
-    SGRGlyphView *glyph = glyphFor(button, symbol, pointSize);
+    SGRGlyphView *glyph = glyphFor(button, symbol, kSkipGlyphSize);
     SGForEachView(content, ^(UIView *view) {
         if (view != glyph && [view isKindOfClass:icon]) SGRPlayerVanish(view);
     });
@@ -287,8 +286,7 @@ void SGRPlayerPlayGlyphIn(UIView *host) {
     }
 
     // Inside the button, over the disc it replaces, so it follows the button's own press.
-    CGFloat playSize = SGRPlayerQueueOpen() ? 34.0 : kPlayGlyphSize;
-    SGRGlyphView *glyph = glyphFor(play, symbolFor(state.isPaused), playSize);
+    SGRGlyphView *glyph = glyphFor(play, symbolFor(state.isPaused), kPlayGlyphSize);
     keepOnTop(glyph, button);
     sg_playView = play;
     sg_playButton = button;
@@ -305,11 +303,15 @@ static void updateTransportPositionsForQueue(UIView *host) {
     UIView *next = SGRFindByIdentifier(host, @"SPTNowPlayingNextTrackButton", &kNextKey);
     if (!prev || !next) return;
 
+    SGRGlyphView *prevGlyph = objc_getAssociatedObject(prev, &kGlyphKey);
+    SGRGlyphView *nextGlyph = objc_getAssociatedObject(next, &kGlyphKey);
+
     BOOL queueOpen = SGRPlayerQueueOpen();
     if (queueOpen) {
-        // Center Rewind at x = 90.5 pt and Fast-Forward at x = 299.2 pt (106.2 pt center-to-center from Play at 195.0 pt)
-        CGFloat prevTargetX = 90.5;
-        CGFloat nextTargetX = 299.2;
+        CGFloat w = host.bounds.size.width > 100.0 ? host.bounds.size.width : 390.0;
+        // Center Rewind at x = 88.0 pt and Fast-Forward at x = 301.7 pt on 390pt screen
+        CGFloat prevTargetX = round(w * (88.0 / 390.0));
+        CGFloat nextTargetX = round(w * (301.7 / 390.0));
         CGFloat prevCurX = [prev convertPoint:CGPointMake(CGRectGetMidX(prev.bounds), CGRectGetMidY(prev.bounds)) toView:host].x - prev.transform.tx;
         CGFloat nextCurX = [next convertPoint:CGPointMake(CGRectGetMidX(next.bounds), CGRectGetMidY(next.bounds)) toView:host].x - next.transform.tx;
         CGFloat prevDx = round(prevTargetX - prevCurX);
@@ -319,12 +321,28 @@ static void updateTransportPositionsForQueue(UIView *host) {
         if (!CGAffineTransformEqualToTransform(prev.transform, prevT)) prev.transform = prevT;
         if (!CGAffineTransformEqualToTransform(next.transform, nextT)) next.transform = nextT;
 
+        CGFloat skipScale = 26.5 / kSkipGlyphSize;
+        CGAffineTransform skipScaleT = CGAffineTransformMakeScale(skipScale, skipScale);
+        if (prevGlyph && !CGAffineTransformEqualToTransform(prevGlyph.transform, skipScaleT)) prevGlyph.transform = skipScaleT;
+        if (nextGlyph && !CGAffineTransformEqualToTransform(nextGlyph.transform, skipScaleT)) nextGlyph.transform = skipScaleT;
+
+        if (sg_playGlyph) {
+            CGFloat playScale = 35.0 / kPlayGlyphSize;
+            CGAffineTransform playT = CGAffineTransformMakeScale(playScale, playScale);
+            if (!CGAffineTransformEqualToTransform(sg_playGlyph.transform, playT)) sg_playGlyph.transform = playT;
+        }
+
         if (prev.superview) prev.superview.clipsToBounds = NO;
         if (next.superview) next.superview.clipsToBounds = NO;
         host.clipsToBounds = NO;
     } else {
         if (!CGAffineTransformIsIdentity(prev.transform)) prev.transform = CGAffineTransformIdentity;
         if (!CGAffineTransformIsIdentity(next.transform)) next.transform = CGAffineTransformIdentity;
+        if (prevGlyph && !CGAffineTransformIsIdentity(prevGlyph.transform)) prevGlyph.transform = CGAffineTransformIdentity;
+        if (nextGlyph && !CGAffineTransformIsIdentity(nextGlyph.transform)) nextGlyph.transform = CGAffineTransformIdentity;
+        if (sg_playGlyph && !CGAffineTransformIsIdentity(sg_playGlyph.transform)) {
+            sg_playGlyph.transform = CGAffineTransformIdentity;
+        }
     }
 }
 
@@ -569,10 +587,10 @@ static void updateDurationForQueue(void) {
             CGAffineTransform scaleT = CGAffineTransformMakeScale(targetScale, 1.0);
             if (!CGAffineTransformEqualToTransform(slider.transform, scaleT)) slider.transform = scaleT;
 
-            CGAffineTransform takenT = CGAffineTransformMakeTranslation(7.0, 7.7);
+            CGAffineTransform takenT = CGAffineTransformMakeTranslation(7.0, 9.5);
             if (taken && !CGAffineTransformEqualToTransform(taken.transform, takenT)) taken.transform = takenT;
 
-            CGAffineTransform remT = CGAffineTransformMakeTranslation(-7.0, 7.7);
+            CGAffineTransform remT = CGAffineTransformMakeTranslation(-7.0, 9.5);
             if (remaining && !CGAffineTransformEqualToTransform(remaining.transform, remT)) remaining.transform = remT;
         } else {
             if (!CGAffineTransformIsIdentity(slider.transform)) slider.transform = CGAffineTransformIdentity;
@@ -585,11 +603,13 @@ static void updateDurationForQueue(void) {
 
     if (taken) {
         taken.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightSemibold];
-        taken.textColor = [UIColor colorWithWhite:1.0 alpha:0.45];
+        taken.textColor = [UIColor colorWithWhite:1.0 alpha:0.48];
+        taken.layer.compositingFilter = @"plusL";
     }
     if (remaining) {
         remaining.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightSemibold];
-        remaining.textColor = [UIColor colorWithWhite:1.0 alpha:0.45];
+        remaining.textColor = [UIColor colorWithWhite:1.0 alpha:0.48];
+        remaining.layer.compositingFilter = @"plusL";
         if ([remaining.text containsString:@"-"] && ![remaining.text containsString:@"\u2212"]) {
             remaining.text = [remaining.text stringByReplacingOccurrencesOfString:@"-" withString:@"\u2212"];
         }

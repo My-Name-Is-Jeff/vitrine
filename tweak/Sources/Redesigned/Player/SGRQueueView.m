@@ -133,6 +133,16 @@ static const CGFloat kSwipeCommitRatio = 0.58;
 // Artwork URL Resolution & Async Loader (i.scdn.co + LocalFiles cache)
 // ============================================================================
 
+static BOOL SGRIsHex40String(NSString *str) {
+    if (str.length != 40) return NO;
+    for (NSUInteger i = 0; i < 40; i++) {
+        unichar c = [str characterAtIndex:i];
+        BOOL isHex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+        if (!isHex) return NO;
+    }
+    return YES;
+}
+
 static NSURL *SGRNormalizedArtworkURLFromString(NSString *val) {
     if (![val isKindOfClass:NSString.class] || !val.length) return nil;
     NSString *stored = SGLocalFileCoverInURL(val);
@@ -144,7 +154,7 @@ static NSURL *SGRNormalizedArtworkURLFromString(NSString *val) {
     if ([val hasPrefix:@"https://"] || [val hasPrefix:@"http://"]) {
         return [NSURL URLWithString:val];
     }
-    if (val.length == 40 && [val rangeOfString:@"^[0-9a-fA-F]{40}$" options:NSRegularExpressionSearch].location != NSNotFound) {
+    if (SGRIsHex40String(val)) {
         return [NSURL URLWithString:[@"https://i.scdn.co/image/" stringByAppendingString:val.lowercaseString]];
     }
     return nil;
@@ -181,29 +191,46 @@ static NSCache<NSString *, UIImage *> *SGRQueueImageCache(void) {
 static void SGRLoadQueueArtwork(NSURL *url, void (^completion)(UIImage *image)) {
     if (!url || !completion) return;
     NSString *key = url.absoluteString;
+    if (!key.length) return;
     UIImage *cached = [SGRQueueImageCache() objectForKey:key];
     if (cached) {
         completion(cached);
         return;
     }
+
+    static NSMutableDictionary<NSString *, NSMutableArray<void (^)(UIImage *)> *> *inFlight;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        inFlight = [NSMutableDictionary dictionary];
+    });
+
+    NSMutableArray<void (^)(UIImage *)> *callbacks = inFlight[key];
+    if (callbacks) {
+        [callbacks addObject:[completion copy]];
+        return;
+    }
+    inFlight[key] = [NSMutableArray arrayWithObject:[completion copy]];
+
+    void (^finish)(UIImage *) = ^(UIImage *img) {
+        if (img) [SGRQueueImageCache() setObject:img forKey:key];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSArray<void (^)(UIImage *)> *waiting = inFlight[key];
+            [inFlight removeObjectForKey:key];
+            for (void (^cb)(UIImage *) in waiting) {
+                cb(img);
+            }
+        });
+    };
+
     if (url.isFileURL) {
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-            UIImage *img = [UIImage imageWithContentsOfFile:url.path];
-            if (img) [SGRQueueImageCache() setObject:img forKey:key];
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(img);
-            });
+            finish([UIImage imageWithContentsOfFile:url.path]);
         });
         return;
     }
-    NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        UIImage *img = (data.length && !error) ? [UIImage imageWithData:data] : nil;
-        if (img) [SGRQueueImageCache() setObject:img forKey:key];
-        dispatch_async(dispatch_get_main_queue(), ^{
-            completion(img);
-        });
-    }];
-    [task resume];
+    [[[NSURLSession sharedSession] dataTaskWithURL:url completionHandler:^(NSData *data, __unused NSURLResponse *response, NSError *error) {
+        finish((data.length && !error) ? [UIImage imageWithData:data] : nil);
+    }] resume];
 }
 
 // ============================================================================
@@ -672,7 +699,11 @@ static NSDictionary<NSString *, SGRResolvedTrackMeta *> *SGRParseBatchedTrackMet
         if (!s) return;
         [s->_checkingSavedURIs removeObject:uri];
         if (known) {
+            NSNumber *prev = s->_savedStateByURI[uri];
             s->_savedStateByURI[uri] = @(saved);
+            if (!prev || prev.boolValue != saved) {
+                [s notifyObservers];
+            }
         }
     });
 }
@@ -1241,91 +1272,19 @@ static NSDictionary<NSString *, SGRResolvedTrackMeta *> *SGRParseBatchedTrackMet
         }
         // For playlists larger than 80 tracks, append remaining unplayed context tracks in stable shuffled order
         if (allOtherContextItems.count > liveContextFuture.count) {
-            NSMutableDictionary<NSString *, SGRQueueItem *> *extraByKey = [NSMutableDictionary dictionary];
             NSMutableArray<SGRQueueItem *> *extraPool = [NSMutableArray array];
             for (SGRQueueItem *cand in allOtherContextItems) {
-                if ([placedKeys containsObject:cand.key] || [placedURIs containsObject:cand.uri]) continue;
-                extraByKey[cand.key] = cand;
-                [extraPool addObject:cand];
-            }
-            if (_shuffledOrderKeys.count == 0 || shuffleJustTurnedOn) {
-                NSMutableArray<SGRQueueItem *> *working = [extraPool mutableCopy];
-                for (NSUInteger i = working.count; i > 1; i--) {
-                    NSUInteger j = arc4random_uniform((uint32_t)i);
-                    [working exchangeObjectAtIndex:i - 1 withObjectAtIndex:j];
-                }
-                [_shuffledOrderKeys removeAllObjects];
-                for (SGRQueueItem *w in working) [_shuffledOrderKeys addObject:w.key];
-            }
-            for (NSString *k in _shuffledOrderKeys) {
-                SGRQueueItem *it = extraByKey[k];
-                if (it && ![placedKeys containsObject:k]) {
-                    [placedKeys addObject:k];
-                    [finalList addObject:it];
+                if (![placedKeys containsObject:cand.key] && ![placedURIs containsObject:cand.uri]) {
+                    [extraPool addObject:cand];
                 }
             }
-            for (SGRQueueItem *it in extraPool) {
-                if (![placedKeys containsObject:it.key]) {
-                    [placedKeys addObject:it.key];
-                    [_shuffledOrderKeys addObject:it.key];
-                    [finalList addObject:it];
-                }
-            }
+            [self appendShuffledPool:extraPool into:finalList resetOrder:shuffleJustTurnedOn seedLive:nil];
         }
     } else {
         // Optimistic/fallback shuffled mode while core shuffle response is still arriving
         NSArray<SGRQueueItem *> *pool = unshuffled.count > 0 ? unshuffled : allOtherContextItems;
-        NSMutableDictionary<NSString *, SGRQueueItem *> *poolByKey = [NSMutableDictionary dictionaryWithCapacity:pool.count];
-        NSMutableDictionary<NSString *, SGRQueueItem *> *poolByURI = [NSMutableDictionary dictionaryWithCapacity:pool.count];
-        for (SGRQueueItem *it in pool) {
-            poolByKey[it.key] = it;
-            if (!poolByURI[it.uri]) poolByURI[it.uri] = it;
-        }
-
-        if (_shuffledOrderKeys.count == 0 || shuffleJustTurnedOn) {
-            NSMutableArray<SGRQueueItem *> *working = [pool mutableCopy];
-            for (NSUInteger i = working.count; i > 1; i--) {
-                NSUInteger j = arc4random_uniform((uint32_t)i);
-                [working exchangeObjectAtIndex:i - 1 withObjectAtIndex:j];
-            }
-            [_shuffledOrderKeys removeAllObjects];
-            if (state.options.shufflingContext) {
-                for (SGRQueueItem *lf in liveContextFuture) {
-                    SGRQueueItem *match = poolByKey[lf.key] ?: poolByURI[lf.uri];
-                    if (match && ![_shuffledOrderKeys containsObject:match.key]) {
-                        [_shuffledOrderKeys addObject:match.key];
-                    }
-                }
-            }
-            for (SGRQueueItem *it in working) {
-                if (![_shuffledOrderKeys containsObject:it.key]) {
-                    [_shuffledOrderKeys addObject:it.key];
-                }
-            }
-        } else if (state.options.shufflingContext && liveContextFuture.count > 0) {
-            SGRQueueItem *firstLive = liveContextFuture.firstObject;
-            SGRQueueItem *match = poolByKey[firstLive.key] ?: poolByURI[firstLive.uri];
-            if (match && ![_shuffledOrderKeys.firstObject isEqualToString:match.key]) {
-                [_shuffledOrderKeys removeObject:match.key];
-                [_shuffledOrderKeys insertObject:match.key atIndex:0];
-            }
-        }
-
-        NSMutableSet<NSString *> *used = [NSMutableSet set];
-        for (NSString *k in _shuffledOrderKeys) {
-            SGRQueueItem *it = poolByKey[k];
-            if (it && ![used containsObject:k]) {
-                [used addObject:k];
-                [finalList addObject:it];
-            }
-        }
-        for (SGRQueueItem *it in pool) {
-            if (![used containsObject:it.key]) {
-                [used addObject:it.key];
-                [_shuffledOrderKeys addObject:it.key];
-                [finalList addObject:it];
-            }
-        }
+        NSArray<SGRQueueItem *> *seedLive = state.options.shufflingContext ? liveContextFuture : nil;
+        [self appendShuffledPool:pool into:finalList resetOrder:shuffleJustTurnedOn seedLive:seedLive];
     }
 
     if (_customOrderedKeys.count > 0) {
@@ -1350,6 +1309,62 @@ static NSDictionary<NSString *, SGRResolvedTrackMeta *> *SGRParseBatchedTrackMet
     }
 
     [_continuePlayingItems setArray:finalList];
+}
+
+- (void)appendShuffledPool:(NSArray<SGRQueueItem *> *)pool
+                      into:(NSMutableArray<SGRQueueItem *> *)finalList
+                resetOrder:(BOOL)resetOrder
+                  seedLive:(NSArray<SGRQueueItem *> *)seedLive {
+    if (!pool.count) return;
+    NSMutableDictionary<NSString *, SGRQueueItem *> *poolByKey = [NSMutableDictionary dictionaryWithCapacity:pool.count];
+    NSMutableDictionary<NSString *, SGRQueueItem *> *poolByURI = [NSMutableDictionary dictionaryWithCapacity:pool.count];
+    for (SGRQueueItem *it in pool) {
+        poolByKey[it.key] = it;
+        if (!poolByURI[it.uri]) poolByURI[it.uri] = it;
+    }
+
+    if (_shuffledOrderKeys.count == 0 || resetOrder) {
+        NSMutableArray<SGRQueueItem *> *working = [pool mutableCopy];
+        for (NSUInteger i = working.count; i > 1; i--) {
+            NSUInteger j = arc4random_uniform((uint32_t)i);
+            [working exchangeObjectAtIndex:i - 1 withObjectAtIndex:j];
+        }
+        [_shuffledOrderKeys removeAllObjects];
+        for (SGRQueueItem *lf in seedLive) {
+            SGRQueueItem *match = poolByKey[lf.key] ?: poolByURI[lf.uri];
+            if (match && ![_shuffledOrderKeys containsObject:match.key]) {
+                [_shuffledOrderKeys addObject:match.key];
+            }
+        }
+        for (SGRQueueItem *it in working) {
+            if (![_shuffledOrderKeys containsObject:it.key]) {
+                [_shuffledOrderKeys addObject:it.key];
+            }
+        }
+    } else if (seedLive.count > 0) {
+        SGRQueueItem *firstLive = seedLive.firstObject;
+        SGRQueueItem *match = poolByKey[firstLive.key] ?: poolByURI[firstLive.uri];
+        if (match && ![_shuffledOrderKeys.firstObject isEqualToString:match.key]) {
+            [_shuffledOrderKeys removeObject:match.key];
+            [_shuffledOrderKeys insertObject:match.key atIndex:0];
+        }
+    }
+
+    NSMutableSet<NSString *> *used = [NSMutableSet setWithCapacity:pool.count];
+    for (NSString *k in _shuffledOrderKeys) {
+        SGRQueueItem *it = poolByKey[k];
+        if (it && ![used containsObject:k]) {
+            [used addObject:k];
+            [finalList addObject:it];
+        }
+    }
+    for (SGRQueueItem *it in pool) {
+        if (![used containsObject:it.key]) {
+            [used addObject:it.key];
+            [_shuffledOrderKeys addObject:it.key];
+            [finalList addObject:it];
+        }
+    }
 }
 
 #pragma mark - spclient Context & Extended Metadata Resolution
@@ -1600,16 +1615,18 @@ static UIImage *SGRExplicitBadgeImageNP(void) {
     static UIImage *badge = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        CGSize size = CGSizeMake(15.0, 15.0);
-        UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:size];
+        CGSize size = CGSizeMake(13.5, 13.5);
+        UIGraphicsImageRendererFormat *fmt = [UIGraphicsImageRendererFormat preferredFormat];
+        fmt.opaque = NO;
+        UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:size format:fmt];
         badge = [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
             CGContextRef cg = ctx.CGContext;
-            UIBezierPath *bg = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, size.width, size.height) cornerRadius:3.5];
-            [[UIColor colorWithWhite:1.0 alpha:0.62] setFill];
+            UIBezierPath *bg = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, size.width, size.height) cornerRadius:2.5];
+            [[UIColor colorWithWhite:1.0 alpha:0.58] setFill];
             [bg fill];
 
             CGContextSetBlendMode(cg, kCGBlendModeClear);
-            UIFont *font = [UIFont systemFontOfSize:9.8 weight:UIFontWeightHeavy];
+            UIFont *font = [UIFont systemFontOfSize:9.0 weight:UIFontWeightHeavy];
             NSDictionary *attrs = @{
                 NSFontAttributeName: font,
                 NSForegroundColorAttributeName: UIColor.blackColor,
@@ -1631,11 +1648,13 @@ static UIImage *SGRExplicitBadgeImageRow(void) {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         CGSize size = CGSizeMake(12.5, 12.5);
-        UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:size];
+        UIGraphicsImageRendererFormat *fmt = [UIGraphicsImageRendererFormat preferredFormat];
+        fmt.opaque = NO;
+        UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:size format:fmt];
         badge = [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
             CGContextRef cg = ctx.CGContext;
-            UIBezierPath *bg = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, size.width, size.height) cornerRadius:3.0];
-            [[UIColor colorWithWhite:1.0 alpha:0.62] setFill];
+            UIBezierPath *bg = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, size.width, size.height) cornerRadius:2.3];
+            [[UIColor colorWithWhite:1.0 alpha:0.56] setFill];
             [bg fill];
 
             CGContextSetBlendMode(cg, kCGBlendModeClear);
@@ -1672,14 +1691,14 @@ static void SGRDrawTransitionsOverlappingCircles(CGContextRef cg, CGPoint center
         CGContextSetBlendMode(cg, kCGBlendModeDestinationOut);
         CGContextBeginTransparencyLayer(cg, NULL);
 
-        // 1. Left circle ring at 55% knockout
+        // 1. Left circle ring at 28% knockout so it stays light coral-pink while the right donut is deep crimson
         UIBezierPath *leftRing = [UIBezierPath bezierPathWithArcCenter:CGPointMake(leftX, center.y)
                                                                 radius:leftR
                                                             startAngle:0
                                                               endAngle:(CGFloat)(M_PI * 2.0)
                                                              clockwise:YES];
         leftRing.lineWidth = 1.5;
-        [[UIColor colorWithWhite:0.0 alpha:0.55] setStroke];
+        [[UIColor colorWithWhite:0.0 alpha:0.28] setStroke];
         [leftRing stroke];
 
         // 2. Cut out where right donut overlaps the left ring
@@ -1746,10 +1765,20 @@ static void SGRDrawTransitionsOverlappingCircles(CGContextRef cg, CGPoint center
 
 static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *symbolName, BOOL isTransitionsGlyph) {
     if (size.width < 10.0 || size.height < 10.0) size = CGSizeMake(72.5, 38.0);
+    static NSCache<NSString *, UIImage *> *pillCache;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        pillCache = [[NSCache alloc] init];
+        pillCache.countLimit = 64;
+    });
+    NSString *cacheKey = [NSString stringWithFormat:@"%.1fx%.1f|%d|%@|%d", size.width, size.height, active ? 1 : 0, symbolName ?: @"", isTransitionsGlyph ? 1 : 0];
+    UIImage *cached = [pillCache objectForKey:cacheKey];
+    if (cached) return cached;
+
     UIGraphicsImageRendererFormat *fmt = [UIGraphicsImageRendererFormat preferredFormat];
     fmt.opaque = NO;
     UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:size format:fmt];
-    return [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
+    UIImage *rendered = [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
         CGContextRef cg = ctx.CGContext;
         CGRect rect = CGRectMake(0, 0, size.width, size.height);
         UIBezierPath *capsule = [UIBezierPath bezierPathWithRoundedRect:rect cornerRadius:size.height * 0.5];
@@ -1765,7 +1794,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
         if (isTransitionsGlyph) {
             SGRDrawTransitionsOverlappingCircles(cg, center, active);
         } else if (symbolName.length) {
-            UIImageSymbolWeight weight = [symbolName isEqualToString:@"infinity"] ? UIImageSymbolWeightBold : UIImageSymbolWeightBold;
+            UIImageSymbolWeight weight = [symbolName isEqualToString:@"infinity"] ? UIImageSymbolWeightSemibold : UIImageSymbolWeightBold;
             UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:16.0 weight:weight];
             if (active) {
                 // Render symbol masked out via DestinationOut knockout
@@ -1792,6 +1821,8 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
             }
         }
     }];
+    if (rendered) [pillCache setObject:rendered forKey:cacheKey];
+    return rendered;
 }
 
 // ============================================================================
@@ -1897,7 +1928,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     [_rowContentView addSubview:_artView];
 
     _titleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _titleLabel.font = [UIFont systemFontOfSize:16.5 weight:UIFontWeightRegular];
+    _titleLabel.font = [UIFont systemFontOfSize:16.8 weight:UIFontWeightRegular];
     _titleLabel.textColor = UIColor.whiteColor;
     _titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     [_rowContentView addSubview:_titleLabel];
@@ -1905,11 +1936,13 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     _explicitView = [[UIImageView alloc] initWithImage:SGRExplicitBadgeImageRow()];
     _explicitView.contentMode = UIViewContentModeScaleAspectFit;
     _explicitView.hidden = YES;
+    _explicitView.layer.compositingFilter = @"plusL";
     [_rowContentView addSubview:_explicitView];
 
     _subtitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _subtitleLabel.font = [UIFont systemFontOfSize:14.5 weight:UIFontWeightRegular];
-    _subtitleLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.55];
+    _subtitleLabel.font = [UIFont systemFontOfSize:14.0 weight:UIFontWeightRegular];
+    _subtitleLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.52];
+    _subtitleLabel.layer.compositingFilter = @"plusL";
     _subtitleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     [_rowContentView addSubview:_subtitleLabel];
 
@@ -1917,8 +1950,21 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     _handleHitView.backgroundColor = UIColor.clearColor;
     [_rowContentView addSubview:_handleHitView];
 
+    static CGPathRef sharedBarsPath;
+    static dispatch_once_t barsOnce;
+    dispatch_once(&barsOnce, ^{
+        CGFloat barLeft = 15.0, barW = 22.0, barH = 2.3, barPitch = 4.8;
+        CGFloat barTop = round((48.0 - (barH * 3.0 + 2.5 * 2.0)) * 0.5);
+        UIBezierPath *bars = [UIBezierPath bezierPath];
+        for (int i = 0; i < 3; i++) {
+            CGRect r = CGRectMake(barLeft, barTop + i * barPitch, barW, barH);
+            [bars appendPath:[UIBezierPath bezierPathWithRoundedRect:r cornerRadius:barH * 0.5]];
+        }
+        sharedBarsPath = CGPathRetain(bars.CGPath);
+    });
     _handleBarsLayer = [CAShapeLayer layer];
     _handleBarsLayer.fillColor = [UIColor colorWithWhite:1.0 alpha:0.28].CGColor;
+    _handleBarsLayer.path = sharedBarsPath;
     [_handleHitView.layer addSublayer:_handleBarsLayer];
 
     _reorderPan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleReorderPan:)];
@@ -1963,23 +2009,30 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
 
     NSURL *artURL = item.artworkURL;
     NSString *urlKey = artURL.absoluteString ?: @"";
-    if (urlKey.length && ![urlKey isEqualToString:_loadedArtURL]) {
-        _loadedArtURL = [urlKey copy];
-        UIImage *cached = [SGRQueueImageCache() objectForKey:urlKey];
-        if (cached) {
-            _artView.image = cached;
-        } else {
-            NSString *expected = _loadedArtURL;
-            __weak typeof(self) weakSelf = self;
-            SGRLoadQueueArtwork(artURL, ^(UIImage *image) {
-                __strong typeof(weakSelf) strongSelf = weakSelf;
-                if (!strongSelf || ![strongSelf->_loadedArtURL isEqualToString:expected]) return;
-                if (image) strongSelf->_artView.image = image;
-            });
+    if (urlKey.length) {
+        if (![urlKey isEqualToString:_loadedArtURL] || !_artView.image) {
+            _loadedArtURL = [urlKey copy];
+            UIImage *cached = [SGRQueueImageCache() objectForKey:urlKey];
+            if (cached) {
+                _artView.image = cached;
+            } else {
+                _artView.image = nil;
+                NSString *expected = _loadedArtURL;
+                __weak typeof(self) weakSelf = self;
+                SGRLoadQueueArtwork(artURL, ^(UIImage *image) {
+                    __strong typeof(weakSelf) strongSelf = weakSelf;
+                    if (!strongSelf || ![strongSelf->_loadedArtURL isEqualToString:expected]) return;
+                    if (image) strongSelf->_artView.image = image;
+                });
+            }
         }
-    } else if (!urlKey.length && !_artView.image) {
-        UIImage *liveNP = SGRNowPlayingArtwork(NULL, NULL);
-        if (liveNP) _artView.image = liveNP;
+    } else {
+        _loadedArtURL = nil;
+        if ([item.uri isEqualToString:[SGRQueueSession shared].nowPlayingItem.uri]) {
+            _artView.image = SGRNowPlayingArtwork(NULL, NULL);
+        } else {
+            _artView.image = nil;
+        }
     }
     [self setNeedsLayout];
 }
@@ -2000,16 +2053,6 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     CGFloat barW = 22.0;
     CGFloat handleTouchW = 52.0;
     _handleHitView.frame = CGRectMake(w - 36.0 - barW - 15.0, 0, handleTouchW, 48.0);
-    CGFloat barLeft = 15.0;
-    CGFloat barH = 2.3;
-    CGFloat barPitch = 4.8; // 2.3 bar + 2.5 gap -> 11.9 pt total height matching Apple Music exactly
-    CGFloat barTop = round((48.0 - (barH * 3.0 + 2.5 * 2.0)) * 0.5);
-    UIBezierPath *bars = [UIBezierPath bezierPath];
-    for (int i = 0; i < 3; i++) {
-        CGRect r = CGRectMake(barLeft, barTop + i * barPitch, barW, barH);
-        [bars appendPath:[UIBezierPath bezierPathWithRoundedRect:r cornerRadius:barH * 0.5]];
-    }
-    _handleBarsLayer.path = bars.CGPath;
 
     CGFloat textLeft = kSideMargin + 48.0 + 13.0; // 93.0 pt
     CGFloat maxRight = _showsHandle ? (w - 36.0 - barW - 10.0) : (w - kSideMargin);
@@ -2352,12 +2395,6 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(handleSessionUpdated:) name:SGRQueueSessionDidUpdateNotification object:nil];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(handlePillsChanged:) name:SGRQueuePillsDidChangeNotification object:nil];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(updateNowPlayingSaveStateOnly) name:SGRPlayerCoverAccentDidChangeNotification object:nil];
-    [NSNotificationCenter.defaultCenter addObserverForName:NSUserDefaultsDidChangeNotification object:nil queue:nil usingBlock:^(__unused NSNotification *note) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            SGPrefsChanged();
-            [[SGRQueueSession shared] notifyObservers];
-        });
-    }];
     [self syncFromSessionAnimatedReorder:NO forceRebuild:YES];
     return self;
 }
@@ -2367,21 +2404,48 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     [NSNotificationCenter.defaultCenter removeObserver:self];
 }
 
-- (void)didMoveToWindow {
-    [super didMoveToWindow];
-    if (self.window) {
-        SGRPlayerMenuWatchProxy(_npMoreButton);
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    UIView *hit = [super hitTest:point withEvent:event];
+    // Let touches in the top grabber band (y < kViewportTopOffset) pass through to Spotify's sheet dismiss pan.
+    return (hit == self) ? nil : hit;
+}
+
+- (void)updatePillTimerForVisibility {
+    if (self.window && !self.hidden && self.alpha > 0.01) {
         [self startPillRefreshTimer];
     } else {
         [self stopPillRefreshTimer];
     }
 }
 
+- (void)setHidden:(BOOL)hidden {
+    [super setHidden:hidden];
+    [self updatePillTimerForVisibility];
+}
+
+- (void)setAlpha:(CGFloat)alpha {
+    [super setAlpha:alpha];
+    [self updatePillTimerForVisibility];
+}
+
+- (void)didMoveToWindow {
+    [super didMoveToWindow];
+    if (self.window) {
+        SGRPlayerMenuWatchProxy(_npMoreButton);
+    }
+    [self updatePillTimerForVisibility];
+}
+
 - (void)startPillRefreshTimer {
     if (_pillRefreshTimer) return;
     __weak typeof(self) weakSelf = self;
     _pillRefreshTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(__unused NSTimer *timer) {
-        [weakSelf updatePlaybackPillsWithState:SGPlayerState()];
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf || strongSelf.hidden || strongSelf.alpha < 0.01 || !strongSelf.window) {
+            [strongSelf stopPillRefreshTimer];
+            return;
+        }
+        [strongSelf updatePlaybackPillsWithState:SGPlayerState()];
     }];
 }
 
@@ -2412,6 +2476,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     _grabberPill = [[UIView alloc] initWithFrame:CGRectMake(0, 0, kGrabberWidth, kGrabberHeight)];
     _grabberPill.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.30];
     _grabberPill.layer.cornerRadius = kGrabberHeight * 0.5;
+    _grabberPill.layer.compositingFilter = @"plusL";
     _grabberPill.userInteractionEnabled = NO;
     [self addSubview:_grabberPill];
 
@@ -2496,7 +2561,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     [_nowPlayingCard addSubview:_npDetailsView];
 
     _npTitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _npTitleLabel.font = [UIFont systemFontOfSize:18.5 weight:UIFontWeightSemibold];
+    _npTitleLabel.font = [UIFont systemFontOfSize:18.2 weight:UIFontWeightSemibold];
     _npTitleLabel.textColor = UIColor.whiteColor;
     _npTitleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     [_npDetailsView addSubview:_npTitleLabel];
@@ -2504,11 +2569,13 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     _npExplicitView = [[UIImageView alloc] initWithImage:SGRExplicitBadgeImageNP()];
     _npExplicitView.contentMode = UIViewContentModeScaleAspectFit;
     _npExplicitView.hidden = YES;
+    _npExplicitView.layer.compositingFilter = @"plusL";
     [_npDetailsView addSubview:_npExplicitView];
 
     _npArtistLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     _npArtistLabel.font = [UIFont systemFontOfSize:15.5 weight:UIFontWeightRegular];
-    _npArtistLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.75];
+    _npArtistLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.62];
+    _npArtistLabel.layer.compositingFilter = @"plusL";
     _npArtistLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     [_npDetailsView addSubview:_npArtistLabel];
 
@@ -2553,7 +2620,8 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
 
     _continueSubtitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     _continueSubtitleLabel.font = [UIFont systemFontOfSize:13.0 weight:UIFontWeightRegular];
-    _continueSubtitleLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.68];
+    _continueSubtitleLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.55];
+    _continueSubtitleLabel.layer.compositingFilter = @"plusL";
     _continueSubtitleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     [_continueHeaderView addSubview:_continueSubtitleLabel];
 
@@ -2629,18 +2697,35 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     _npArtView.alpha = hidden ? 0.0 : 1.0;
 }
 
+- (void)setHeaderSlideOffset:(CGFloat)headerOffsetY listSlideOffset:(CGFloat)listOffsetY {
+    CGAffineTransform hdrSlide = (fabs(headerOffsetY) < 0.01) ? CGAffineTransformIdentity : CGAffineTransformMakeTranslation(0.0, headerOffsetY);
+    CGAffineTransform listSlide = (fabs(listOffsetY) < 0.01) ? CGAffineTransformIdentity : CGAffineTransformMakeTranslation(0.0, listOffsetY);
+    _grabberPill.transform = hdrSlide;
+    _npDetailsView.transform = hdrSlide;
+    _continueHeaderView.transform = listSlide;
+    _queueRowsClipView.transform = listSlide;
+    _emptyQueuePromptLabel.transform = listSlide;
+    _historyHeaderView.transform = listSlide;
+    _historyRowsClipView.transform = listSlide;
+}
+
+- (void)setHeaderOpacity:(CGFloat)headerOpacity {
+    _grabberPill.alpha = headerOpacity;
+    _npDetailsView.alpha = headerOpacity;
+}
+
+- (void)setListOpacity:(CGFloat)listOpacity {
+    _continueHeaderView.alpha = listOpacity;
+    _queueRowsClipView.alpha = listOpacity;
+    _emptyQueuePromptLabel.alpha = listOpacity;
+    _historyHeaderView.alpha = listOpacity;
+    _historyRowsClipView.alpha = listOpacity;
+}
+
 - (void)setContentSlideOffset:(CGFloat)offsetY opacity:(CGFloat)opacity {
-    CGAffineTransform slide = (fabs(offsetY) < 0.01) ? CGAffineTransformIdentity : CGAffineTransformMakeTranslation(0.0, offsetY);
-    _grabberPill.alpha = opacity;
-    _grabberPill.transform = slide;
-    _npDetailsView.alpha = opacity;
-    _npDetailsView.transform = slide;
-    _continueHeaderView.alpha = opacity;
-    _continueHeaderView.transform = slide;
-    _queueRowsClipView.alpha = opacity;
-    _queueRowsClipView.transform = slide;
-    _historyHeaderView.alpha = opacity;
-    _historyRowsClipView.alpha = opacity;
+    [self setHeaderSlideOffset:offsetY listSlideOffset:offsetY];
+    [self setHeaderOpacity:opacity];
+    [self setListOpacity:opacity];
 }
 
 - (CGRect)nowPlayingArtworkFrameInView:(UIView *)targetView {
@@ -2746,13 +2831,17 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
 
 - (void)updateNowPlayingCardWithItem:(SGRQueueItem *)item subtitle:(NSString *)subtitle {
     NSString *titleText = item.title.length ? item.title : @"Not Playing";
+    NSMutableParagraphStyle *pStyle = [[NSMutableParagraphStyle alloc] init];
+    pStyle.lineBreakMode = NSLineBreakByTruncatingTail;
+    pStyle.allowsDefaultTighteningForTruncation = YES;
     _npTitleLabel.attributedText = [[NSAttributedString alloc] initWithString:titleText attributes:@{
-        NSFontAttributeName: [UIFont systemFontOfSize:19.0 weight:UIFontWeightSemibold],
+        NSFontAttributeName: [UIFont systemFontOfSize:18.2 weight:UIFontWeightSemibold],
         NSForegroundColorAttributeName: UIColor.whiteColor,
-        NSKernAttributeName: @(-0.3)
+        NSKernAttributeName: @(-0.35),
+        NSParagraphStyleAttributeName: pStyle
     }];
-    _npArtistLabel.font = [UIFont systemFontOfSize:16.0 weight:UIFontWeightRegular];
-    _npArtistLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.60];
+    _npArtistLabel.font = [UIFont systemFontOfSize:15.5 weight:UIFontWeightRegular];
+    _npArtistLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.62];
     _npArtistLabel.text = item.artist ?: @"";
     _npExplicitView.hidden = !item.isExplicit;
     _continueSubtitleLabel.text = subtitle ?: @"";
@@ -2913,17 +3002,17 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     _bottomFadeMask.frame = _viewportClipView.bounds;
-    // Fade starts at y = 508.0 pt and ramps down to y = 545.0 pt (right above progress bar at 546.0 pt)
-    CGFloat locStart = MAX(0.0, MIN(1.0, (viewportH - 38.0) / viewportH));
-    CGFloat locMid   = MAX(0.0, MIN(1.0, (viewportH - 18.0) / viewportH));
-    CGFloat locEnd   = MAX(0.0, MIN(1.0, (viewportH - 1.0) / viewportH));
-    _bottomFadeMask.locations = @[@0.0, @(locStart), @(locMid), @(locEnd), @1.0];
+    // Fade starts across Row 5 (y = 496.0 pt, viewportH - 50.0) and ramps smoothly to 0.03 at y = 546.0 pt
+    CGFloat locStart = MAX(0.0, MIN(1.0, (viewportH - 50.0) / viewportH));
+    CGFloat locMid1  = MAX(0.0, MIN(1.0, (viewportH - 32.0) / viewportH));
+    CGFloat locMid2  = MAX(0.0, MIN(1.0, (viewportH - 14.0) / viewportH));
+    _bottomFadeMask.locations = @[@0.0, @(locStart), @(locMid1), @(locMid2), @1.0];
     _bottomFadeMask.colors = @[
         (id)[UIColor colorWithWhite:1.0 alpha:1.0].CGColor,
         (id)[UIColor colorWithWhite:1.0 alpha:1.0].CGColor,
-        (id)[UIColor colorWithWhite:1.0 alpha:0.45].CGColor,
-        (id)[UIColor colorWithWhite:1.0 alpha:0.0].CGColor,
-        (id)[UIColor colorWithWhite:1.0 alpha:0.0].CGColor
+        (id)[UIColor colorWithWhite:1.0 alpha:0.52].CGColor,
+        (id)[UIColor colorWithWhite:1.0 alpha:0.24].CGColor,
+        (id)[UIColor colorWithWhite:1.0 alpha:0.03].CGColor
     ];
     [CATransaction commit];
 
@@ -2944,25 +3033,25 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     CGFloat moreW = 28.0;
     CGFloat starW = 24.0;
     CGFloat moreCenterX = round(w * (341.5 / 390.0));
-    CGFloat starCenterX = round(w * (293.3 / 390.0));
+    CGFloat starCenterX = round(w * (294.5 / 390.0));
     _npMoreButton.bounds = CGRectMake(0.0, 0.0, moreW, moreW);
     _npMoreButton.center = CGPointMake(moreCenterX, 36.0);
     _npStarButton.bounds = CGRectMake(0.0, 0.0, starW, starW);
     _npStarButton.center = CGPointMake(starCenterX, 36.0);
 
     CGFloat npTextLeft = kSideMargin + 72.0 + 13.0; // 117.0 pt
-    CGFloat npMaxRight = (starCenterX - starW * 0.5) - 6.0;
+    CGFloat npMaxRight = (starCenterX - starW * 0.5) - 5.0;
     CGFloat npAvailW = MAX(40.0, npMaxRight - npTextLeft);
     BOOL npHasExp = !_npExplicitView.hidden;
-    CGFloat npBadgeW = npHasExp ? (15.0 + 5.0) : 0.0;
+    CGFloat npBadgeW = npHasExp ? (13.5 + 4.5) : 0.0;
     CGSize npTitleNat = [_npTitleLabel sizeThatFits:CGSizeMake(CGFLOAT_MAX, 22.0)];
     CGFloat npTitleW = MIN(npAvailW - npBadgeW, ceil(npTitleNat.width));
     CGFloat titleY = 13.5;
     _npTitleLabel.frame = CGRectMake(npTextLeft, titleY, npTitleW, 21.0);
     if (npHasExp) {
-        _npExplicitView.frame = CGRectMake(npTextLeft + npTitleW + 5.0, titleY + 3.0, 15.0, 15.0);
+        _npExplicitView.frame = CGRectMake(npTextLeft + npTitleW + 4.5, titleY + 3.8, 13.5, 13.5);
     }
-    _npArtistLabel.frame = CGRectMake(npTextLeft, titleY + 21.0 + 5.0, npAvailW, 19.0);
+    _npArtistLabel.frame = CGRectMake(npTextLeft, titleY + 21.0 + 4.5, npAvailW, 19.0);
 
     // Section 2 Header subviews: configurable pills (height = 38, cornerRadius = 19, x = 32 .. w - 32) + Continue Playing title & subtitle
     NSArray<NSNumber *> *activeSlots = [self activePillSlots];

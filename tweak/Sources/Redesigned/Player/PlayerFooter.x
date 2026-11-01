@@ -124,28 +124,40 @@ SGRGlyphButton *SGRPlayerLyricsGlyphIn(UIView *host) {
 #pragma mark - queue
 
 static UIImage *SGRQueueActiveKnockoutIconImage(CGSize size) {
+    static UIImage *cached = nil;
+    static CGSize cachedSize = {0, 0};
+    if (cached && CGSizeEqualToSize(cachedSize, size)) return cached;
+
     UIGraphicsImageRendererFormat *fmt = [UIGraphicsImageRendererFormat preferredFormat];
     fmt.opaque = NO;
     UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:size format:fmt];
     UIImage *img = [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
+        CGContextRef cg = ctx.CGContext;
         CGRect rect = CGRectMake(0, 0, size.width, size.height);
         UIBezierPath *circle = [UIBezierPath bezierPathWithOvalInRect:rect];
-        [[UIColor colorWithWhite:1.0 alpha:0.72] setFill];
+        [[UIColor colorWithWhite:1.0 alpha:0.65] setFill];
         [circle fill];
 
-        // Knockout SF Symbol list.bullet using kCGBlendModeClear
-        UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:19.8 weight:UIImageSymbolWeightRegular];
-        UIImage *sym = [UIImage systemImageNamed:kQueueSymbol withConfiguration:cfg];
+        // Knockout SF Symbol list.bullet using kCGBlendModeDestinationOut + template alpha mask
+        // (kCGBlendModeClear in Quartz clears the entire rectangular bounding box instead of masking by alpha)
+        UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:17.5 weight:UIImageSymbolWeightSemibold];
+        UIImage *sym = [[UIImage systemImageNamed:kQueueSymbol withConfiguration:cfg] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
         if (sym) {
-            CGRect symRect = CGRectMake(round((size.width - sym.size.width) * 0.5),
-                                        round((size.height - sym.size.height) * 0.5),
+            CGRect symRect = CGRectMake((size.width - sym.size.width) * 0.5,
+                                        (size.height - sym.size.height) * 0.5,
                                         sym.size.width,
                                         sym.size.height);
-            [sym drawInRect:symRect blendMode:kCGBlendModeClear alpha:1.0];
+            CGContextSetBlendMode(cg, kCGBlendModeDestinationOut);
+            [[UIColor colorWithWhite:0.0 alpha:1.0] setFill];
+            [sym drawInRect:symRect];
         }
     }];
-    return [img imageWithRenderingMode:UIImageRenderingModeAlwaysOriginal];
+    cached = [img imageWithRenderingMode:UIImageRenderingModeAlwaysOriginal];
+    cachedSize = size;
+    return cached;
 }
+
+static char kQueueWasOpenKey;
 
 void SGRPlayerQueueChanged(void) {
     SGRPlayerMotionLyricsChanged();
@@ -154,6 +166,10 @@ void SGRPlayerQueueChanged(void) {
     SGRGlyphButton *glyph = sg_queueGlyph;
     if (!glyph) return;
     BOOL open = SGRPlayerQueueOpen();
+    NSNumber *wasOpen = objc_getAssociatedObject(glyph, &kQueueWasOpenKey);
+    if (wasOpen && wasOpen.boolValue == open) return;
+    objc_setAssociatedObject(glyph, &kQueueWasOpenKey, @(open), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
     BOOL animated = glyph.window && !SGRPlayerIsTransitioning();
     void (^mark)(void) = ^{
         glyph.opaque = NO;
@@ -174,6 +190,8 @@ void SGRPlayerQueueChanged(void) {
         glyph.layer.cornerRadius = 19.0;
         glyph.layer.cornerCurve = kCACornerCurveContinuous;
         glyph.clipsToBounds = YES;
+        [glyph setNeedsLayout];
+        [glyph layoutIfNeeded];
     };
     if (animated) SGRAnimate(SGRMotionFade, mark, nil);
     else mark();
@@ -193,7 +211,6 @@ SGRGlyphButton *SGRPlayerQueueGlyphIn(UIView *host) {
     }
     if (glyph.superview != host) [host addSubview:glyph];
     sg_queueGlyph = glyph;
-    SGRPlayerQueueChanged();
     return glyph;
 }
 

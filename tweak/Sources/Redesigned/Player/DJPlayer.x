@@ -141,7 +141,7 @@ static void styleFooter(UIViewController *unit) {
     }
 
     SGRGlyphButton *queue = SGRPlayerQueueGlyphIn(host);
-    queue.bounds = CGRectMake(0, 0, 48, 36);
+    queue.bounds = CGRectMake(0, 0, 38, 38);
     queue.center = CGPointMake(slot(2), middleY);
     SGRPlayerQueueChanged();
 

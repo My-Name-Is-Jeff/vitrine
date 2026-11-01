@@ -310,9 +310,11 @@ static BOOL isGenericHeaderPrefixText(NSString *text) {
     return NO;
 }
 
+static NSString *sg_cachedHeaderContextTitle;
+
 NSString *SGRPlayerHeaderContextTitle(void) {
     UIView *header = sg_header.viewIfLoaded;
-    if (!header) return nil;
+    if (!header) return sg_cachedHeaderContextTitle;
     static char kHdrMin1Key, kHdrMin2Key, kHdrMoreKey;
     UIView *minBtn = SGRFindByIdentifier(header, @"now-playing-minimize-button", &kHdrMin1Key)
                   ?: SGRFindByIdentifier(header, @"mobile-nowplaying-close-button", &kHdrMin2Key);
@@ -329,7 +331,7 @@ NSString *SGRPlayerHeaderContextTitle(void) {
         NSString *txt = [((UILabel *)v).text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
         if (txt.length) [labels addObject:(UILabel *)v];
     });
-    if (!labels.count) return nil;
+    if (!labels.count) return sg_cachedHeaderContextTitle;
 
     [labels sortUsingComparator:^NSComparisonResult(UILabel *a, UILabel *b) {
         CGFloat ya = CGRectGetMinY([a convertRect:a.bounds toView:header]);
@@ -340,7 +342,10 @@ NSString *SGRPlayerHeaderContextTitle(void) {
 
     for (UILabel *lbl in [labels reverseObjectEnumerator]) {
         NSString *txt = [lbl.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-        if (!isGenericHeaderPrefixText(txt)) return txt;
+        if (!isGenericHeaderPrefixText(txt)) {
+            sg_cachedHeaderContextTitle = [txt copy];
+            return txt;
+        }
     }
 
     // Single-line header like "PLAYING FROM YOUR LIBRARY" or "PLAYING FROM SEARCH"
@@ -348,15 +353,20 @@ NSString *SGRPlayerHeaderContextTitle(void) {
     NSRange pf = [only rangeOfString:@"PLAYING FROM " options:NSCaseInsensitiveSearch | NSAnchoredSearch];
     if (pf.location != NSNotFound && only.length > pf.length) {
         NSString *tail = [[only substringFromIndex:pf.length] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-        if ([tail caseInsensitiveCompare:@"YOUR LIBRARY"] == NSOrderedSame) return @"Your Library";
-        if ([tail caseInsensitiveCompare:@"SEARCH"] == NSOrderedSame) return @"Search";
-        if (tail.length && [tail caseInsensitiveCompare:@"PLAYLIST"] != NSOrderedSame &&
-            [tail caseInsensitiveCompare:@"ALBUM"] != NSOrderedSame &&
-            [tail caseInsensitiveCompare:@"ARTIST"] != NSOrderedSame) {
-            return tail.localizedCapitalizedString;
+        NSString *resolved = nil;
+        if ([tail caseInsensitiveCompare:@"YOUR LIBRARY"] == NSOrderedSame) resolved = @"Your Library";
+        else if ([tail caseInsensitiveCompare:@"SEARCH"] == NSOrderedSame) resolved = @"Search";
+        else if (tail.length && [tail caseInsensitiveCompare:@"PLAYLIST"] != NSOrderedSame &&
+                 [tail caseInsensitiveCompare:@"ALBUM"] != NSOrderedSame &&
+                 [tail caseInsensitiveCompare:@"ARTIST"] != NSOrderedSame) {
+            resolved = tail.localizedCapitalizedString;
+        }
+        if (resolved.length) {
+            sg_cachedHeaderContextTitle = [resolved copy];
+            return resolved;
         }
     }
-    return nil;
+    return sg_cachedHeaderContextTitle;
 }
 
 void SGRPlayerMinimizeIfOpen(void) {
@@ -406,7 +416,8 @@ static SGRLyricsLayout layoutIn(UIView *host, SGRPlayerInlineMode mode) {
         l.cover = validCoverFrameIn(host);
         l.thumb = CGRectMake(32.0, 80.0, 72.0, 72.0);
         l.stage = CGRectMake(0.0, top, host.bounds.size.width, MAX(0.0, bottom - top));
-        l.lift = -100.0;
+        CGFloat coverTravel = MAX(240.0, CGRectGetMaxY(l.cover) - CGRectGetMaxY(l.thumb));
+        l.lift = -round(coverTravel);
         l.shift = 0.0;
         l.ok = (l.stage.size.height > kLivingHeight / 2);
         return l;
@@ -488,11 +499,9 @@ static void clipTitle(UIView *element, CGFloat width) {
 static void placeTitleRow(SGRLyricsLayout l) {
     UIView *info = sg_info.viewIfLoaded;
     if (!info) return;
-    if (sg_inlineMode == SGRPlayerInlineModeQueue) {
-        info.alpha = 0;
-        return;
+    if (!sg_moving) {
+        info.alpha = (sg_inlineMode == SGRPlayerInlineModeQueue) ? 0.0 : 1.0;
     }
-    info.alpha = 1;
     [SGRowIn(info) layoutIfNeeded];
     CGFloat lift = isStageOpen() ? l.lift : 0, shift = isStageOpen() ? l.shift : 0;
     CGAffineTransform rise = CGAffineTransformMakeTranslation(0, round(lift));
@@ -503,7 +512,9 @@ static void placeTitleRow(SGRLyricsLayout l) {
     if (!CGAffineTransformEqualToTransform(title.transform, slide)) title.transform = slide;
     // Closed it reaches as far as Spotify meant it to; moved, only as far as the controls it moved toward.
     CGFloat room = CGFLOAT_MAX;
-    if (isStageOpen()) room = trailingEdgeIn(info) - kTitleGap - (CGRectGetMinX(untransformed(title, info)) + shift);
+    if (sg_inlineMode == SGRPlayerInlineModeLyrics) {
+        room = trailingEdgeIn(info) - kTitleGap - (CGRectGetMinX(untransformed(title, info)) + shift);
+    }
     clipTitle(title, room);
 }
 
@@ -564,7 +575,7 @@ static CGAffineTransform thumbTransform(SGRLyricsLayout l) {
 static CGFloat thumbRadiusForMode(SGRLyricsLayout l, BOOL open, SGRPlayerInlineMode mode) {
     if (!open) return SGRRadiusArtwork;
     CGFloat scale = l.cover.size.width > 0 ? l.thumb.size.width / l.cover.size.width : 1;
-    CGFloat targetRadius = (mode == SGRPlayerInlineModeQueue) ? 8.0 : SGRRadiusCover;
+    CGFloat targetRadius = (mode == SGRPlayerInlineModeQueue) ? 11.0 : SGRRadiusCover;
     return scale > 0 ? targetRadius / scale : SGRRadiusArtwork;
 }
 
@@ -831,6 +842,8 @@ static void setAlone(BOOL alone, BOOL animated) {
     SGLog(@"redesign player: the lines %@", alone ? @"on their own" : @"with the controls");
 }
 
+static NSUInteger sg_transitionID = 0;
+
 static void setMode(SGRPlayerInlineMode targetMode, BOOL animated) {
     UIView *host = sg_host;
     if (targetMode == sg_inlineMode) return;
@@ -857,14 +870,14 @@ static void setMode(SGRPlayerInlineMode targetMode, BOOL animated) {
     // Cross-switch between Lyrics and Queue while stage is already active
     if (isStageOpen() && targetMode != SGRPlayerInlineModeNone) {
         if (sg_alone) setAlone(NO, animated);
+        NSUInteger transitionID = ++sg_transitionID;
         SGRPlayerInlineMode prevMode = sg_inlineMode;
         SGRLyricsLayout oldL = layoutIn(host, prevMode);
         sg_inlineMode = targetMode;
+        sg_moving = YES;
         SGRPlayerLyricsChanged();
-        SGRPlayerQueueChanged();
 
         SGRLyricsLayout newL = layoutIn(host, targetMode);
-        sg_moving = YES;
         place(overlay, host, newL);
         overlay.thumb.hidden = NO;
         overlay.thumb.alpha = 1.0;
@@ -886,6 +899,7 @@ static void setMode(SGRPlayerInlineMode targetMode, BOOL animated) {
             [q setContentSlideOffset:(SGRReduceMotion() ? 0.0 : 48.0) opacity:0.0];
 
             void (^swap)(void) = ^{
+                SGRPlayerQueueChanged();
                 [q setContentSlideOffset:0.0 opacity:1.0];
                 overlay.stage.alpha = 0.0;
                 if (overlay.existingLyrics) overlay.existingLyrics.alpha = 0.0;
@@ -897,6 +911,7 @@ static void setMode(SGRPlayerInlineMode targetMode, BOOL animated) {
                 placeQueueBottomChrome(host, YES);
             };
             void (^done)(BOOL) = ^(__unused BOOL finished) {
+                if (transitionID != sg_transitionID) return;
                 sg_moving = NO;
                 if (sg_inlineMode == SGRPlayerInlineModeQueue) {
                     [q setTransitionArtworkHidden:NO];
@@ -927,6 +942,7 @@ static void setMode(SGRPlayerInlineMode targetMode, BOOL animated) {
             overlay.lyrics.frame = overlay.stage.bounds;
             setHeaderShownForQueue(YES, NO);
             void (^swap)(void) = ^{
+                SGRPlayerQueueChanged();
                 overlay.stage.alpha = 1.0;
                 overlay.lyrics.alpha = 1.0;
                 if (q) [q setContentSlideOffset:(SGRReduceMotion() ? 0.0 : 48.0) opacity:0.0];
@@ -937,6 +953,7 @@ static void setMode(SGRPlayerInlineMode targetMode, BOOL animated) {
                 placeQueueBottomChrome(host, NO);
             };
             void (^done)(BOOL) = ^(__unused BOOL finished) {
+                if (transitionID != sg_transitionID) return;
                 sg_moving = NO;
                 if (sg_inlineMode == SGRPlayerInlineModeLyrics && q) {
                     [q setTransitionArtworkHidden:NO];
@@ -962,13 +979,13 @@ static void setMode(SGRPlayerInlineMode targetMode, BOOL animated) {
 
     if (!open) setAlone(NO, NO);
     sg_inlineMode = targetMode;
-    SGRPlayerLyricsChanged();
-    SGRPlayerQueueChanged();
 
     // Dedicated Apple Music 0.40s (damping 0.85) matched-geometry spring for Queue Open & Close
     if (isQueueTransition) {
+        NSUInteger transitionID = ++sg_transitionID;
         BOOL wasMoving = sg_moving;
         sg_moving = animated;
+        SGRPlayerLyricsChanged();
         place(overlay, host, l);
         CGAffineTransform away = thumbTransform(l);
         BOOL fades = SGRPlayerMotionShowing();
@@ -978,6 +995,10 @@ static void setMode(SGRPlayerInlineMode targetMode, BOOL animated) {
         q.center = CGPointMake(CGRectGetMidX(qStage), CGRectGetMidY(qStage));
         q.transform = CGAffineTransformIdentity;
 
+        CGFloat coverTravel = MAX(240.0, CGRectGetMaxY(l.cover) - CGRectGetMaxY(l.thumb));
+        CGFloat listSlideDist = SGRReduceMotion() ? 0.0 : round(coverTravel);
+        CGFloat hdrSlideDist  = SGRReduceMotion() ? 0.0 : 12.0;
+
         overlay.stage.hidden = YES;
         overlay.stage.alpha = 0.0;
         if (overlay.existingLyrics) {
@@ -986,7 +1007,7 @@ static void setMode(SGRPlayerInlineMode targetMode, BOOL animated) {
         }
 
         // Hide only the 310x310 static cover + shadow plate beneath overlay.thumb so Spotify's inline
-        // lyric preview inside SGRPlayerCoverList() fades smoothly inside springStep on both Open & Close.
+        // lyric preview inside SGRPlayerCoverList() fades smoothly on both Open & Close.
         SGRPlayerSetCoverHidden(YES);
 
         if (open) {
@@ -995,7 +1016,9 @@ static void setMode(SGRPlayerInlineMode targetMode, BOOL animated) {
             q.alpha = 1.0;
             [q setTransitionArtworkHidden:YES];
             if (!wasMoving) {
-                [q setContentSlideOffset:(SGRReduceMotion() ? 0.0 : 60.0) opacity:0.0];
+                [q setHeaderSlideOffset:hdrSlideDist listSlideOffset:listSlideDist];
+                [q setHeaderOpacity:0.0];
+                [q setListOpacity:0.0];
                 overlay.thumb.hidden = NO;
                 overlay.thumb.alpha = fades ? 0.0 : 1.0;
                 overlay.thumb.transform = fades ? away : CGAffineTransformIdentity;
@@ -1009,7 +1032,7 @@ static void setMode(SGRPlayerInlineMode targetMode, BOOL animated) {
             if (liveThumb.size.width >= 40.0) closeL.thumb = liveThumb;
             away = thumbTransform(closeL);
             if (sg_info.viewIfLoaded && sg_info.viewIfLoaded.alpha < 0.01) {
-                sg_info.viewIfLoaded.transform = CGAffineTransformIdentity;
+                sg_info.viewIfLoaded.transform = CGAffineTransformMakeTranslation(0.0, round(closeL.lift));
                 if (sg_titleElement) {
                     sg_titleElement.transform = CGAffineTransformIdentity;
                     clipTitle(sg_titleElement, CGFLOAT_MAX);
@@ -1018,7 +1041,9 @@ static void setMode(SGRPlayerInlineMode targetMode, BOOL animated) {
             BOOL interruptedMidOpen = (wasMoving && !overlay.thumb.hidden);
             [q setTransitionArtworkHidden:YES];
             if (!interruptedMidOpen) {
-                [q setContentSlideOffset:0.0 opacity:1.0];
+                [q setHeaderSlideOffset:0.0 listSlideOffset:0.0];
+                [q setHeaderOpacity:1.0];
+                [q setListOpacity:1.0];
                 overlay.thumb.hidden = NO;
                 overlay.thumb.alpha = 1.0;
                 overlay.thumb.transform = away;
@@ -1027,18 +1052,17 @@ static void setMode(SGRPlayerInlineMode targetMode, BOOL animated) {
         }
 
         void (^springStep)(void) = ^{
+            SGRPlayerQueueChanged();
             overlay.thumb.transform = (open || fades) ? away : CGAffineTransformIdentity;
             overlay.cover.layer.cornerRadius = thumbRadiusForMode(l, open || fades, SGRPlayerInlineModeQueue);
             overlay.thumb.alpha = (!open && fades) ? 0.0 : 1.0;
-            [q setContentSlideOffset:(open ? 0.0 : (SGRReduceMotion() ? 0.0 : 60.0)) opacity:(open ? 1.0 : 0.0)];
-            SGRPlayerCoverList().alpha = open ? 0.0 : 1.0;
-            sg_floating.viewIfLoaded.alpha = open ? 0.0 : 1.0;
-            if (sg_info.viewIfLoaded) sg_info.viewIfLoaded.alpha = open ? 0.0 : 1.0;
+            [q setHeaderSlideOffset:(open ? 0.0 : hdrSlideDist)
+                    listSlideOffset:(open ? 0.0 : listSlideDist)];
             placeTitleRow(l);
-            setHeaderShownForQueue(!open, NO);
             placeQueueBottomChrome(host, open);
         };
         void (^queueSettled)(BOOL) = ^(__unused BOOL finished) {
+            if (transitionID != sg_transitionID) return;
             sg_moving = NO;
             if (sg_inlineMode == SGRPlayerInlineModeQueue) {
                 [q setTransitionArtworkHidden:NO];
@@ -1056,7 +1080,10 @@ static void setMode(SGRPlayerInlineMode targetMode, BOOL animated) {
             q.alpha = 0.0;
             SGRPlayerSetCoverHidden(NO);
             SGRPlayerCoverList().alpha = 1.0;
-            if (sg_info.viewIfLoaded) sg_info.viewIfLoaded.alpha = 1.0;
+            if (sg_info.viewIfLoaded) {
+                sg_info.viewIfLoaded.alpha = 1.0;
+                sg_info.viewIfLoaded.transform = CGAffineTransformIdentity;
+            }
             setHeaderShownForQueue(YES, NO);
             placeQueueBottomChrome(host, NO);
             [overlay removeFromSuperview];
@@ -1064,10 +1091,57 @@ static void setMode(SGRPlayerInlineMode targetMode, BOOL animated) {
 
         if (animated && !SGRReduceMotion()) {
             [UIView animateWithDuration:0.40 delay:0.0 usingSpringWithDamping:0.85 initialSpringVelocity:0.0 options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction animations:springStep completion:queueSettled];
+            if (open) {
+                // 1. Fade out Main Player title, inline lyric preview, and top header rapidly (0.00s..0.14s)
+                [UIView animateWithDuration:0.14 delay:0.0 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction animations:^{
+                    SGRPlayerCoverList().alpha = 0.0;
+                    sg_floating.viewIfLoaded.alpha = 0.0;
+                    if (sg_info.viewIfLoaded) sg_info.viewIfLoaded.alpha = 0.0;
+                    setHeaderShownForQueue(NO, NO);
+                } completion:nil];
+                // 2. Fade in 4-pill bar + Continue Playing + Queue rows as they rise beneath the shrinking cover (0.08s..0.32s)
+                [UIView animateWithDuration:0.24 delay:0.08 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction animations:^{
+                    [q setListOpacity:1.0];
+                } completion:nil];
+                // 3. Fade in Queue top Now Playing mini-card header after cover clears x < 115pt and main title is gone (0.16s..0.34s)
+                [UIView animateWithDuration:0.18 delay:0.16 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction animations:^{
+                    [q setHeaderOpacity:1.0];
+                } completion:nil];
+            } else {
+                // 1. Fade out Queue top Now Playing mini-card header immediately before expanding cover crosses x = 117pt (0.00s..0.09s)
+                [UIView animateWithDuration:0.09 delay:0.0 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction animations:^{
+                    [q setHeaderOpacity:0.0];
+                } completion:nil];
+                // 2. Fade out 4-pill bar + Queue rows as they slide down beneath the expanding cover (0.00s..0.16s)
+                [UIView animateWithDuration:0.16 delay:0.0 options:UIViewAnimationOptionCurveEaseIn | UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction animations:^{
+                    [q setListOpacity:0.0];
+                } completion:nil];
+                // 3. Fade in Main Player title, inline lyric preview, and top header as they settle into place (0.15s..0.33s)
+                [UIView animateWithDuration:0.18 delay:0.15 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction animations:^{
+                    SGRPlayerCoverList().alpha = 1.0;
+                    sg_floating.viewIfLoaded.alpha = 1.0;
+                    if (sg_info.viewIfLoaded) sg_info.viewIfLoaded.alpha = 1.0;
+                    setHeaderShownForQueue(YES, NO);
+                } completion:nil];
+            }
         } else if (animated) {
-            [UIView animateWithDuration:0.25 delay:0.0 options:UIViewAnimationOptionCurveEaseInOut | UIViewAnimationOptionBeginFromCurrentState animations:springStep completion:queueSettled];
+            [UIView animateWithDuration:0.25 delay:0.0 options:UIViewAnimationOptionCurveEaseInOut | UIViewAnimationOptionBeginFromCurrentState animations:^{
+                springStep();
+                [q setHeaderOpacity:(open ? 1.0 : 0.0)];
+                [q setListOpacity:(open ? 1.0 : 0.0)];
+                SGRPlayerCoverList().alpha = open ? 0.0 : 1.0;
+                sg_floating.viewIfLoaded.alpha = open ? 0.0 : 1.0;
+                if (sg_info.viewIfLoaded) sg_info.viewIfLoaded.alpha = open ? 0.0 : 1.0;
+                setHeaderShownForQueue(!open, NO);
+            } completion:queueSettled];
         } else {
             springStep();
+            [q setHeaderOpacity:(open ? 1.0 : 0.0)];
+            [q setListOpacity:(open ? 1.0 : 0.0)];
+            SGRPlayerCoverList().alpha = open ? 0.0 : 1.0;
+            sg_floating.viewIfLoaded.alpha = open ? 0.0 : 1.0;
+            if (sg_info.viewIfLoaded) sg_info.viewIfLoaded.alpha = open ? 0.0 : 1.0;
+            setHeaderShownForQueue(!open, NO);
             queueSettled(YES);
         }
 
@@ -1078,6 +1152,9 @@ static void setMode(SGRPlayerInlineMode targetMode, BOOL animated) {
               l.stage.size.width, l.stage.size.height);
         return;
     }
+
+    SGRPlayerLyricsChanged();
+    SGRPlayerQueueChanged();
 
     place(overlay, host, l);
     CGAffineTransform away = thumbTransform(l);
@@ -1238,7 +1315,6 @@ static void replace(void) {
         overlay.thumb.alpha = 0;
         overlay.thumb.hidden = YES;
         SGRQueueView *q = overlay.queue;
-        BOOL newlyMounted = q.hidden || q.alpha < 0.01;
         q.hidden = NO;
         q.alpha = 1.0;
         [q setTransitionArtworkHidden:NO];
@@ -1251,11 +1327,7 @@ static void replace(void) {
                 q.center = CGPointMake(CGRectGetMidX(qStage), CGRectGetMidY(qStage));
             }
         }
-        if (newlyMounted) {
-            [q prepareForOpenTransition];
-        } else {
-            [q setNeedsLayout];
-        }
+        [q setNeedsLayout];
     }
     SGRPlayerCoverList().alpha = 0;
 }

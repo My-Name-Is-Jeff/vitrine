@@ -29,6 +29,11 @@
 // Vertical slide + opacity applied to the queue chrome during the open/close spring transition.
 - (void)setContentSlideOffset:(CGFloat)offsetY opacity:(CGFloat)opacity;
 
+// Independent slide + opacity for the top Now Playing mini-card header vs the lower Continue Playing + Queue list.
+- (void)setHeaderSlideOffset:(CGFloat)headerOffsetY listSlideOffset:(CGFloat)listOffsetY;
+- (void)setHeaderOpacity:(CGFloat)headerOpacity;
+- (void)setListOpacity:(CGFloat)listOpacity;
+
 // Exact destination frame of the 62x62 Now Playing thumbnail in `targetView` coordinates (28.0, 86.7, 62, 62).
 - (CGRect)nowPlayingArtworkFrameInView:(UIView *)targetView;
 
