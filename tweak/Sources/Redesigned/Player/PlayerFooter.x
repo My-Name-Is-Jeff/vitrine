@@ -128,24 +128,20 @@ static UIImage *SGRQueueActiveKnockoutIconImage(CGSize size) {
     fmt.opaque = NO;
     UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:size format:fmt];
     UIImage *img = [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
-        CGContextRef cg = ctx.CGContext;
-        // Background capsule at rgba(255, 255, 255, 0.65)
         CGRect rect = CGRectMake(0, 0, size.width, size.height);
         UIBezierPath *circle = [UIBezierPath bezierPathWithOvalInRect:rect];
         [[UIColor colorWithWhite:1.0 alpha:0.65] setFill];
         [circle fill];
 
-        // Knockout SF Symbol list.bullet (19.3 pt width) using DestinationOut for pixel-perfect match to Apple Music
+        // Knockout SF Symbol list.bullet using kCGBlendModeClear
         UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:19.8 weight:UIImageSymbolWeightRegular];
-        UIImage *sym = [[UIImage systemImageNamed:kQueueSymbol withConfiguration:cfg] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+        UIImage *sym = [UIImage systemImageNamed:kQueueSymbol withConfiguration:cfg];
         if (sym) {
-            CGContextSetBlendMode(cg, kCGBlendModeDestinationOut);
-            [[UIColor colorWithWhite:0.0 alpha:1.0] setFill];
             CGRect symRect = CGRectMake(round((size.width - sym.size.width) * 0.5),
                                         round((size.height - sym.size.height) * 0.5),
                                         sym.size.width,
                                         sym.size.height);
-            [sym drawInRect:symRect];
+            [sym drawInRect:symRect blendMode:kCGBlendModeClear alpha:1.0];
         }
     }];
     return [img imageWithRenderingMode:UIImageRenderingModeAlwaysOriginal];
@@ -399,10 +395,9 @@ void SGRPlayerLowerRow(UIView *row) {
     CGFloat share = volume ? 0 : kControlsShare, lift = volume ? kVolumeLift : 0;
 
     if (queueOpen && controlsView) {
-        // In Queue view, center the 3-button transport row at Apple Music's y = 633 pt (height - (177 + safeBottom) on 844pt),
-        // which also places SGRVolumeRow halfway between play bottom (665pt) and footer top (768pt) -> y = 717..720 pt!
+        // In Queue view, center the 3-button transport row at Apple Music's y = 638.2 pt (height - (171.8 + safeBottom) on 844pt)
         CGFloat ctrlMiddle = [stack convertPoint:controlsView.center toView:player].y;
-        CGFloat targetCtrlMiddle = height - (177.0 + window.safeAreaInsets.bottom);
+        CGFloat targetCtrlMiddle = height - (171.8 + window.safeAreaInsets.bottom);
         CGAffineTransform queueFollow = CGAffineTransformMakeTranslation(0, round(targetCtrlMiddle - ctrlMiddle));
         if (!CGAffineTransformEqualToTransform(controlsView.transform, queueFollow)) controlsView.transform = queueFollow;
     } else {
@@ -417,14 +412,15 @@ void SGRPlayerLowerRow(UIView *row) {
     }
     SGRPlayerPaintCover(stack);
     UIView *volumeAnchor = queueOpen ? (controlsView ?: above) : above;
-    if (volume && !SGRPlayerPlaceVolume(stack, volumeAnchor, row, kVolumeMargin)) {
+    CGFloat vMargin = queueOpen ? 32.0 : kVolumeMargin;
+    if (volume && !SGRPlayerPlaceVolume(stack, volumeAnchor, row, vMargin)) {
         if (!queueOpen) {
             share = kControlsShare;
             CGAffineTransform follow = CGAffineTransformMakeTranslation(0, round(move * share));
             if (above && controls && !CGAffineTransformEqualToTransform(above.transform, follow)) above.transform = follow;
         }
     } else if (!volume) {
-        SGRPlayerPlaceVolume(stack, nil, row, kVolumeMargin);
+        SGRPlayerPlaceVolume(stack, nil, row, vMargin);
     }
 
     SGRFooterReach *reach = objc_getAssociatedObject(row, &kReachKey);

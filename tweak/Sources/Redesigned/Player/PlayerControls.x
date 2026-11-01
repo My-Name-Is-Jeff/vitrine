@@ -298,10 +298,9 @@ static void updateTransportPositionsForQueue(UIView *host) {
 
     BOOL queueOpen = SGRPlayerQueueOpen();
     if (queueOpen) {
-        // Centering previous triangles at 88.2 pt and next triangles at 301.5 pt:
-        // Moving by -22.0 pt and +22.0 pt centers controls at exactly 106.8 pt from screen center (195.0 pt), matching Apple Music 1:1.
-        CGAffineTransform prevT = CGAffineTransformMakeTranslation(-22.0, 0.0);
-        CGAffineTransform nextT = CGAffineTransformMakeTranslation(22.0, 0.0);
+        // Moving by +10.0 pt and -10.0 pt centers Rewind at x = 88.0 pt and Fast-Forward at x = 301.7 pt (106.8 pt from Play center at 195.0 pt)
+        CGAffineTransform prevT = CGAffineTransformMakeTranslation(10.0, 0.0);
+        CGAffineTransform nextT = CGAffineTransformMakeTranslation(-10.0, 0.0);
         if (!CGAffineTransformEqualToTransform(prev.transform, prevT)) prev.transform = prevT;
         if (!CGAffineTransformEqualToTransform(next.transform, nextT)) next.transform = nextT;
 
@@ -555,10 +554,10 @@ static void updateDurationForQueue(void) {
             CGAffineTransform scaleT = CGAffineTransformMakeScale(targetScale, 1.0);
             if (!CGAffineTransformEqualToTransform(slider.transform, scaleT)) slider.transform = scaleT;
 
-            CGAffineTransform takenT = CGAffineTransformMakeTranslation(7.0, 3.7);
+            CGAffineTransform takenT = CGAffineTransformMakeTranslation(7.0, 7.7);
             if (taken && !CGAffineTransformEqualToTransform(taken.transform, takenT)) taken.transform = takenT;
 
-            CGAffineTransform remT = CGAffineTransformMakeTranslation(-7.0, 3.7);
+            CGAffineTransform remT = CGAffineTransformMakeTranslation(-7.0, 7.7);
             if (remaining && !CGAffineTransformEqualToTransform(remaining.transform, remT)) remaining.transform = remT;
         } else {
             if (!CGAffineTransformIsIdentity(slider.transform)) slider.transform = CGAffineTransformIdentity;

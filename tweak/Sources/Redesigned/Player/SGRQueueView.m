@@ -1698,7 +1698,7 @@ static void SGRDrawTransitionsOverlappingCircles(CGContextRef cg, CGPoint center
 
         // 3. Right donut at 100% knockout with center hole intact
         CGContextSetBlendMode(cg, kCGBlendModeNormal);
-        [[UIColor colorWithWhite:0.0 alpha:1.0] setFill];
+        [[UIColor colorWithWhite:0.0 alpha:0.90] setFill];
         [rightDonut fill];
 
         CGContextEndTransparencyLayer(cg);
@@ -1765,7 +1765,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
         if (isTransitionsGlyph) {
             SGRDrawTransitionsOverlappingCircles(cg, center, active);
         } else if (symbolName.length) {
-            UIImageSymbolWeight weight = [symbolName isEqualToString:@"infinity"] ? UIImageSymbolWeightHeavy : UIImageSymbolWeightBold;
+            UIImageSymbolWeight weight = [symbolName isEqualToString:@"infinity"] ? UIImageSymbolWeightSemibold : UIImageSymbolWeightBold;
             UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:16.0 weight:weight];
             if (active) {
                 // Render symbol masked out via DestinationOut knockout
@@ -1918,7 +1918,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     [_rowContentView addSubview:_handleHitView];
 
     _handleBarsLayer = [CAShapeLayer layer];
-    _handleBarsLayer.fillColor = [UIColor colorWithWhite:1.0 alpha:0.38].CGColor;
+    _handleBarsLayer.fillColor = [UIColor colorWithWhite:1.0 alpha:0.25].CGColor;
     [_handleHitView.layer addSublayer:_handleBarsLayer];
 
     _reorderPan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleReorderPan:)];
@@ -2566,12 +2566,12 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     UIColor *promptColor = [UIColor colorWithWhite:1.0 alpha:0.55];
     NSMutableAttributedString *promptStr = [[NSMutableAttributedString alloc] initWithString:@"To keep music playing, turn on\n"
                                                                                   attributes:@{NSFontAttributeName: promptFont, NSForegroundColorAttributeName: promptColor}];
-    UIImageSymbolConfiguration *infCfg = [UIImageSymbolConfiguration configurationWithPointSize:17.0 weight:UIImageSymbolWeightBold];
+    UIImageSymbolConfiguration *infCfg = [UIImageSymbolConfiguration configurationWithPointSize:16.0 weight:UIImageSymbolWeightBold];
     UIImage *infImg = [[UIImage systemImageNamed:@"infinity" withConfiguration:infCfg] imageWithTintColor:promptColor renderingMode:UIImageRenderingModeAlwaysOriginal];
     if (infImg) {
         NSTextAttachment *att = [[NSTextAttachment alloc] init];
         att.image = infImg;
-        att.bounds = CGRectMake(0, -2.0, infImg.size.width, infImg.size.height);
+        att.bounds = CGRectMake(0, -1.0, infImg.size.width, infImg.size.height);
         [promptStr appendAttributedString:[NSAttributedString attributedStringWithAttachment:att]];
     }
     [promptStr appendAttributedString:[[NSAttributedString alloc] initWithString:@" AutoPlay."
@@ -2719,14 +2719,27 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
 }
 
 static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
-    UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:19.5 weight:UIImageSymbolWeightRegular];
-    NSString *sym = isSaved ? @"star.fill" : @"star";
-    UIColor *tint = UIColor.whiteColor;
-    return [[UIImage systemImageNamed:sym withConfiguration:cfg] imageWithTintColor:tint renderingMode:UIImageRenderingModeAlwaysOriginal];
+    BOOL plain = SGRPlainCheckOn();
+    if (plain) {
+        UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:19.0 weight:UIImageSymbolWeightBold];
+        NSString *sym = isSaved ? @"checkmark" : @"plus";
+        UIColor *tint = isSaved ? SGRAccent() : UIColor.whiteColor;
+        return [[UIImage systemImageNamed:sym withConfiguration:cfg] imageWithTintColor:tint renderingMode:UIImageRenderingModeAlwaysOriginal];
+    } else {
+        UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:21.0 weight:UIImageSymbolWeightRegular];
+        NSString *sym = isSaved ? @"checkmark.circle.fill" : @"plus.circle";
+        UIColor *tint = isSaved ? SGRAccent() : UIColor.whiteColor;
+        return [[UIImage systemImageNamed:sym withConfiguration:cfg] imageWithTintColor:tint renderingMode:UIImageRenderingModeAlwaysOriginal];
+    }
 }
 
 - (void)updateNowPlayingCardWithItem:(SGRQueueItem *)item subtitle:(NSString *)subtitle {
-    _npTitleLabel.text = item.title.length ? item.title : @"Not Playing";
+    NSString *titleText = item.title.length ? item.title : @"Not Playing";
+    _npTitleLabel.attributedText = [[NSAttributedString alloc] initWithString:titleText attributes:@{
+        NSFontAttributeName: [UIFont systemFontOfSize:18.5 weight:UIFontWeightSemibold],
+        NSForegroundColorAttributeName: UIColor.whiteColor,
+        NSKernAttributeName: @(-0.3)
+    }];
     _npArtistLabel.text = item.artist ?: @"";
     _npExplicitView.hidden = !item.isExplicit;
     _continueSubtitleLabel.text = subtitle ?: @"";
@@ -2916,7 +2929,7 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     _npDetailsView.bounds = CGRectMake(0.0, 0.0, w, 72.0);
     _npDetailsView.center = CGPointMake(w * 0.5, 36.0);
     CGFloat moreW = 28.0;
-    CGFloat starW = 28.0;
+    CGFloat starW = 24.0;
     CGFloat moreCenterX = round(w * (341.5 / 390.0));
     CGFloat starCenterX = round(w * (293.3 / 390.0));
     _npMoreButton.bounds = CGRectMake(0.0, 0.0, moreW, moreW);
@@ -2929,7 +2942,7 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     CGFloat npAvailW = MAX(40.0, npMaxRight - npTextLeft);
     BOOL npHasExp = !_npExplicitView.hidden;
     CGFloat npBadgeW = npHasExp ? (13.3 + 5.0) : 0.0;
-    CGSize npTitleNat = [_npTitleLabel sizeThatFits:CGSizeMake(npAvailW - npBadgeW, 24.0)];
+    CGSize npTitleNat = [_npTitleLabel sizeThatFits:CGSizeMake(CGFLOAT_MAX, 22.0)];
     CGFloat npTitleW = MIN(npAvailW - npBadgeW, ceil(npTitleNat.width));
     CGFloat titleY = 15.5;
     _npTitleLabel.frame = CGRectMake(npTextLeft, titleY, npTitleW, 22.0);

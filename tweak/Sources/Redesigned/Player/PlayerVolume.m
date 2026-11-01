@@ -26,7 +26,7 @@ static const CGFloat kGlyphsHalf = 14;
 // scale (each clamped to the room the row has on that side). Music's own held numbers are 18, 7, 9 and 1.08.
 static const CGFloat kTrackRest = 7, kTrackHeld = 12, kStretch = 5, kGlyphShift = 6, kGlyphHeldScale = 1.02;
 // White's opacity: the fill at rest and held, the empty part, the glyphs at rest (held they are full white).
-static const CGFloat kFillRest = 0.65, kFillHeld = 1, kEmpty = 0.24, kGlyphRest = 0.62;
+static const CGFloat kFillRest = 0.55, kFillHeld = 1, kEmpty = 0.16, kGlyphRest = 0.62;
 
 static char kSessionContext;
 
@@ -211,17 +211,30 @@ static UIImageView *glyph(NSString *symbol) {
 - (void)layoutSubviews {
     [super layoutSubviews];
     CGRect bounds = self.bounds;
-    CGFloat side = kRowHeight, middle = CGRectGetMidY(bounds), glyphWidth = side / 2 + kGlyphSize / 2;
+    CGFloat side = kRowHeight, middle = CGRectGetMidY(bounds);
     _system.frame = CGRectMake(0, 0, MAX(140, bounds.size.width), side);
     [_system layoutIfNeeded];
     [self systemSlider];
-    CGFloat loudMin = CGRectGetMaxX(bounds) - side / 2 - kGlyphSize;
-    _quiet.bounds = CGRectMake(0, 0, glyphWidth, side);
-    _loud.bounds = CGRectMake(0, 0, glyphWidth, side);
-    _quiet.center = CGPointMake(glyphWidth / 2, middle);
-    _loud.center = CGPointMake(loudMin + glyphWidth / 2, middle);
-    _trackMin = glyphWidth + kGlyphGap;
-    _trackMax = loudMin - kGlyphGap;
+
+    BOOL queueOpen = SGRPlayerQueueOpen();
+    if (queueOpen) {
+        CGFloat quietW = 13.0, loudW = 22.0;
+        _quiet.bounds = CGRectMake(0, 0, quietW, side);
+        _loud.bounds = CGRectMake(0, 0, loudW, side);
+        _quiet.center = CGPointMake(quietW * 0.5, middle);
+        _loud.center = CGPointMake(bounds.size.width - loudW * 0.5, middle);
+        _trackMin = 25.0; // 32.0 + 25.0 = 57.0 pt on 390 pt screen
+        _trackMax = bounds.size.width - (loudW + 12.0); // 326.0 - 34.0 = 292.0 pt (screen x = 324.0 pt, width = 267.0 pt)
+    } else {
+        CGFloat glyphWidth = side / 2 + kGlyphSize / 2;
+        CGFloat loudMin = CGRectGetMaxX(bounds) - side / 2 - kGlyphSize;
+        _quiet.bounds = CGRectMake(0, 0, glyphWidth, side);
+        _loud.bounds = CGRectMake(0, 0, glyphWidth, side);
+        _quiet.center = CGPointMake(glyphWidth / 2, middle);
+        _loud.center = CGPointMake(loudMin + glyphWidth / 2, middle);
+        _trackMin = glyphWidth + kGlyphGap;
+        _trackMax = loudMin - kGlyphGap;
+    }
     [self syncTrack];
     [self syncStyle];
 }
@@ -392,13 +405,15 @@ BOOL SGRPlayerPlaceVolume(UIView *stack, UIView *controls, UIView *row, CGFloat 
         UIWindow *window = stack.window;
         CGFloat safeBottom = window ? window.safeAreaInsets.bottom : 34.0;
         CGFloat targetTrackScreenY = (window ? window.bounds.size.height : 844.0) - (87.3 + safeBottom);
-        CGFloat stackScreenY = [stack.superview convertPoint:stack.frame.origin toView:window].y;
-        CGFloat targetFrameY = (targetTrackScreenY - 12.5) - stackScreenY;
-        frame.origin.y = round(targetFrameY);
+        CGFloat stackScreenY = [stack convertPoint:CGPointZero toView:nil].y;
+        CGFloat targetCenterY = targetTrackScreenY - stackScreenY;
+        frame.origin.y = round(targetCenterY - height * 0.5);
     }
     BOOL moved = !CGRectEqualToRect(volume.frame, frame);
     if (moved) volume.frame = frame;
-    settle(stack, row, moved, frame);
+    if (!SGRPlayerQueueOpen()) {
+        settle(stack, row, moved, frame);
+    }
     // The lyrics fade the stack's views by their alpha and bring back only the ones they faded.
     // The track is 7pt of the row's 32: it fits with the glyphs' and buttons' own clearance around it.
     BOOL fits = room >= height * 0.6;
