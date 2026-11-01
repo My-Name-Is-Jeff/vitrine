@@ -1703,7 +1703,7 @@ static void SGRDrawTransitionsOverlappingCircles(CGContextRef cg, CGPoint center
         [[UIColor colorWithWhite:0.0 alpha:1.0] setFill];
         [rightDonut fill];
     } else {
-        // Inactive: normal rendering in pure white
+        // Inactive / grayed-out: subtle muted white (rgba(255, 255, 255, 0.35)) matching Apple Music exactly
         CGContextSaveGState(cg);
         CGContextBeginTransparencyLayer(cg, NULL);
 
@@ -1713,7 +1713,7 @@ static void SGRDrawTransitionsOverlappingCircles(CGContextRef cg, CGPoint center
                                                               endAngle:(CGFloat)(M_PI * 2.0)
                                                              clockwise:YES];
         leftRing.lineWidth = 1.5;
-        [[UIColor colorWithWhite:1.0 alpha:0.55] setStroke];
+        [[UIColor colorWithWhite:1.0 alpha:0.35 * 0.55] setStroke];
         [leftRing stroke];
 
         CGContextSetBlendMode(cg, kCGBlendModeClear);
@@ -1735,7 +1735,7 @@ static void SGRDrawTransitionsOverlappingCircles(CGContextRef cg, CGPoint center
                                                            startAngle:0
                                                              endAngle:(CGFloat)(M_PI * 2.0)
                                                             clockwise:YES] bezierPathByReversingPath]];
-        [UIColor.whiteColor setFill];
+        [[UIColor colorWithWhite:1.0 alpha:0.35] setFill];
         [rightDonut fill];
 
         CGContextEndTransparencyLayer(cg);
@@ -1775,11 +1775,13 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
                                                 sym.size.width,
                                                 sym.size.height);
                     CGContextSetBlendMode(cg, kCGBlendModeDestinationOut);
-                    [[UIColor colorWithWhite:0.0 alpha:0.95] setFill];
+                    [[UIColor colorWithWhite:0.0 alpha:1.0] setFill];
                     [sym drawInRect:symRect];
                 }
             } else {
-                UIImage *sym = [[UIImage systemImageNamed:symbolName withConfiguration:cfg] imageWithTintColor:UIColor.whiteColor renderingMode:UIImageRenderingModeAlwaysOriginal];
+                // Grayed out / inactive icon: subtle muted white (rgba(255, 255, 255, 0.35)) matching Apple Music exactly
+                UIColor *grayedOutColor = [UIColor colorWithWhite:1.0 alpha:0.35];
+                UIImage *sym = [[UIImage systemImageNamed:symbolName withConfiguration:cfg] imageWithTintColor:grayedOutColor renderingMode:UIImageRenderingModeAlwaysOriginal];
                 if (sym) {
                     CGRect symRect = CGRectMake(center.x - sym.size.width * 0.5,
                                                 center.y - sym.size.height * 0.5,
@@ -2509,7 +2511,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     _npMoreButton = [UIButton buttonWithType:UIButtonTypeCustom];
     _npMoreButton.backgroundColor = UIColor.clearColor;
     UIImageSymbolConfiguration *moreCfg = [UIImageSymbolConfiguration configurationWithPointSize:18.0 weight:UIImageSymbolWeightBold];
-    [_npMoreButton setImage:[[UIImage systemImageNamed:@"ellipsis" withConfiguration:moreCfg] imageWithTintColor:[UIColor colorWithWhite:1.0 alpha:0.90] renderingMode:UIImageRenderingModeAlwaysOriginal] forState:UIControlStateNormal];
+    [_npMoreButton setImage:[[UIImage systemImageNamed:@"ellipsis" withConfiguration:moreCfg] imageWithTintColor:[UIColor colorWithWhite:1.0 alpha:0.60] renderingMode:UIImageRenderingModeAlwaysOriginal] forState:UIControlStateNormal];
     [_npDetailsView addSubview:_npMoreButton];
     SGRPlayerMenuWatchProxy(_npMoreButton);
 

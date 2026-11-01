@@ -556,7 +556,7 @@ static void durationLaidOut(UIViewController *unit) {
         } else {
             if (!CGAffineTransformIsIdentity(slider.transform)) slider.transform = CGAffineTransformIdentity;
             if (taken && !CGAffineTransformIsIdentity(taken.transform)) taken.transform = CGAffineTransformIdentity;
-            if (remaining && !CGAffineTransformIdentity(remaining.transform)) remaining.transform = CGAffineTransformIdentity;
+            if (remaining && !CGAffineTransformIsIdentity(remaining.transform)) remaining.transform = CGAffineTransformIdentity;
         }
         slider.minimumTrackTintColor = [UIColor colorWithWhite:1.0 alpha:0.55];
         slider.maximumTrackTintColor = [UIColor colorWithWhite:1.0 alpha:0.16];
