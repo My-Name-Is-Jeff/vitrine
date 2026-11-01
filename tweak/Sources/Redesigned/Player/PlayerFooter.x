@@ -127,7 +127,7 @@ static UIImage *SGRQueueActiveKnockoutIconImage(CGSize size) {
     UIGraphicsImageRendererFormat *fmt = [UIGraphicsImageRendererFormat preferredFormat];
     fmt.opaque = NO;
     UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:size format:fmt];
-    return [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
+    UIImage *img = [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
         CGContextRef cg = ctx.CGContext;
         // Background capsule at rgba(255, 255, 255, 0.62)
         CGRect rect = CGRectMake(0, 0, size.width, size.height);
@@ -135,8 +135,8 @@ static UIImage *SGRQueueActiveKnockoutIconImage(CGSize size) {
         [[UIColor colorWithWhite:1.0 alpha:0.62] setFill];
         [circle fill];
 
-        // Knockout SF Symbol list.bullet using DestinationOut for pixel-perfect match to Apple Music
-        UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:17.5 weight:UIImageSymbolWeightRegular];
+        // Knockout SF Symbol list.bullet (19.3 pt width) using DestinationOut for pixel-perfect match to Apple Music
+        UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:19.8 weight:UIImageSymbolWeightRegular];
         UIImage *sym = [[UIImage systemImageNamed:kQueueSymbol withConfiguration:cfg] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
         if (sym) {
             CGContextSetBlendMode(cg, kCGBlendModeDestinationOut);
@@ -148,6 +148,7 @@ static UIImage *SGRQueueActiveKnockoutIconImage(CGSize size) {
             [sym drawInRect:symRect];
         }
     }];
+    return [img imageWithRenderingMode:UIImageRenderingModeAlwaysOriginal];
 }
 
 void SGRPlayerQueueChanged(void) {

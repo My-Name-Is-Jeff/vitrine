@@ -1670,14 +1670,14 @@ static void SGRDrawTransitionsOverlappingCircles(CGContextRef cg, CGPoint center
         // Cut out directly through the translucent capsule so background shows through!
         CGContextSetBlendMode(cg, kCGBlendModeDestinationOut);
 
-        // 1. Left circle ring at 85% knockout so it is clearly visible against the warm background
+        // 1. Left circle ring at 55% knockout so warm background bleeds through matching Apple Music
         UIBezierPath *leftRing = [UIBezierPath bezierPathWithArcCenter:CGPointMake(leftX, center.y)
                                                                 radius:leftR
                                                             startAngle:0
                                                               endAngle:(CGFloat)(M_PI * 2.0)
                                                              clockwise:YES];
         leftRing.lineWidth = 1.8;
-        [[UIColor colorWithWhite:0.0 alpha:0.85] setStroke];
+        [[UIColor colorWithWhite:0.0 alpha:0.55] setStroke];
         [leftRing stroke];
 
         // 2. Clear overlapping interior of the left ring directly beneath the right donut
@@ -1703,7 +1703,7 @@ static void SGRDrawTransitionsOverlappingCircles(CGContextRef cg, CGPoint center
         [[UIColor colorWithWhite:0.0 alpha:1.0] setFill];
         [rightDonut fill];
     } else {
-        // Inactive / grayed-out: subtle muted white (rgba(255, 255, 255, 0.35)) matching Apple Music exactly
+        // Inactive / grayed-out: solid white right donut and 55% white left ring matching Apple Music exactly
         CGContextSaveGState(cg);
         CGContextBeginTransparencyLayer(cg, NULL);
 
@@ -1713,7 +1713,7 @@ static void SGRDrawTransitionsOverlappingCircles(CGContextRef cg, CGPoint center
                                                               endAngle:(CGFloat)(M_PI * 2.0)
                                                              clockwise:YES];
         leftRing.lineWidth = 1.5;
-        [[UIColor colorWithWhite:1.0 alpha:0.35 * 0.55] setStroke];
+        [[UIColor colorWithWhite:1.0 alpha:0.55] setStroke];
         [leftRing stroke];
 
         CGContextSetBlendMode(cg, kCGBlendModeClear);
@@ -1735,7 +1735,7 @@ static void SGRDrawTransitionsOverlappingCircles(CGContextRef cg, CGPoint center
                                                            startAngle:0
                                                              endAngle:(CGFloat)(M_PI * 2.0)
                                                             clockwise:YES] bezierPathByReversingPath]];
-        [[UIColor colorWithWhite:1.0 alpha:0.35] setFill];
+        [[UIColor colorWithWhite:1.0 alpha:1.0] setFill];
         [rightDonut fill];
 
         CGContextEndTransparencyLayer(cg);
@@ -1779,9 +1779,8 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
                     [sym drawInRect:symRect];
                 }
             } else {
-                // Grayed out / inactive icon: subtle muted white (rgba(255, 255, 255, 0.35)) matching Apple Music exactly
-                UIColor *grayedOutColor = [UIColor colorWithWhite:1.0 alpha:0.35];
-                UIImage *sym = [[UIImage systemImageNamed:symbolName withConfiguration:cfg] imageWithTintColor:grayedOutColor renderingMode:UIImageRenderingModeAlwaysOriginal];
+                // Inactive / grayed out icon: crisp opaque white (rgba(255, 255, 255, 1.0)) matching Apple Music exactly
+                UIImage *sym = [[UIImage systemImageNamed:symbolName withConfiguration:cfg] imageWithTintColor:UIColor.whiteColor renderingMode:UIImageRenderingModeAlwaysOriginal];
                 if (sym) {
                     CGRect symRect = CGRectMake(center.x - sym.size.width * 0.5,
                                                 center.y - sym.size.height * 0.5,
@@ -2841,17 +2840,17 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     _bottomFadeMask.frame = _viewportClipView.bounds;
-    // Fade starts at y = 498.0 pt (418.0 pt in viewport, top of Row 5) and ramps down to y = 546.0 pt (466.0 pt, progress bar)
-    CGFloat locStart = MAX(0.0, MIN(1.0, (viewportH - 48.0) / viewportH));
-    CGFloat locMid1  = MAX(0.0, MIN(1.0, (viewportH - 26.0) / viewportH));
-    CGFloat locMid2  = MAX(0.0, MIN(1.0, (viewportH - 11.0) / viewportH));
+    // Fade starts at y = 494.0 pt (top of Row 5) and ramps down to y = 546.0 pt (progress bar)
+    CGFloat locStart = MAX(0.0, MIN(1.0, (viewportH - 52.0) / viewportH));
+    CGFloat locMid1  = MAX(0.0, MIN(1.0, (viewportH - 32.0) / viewportH));
+    CGFloat locMid2  = MAX(0.0, MIN(1.0, (viewportH - 14.0) / viewportH));
     _bottomFadeMask.locations = @[@0.0, @(locStart), @(locMid1), @(locMid2), @1.0];
     _bottomFadeMask.colors = @[
         (id)[UIColor colorWithWhite:1.0 alpha:1.0].CGColor,
         (id)[UIColor colorWithWhite:1.0 alpha:1.0].CGColor,
-        (id)[UIColor colorWithWhite:1.0 alpha:0.55].CGColor,
-        (id)[UIColor colorWithWhite:1.0 alpha:0.25].CGColor,
-        (id)[UIColor colorWithWhite:1.0 alpha:0.05].CGColor
+        (id)[UIColor colorWithWhite:1.0 alpha:0.45].CGColor,
+        (id)[UIColor colorWithWhite:1.0 alpha:0.18].CGColor,
+        (id)[UIColor colorWithWhite:1.0 alpha:0.02].CGColor
     ];
     [CATransaction commit];
 

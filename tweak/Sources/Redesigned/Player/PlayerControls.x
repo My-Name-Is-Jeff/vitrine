@@ -39,6 +39,11 @@ static CFTimeInterval sg_tappedUntil;
 static BOOL sg_tappedPaused;
 static __weak SGRGlyphView *sg_playGlyph;
 static __weak UIView *sg_controlsHost;
+static __weak UIViewController *sg_durationUnit;
+static __weak UIView *sg_durationHost;
+
+static void updateDurationForQueue(void);
+static void updateTransportPositionsForQueue(UIView *host);
 
 void SGRPlayerVanish(UIView *view) {
     if (!view) return;
@@ -195,9 +200,12 @@ static void hideShuffleAndRepeat(UIView *host, UIStackView *row) {
 
 void SGRPlayerControlsQueueChanged(void) {
     UIView *host = sg_buttonsHost;
-    if (!host) return;
-    UIStackView *row = (UIStackView *)SGFindRemembered(host, &kRowKey, ^BOOL(UIView *v) { return SGIsRow(v); });
-    if (row) hideShuffleAndRepeat(host, row);
+    if (host) {
+        UIStackView *row = (UIStackView *)SGFindRemembered(host, &kRowKey, ^BOOL(UIView *v) { return SGIsRow(v); });
+        if (row) hideShuffleAndRepeat(host, row);
+        updateTransportPositionsForQueue(host);
+    }
+    updateDurationForQueue();
 }
 
 #pragma mark - play
@@ -282,11 +290,44 @@ void SGRPlayerPlayGlyphIn(UIView *host) {
     dispatch_once(&once, ^{ SGLog(@"redesign player: play glyph over %@ (disc %@ suppressed), spinner %@", NSStringFromClass(play.class), NSStringFromClass(disc.class), spinnerShowing(button) ? @"showing" : @"hidden"); });
 }
 
+static void updateTransportPositionsForQueue(UIView *host) {
+    if (!host) return;
+    UIView *prev = SGRFindByIdentifier(host, @"SPTNowPlayingPreviousTrackButton", &kPreviousKey);
+    UIView *next = SGRFindByIdentifier(host, @"SPTNowPlayingNextTrackButton", &kNextKey);
+    if (!prev || !next) return;
+
+    BOOL queueOpen = SGRPlayerQueueOpen();
+    if (queueOpen) {
+        CGFloat w = host.bounds.size.width;
+        if (w < 100.0) w = [UIScreen mainScreen].bounds.size.width;
+        CGFloat targetPrevX = round(w * 0.5 - 104.5);
+        CGFloat targetNextX = round(w * 0.5 + 104.5);
+        CGPoint prevCenter = [prev.superview convertPoint:prev.center toView:host];
+        prevCenter.x -= prev.transform.tx;
+        CGPoint nextCenter = [next.superview convertPoint:next.center toView:host];
+        nextCenter.x -= next.transform.tx;
+        CGFloat prevMove = round(targetPrevX - prevCenter.x);
+        CGFloat nextMove = round(targetNextX - nextCenter.x);
+        CGAffineTransform prevT = CGAffineTransformMakeTranslation(prevMove, 0.0);
+        CGAffineTransform nextT = CGAffineTransformMakeTranslation(nextMove, 0.0);
+        if (!CGAffineTransformEqualToTransform(prev.transform, prevT)) prev.transform = prevT;
+        if (!CGAffineTransformEqualToTransform(next.transform, nextT)) next.transform = nextT;
+
+        if (prev.superview) prev.superview.clipsToBounds = NO;
+        if (next.superview) next.superview.clipsToBounds = NO;
+        host.clipsToBounds = NO;
+    } else {
+        if (!CGAffineTransformIsIdentity(prev.transform)) prev.transform = CGAffineTransformIdentity;
+        if (!CGAffineTransformIsIdentity(next.transform)) next.transform = CGAffineTransformIdentity;
+    }
+}
+
 %hook _TtC20NowPlaying_ModesImpl28PlaybackControlsElementsUnit
 - (void)viewDidLayoutSubviews {
     %orig;
     UIView *host = ((UIViewController *)self).viewIfLoaded;
     if (!host) return;
+    sg_buttonsHost = host;
     // The unit lays out before its row does, and the glyphs are centered on the buttons in it.
     UIStackView *row = (UIStackView *)SGFindRemembered(host, &kRowKey, ^BOOL(UIView *v) { return SGIsRow(v); });
     [row layoutIfNeeded];
@@ -294,40 +335,7 @@ void SGRPlayerPlayGlyphIn(UIView *host) {
     skipGlyph(host, @"SPTNowPlayingNextTrackButton", &kNextKey, @"forward.fill");
     SGRPlayerPlayGlyphIn(host);
     hideShuffleAndRepeat(host, row);
-
-    BOOL queueOpen = SGRPlayerQueueOpen();
-    UIView *prev = SGRFindByIdentifier(host, @"SPTNowPlayingPreviousTrackButton", &kPreviousKey);
-    UIView *next = SGRFindByIdentifier(host, @"SPTNowPlayingNextTrackButton", &kNextKey);
-    if (prev && next) {
-        if (queueOpen) {
-            CGFloat w = host.bounds.size.width;
-            CGFloat targetPrevX = round(w * 0.5 - 104.5);
-            CGFloat targetNextX = round(w * 0.5 + 104.5);
-            CGPoint prevCenter = [prev.superview convertPoint:prev.center toView:host];
-            prevCenter.x -= prev.transform.tx;
-            CGPoint nextCenter = [next.superview convertPoint:next.center toView:host];
-            nextCenter.x -= next.transform.tx;
-            CGFloat prevMove = round(targetPrevX - prevCenter.x);
-            CGFloat nextMove = round(targetNextX - nextCenter.x);
-            CGAffineTransform prevT = CGAffineTransformMakeTranslation(prevMove, 0.0);
-            CGAffineTransform nextT = CGAffineTransformMakeTranslation(nextMove, 0.0);
-            if (!CGAffineTransformEqualToTransform(prev.transform, prevT)) prev.transform = prevT;
-            if (!CGAffineTransformEqualToTransform(next.transform, nextT)) next.transform = nextT;
-
-            // Also translate arranged container in UIStackView if present so button is not clipped
-            if (prev.superview && prev.superview != row && [prev.superview.superview isKindOfClass:UIStackView.class]) {
-                if (!CGAffineTransformEqualToTransform(prev.superview.transform, prevT)) prev.superview.transform = prevT;
-            }
-            if (next.superview && next.superview != row && [next.superview.superview isKindOfClass:UIStackView.class]) {
-                if (!CGAffineTransformEqualToTransform(next.superview.transform, nextT)) next.superview.transform = nextT;
-            }
-        } else {
-            if (!CGAffineTransformIsIdentity(prev.transform)) prev.transform = CGAffineTransformIdentity;
-            if (!CGAffineTransformIsIdentity(next.transform)) next.transform = CGAffineTransformIdentity;
-            if (prev.superview && !CGAffineTransformIsIdentity(prev.superview.transform)) prev.superview.transform = CGAffineTransformIdentity;
-            if (next.superview && !CGAffineTransformIsIdentity(next.superview.transform)) next.superview.transform = CGAffineTransformIdentity;
-        }
-    }
+    updateTransportPositionsForQueue(host);
 }
 %end
 
@@ -525,16 +533,23 @@ static void watchSlider(UIView *host) {
 }
 
 %hook _TtCO17NowPlaying_ECMKit11ProgressBar6Slider
+- (void)layoutSubviews {
+    %orig;
+    if (SGRPlayerQueueOpen()) {
+        CGFloat targetScale = 326.0 / 340.0;
+        CGAffineTransform scaleT = CGAffineTransformMakeScale(targetScale, 1.0);
+        UISlider *slider = (UISlider *)self;
+        if (!CGAffineTransformEqualToTransform(slider.transform, scaleT)) slider.transform = scaleT;
+    }
+}
 - (BOOL)isTracking {
     return ((UISlider *)self == sg_seekSlider && seekHeld()) || %orig;
 }
 %end
 
-// The ordinary player's duration unit and the AI DJ's (DJMDurationElementsUnit) hold the same progress bar and times.
-static void durationLaidOut(UIViewController *unit) {
-    UIView *host = unit.viewIfLoaded;
+static void updateDurationForQueue(void) {
+    UIView *host = sg_durationHost ?: sg_durationUnit.viewIfLoaded;
     if (!host) return;
-    watchSlider(host);
     UILabel *taken = monospaced(host, @"now-playing-time-take-label-internal", &kTakeKey);
     UILabel *remaining = monospaced(host, @"now-playing-time-remaning-label-internal", &kRemainingKey);
 
@@ -573,7 +588,18 @@ static void durationLaidOut(UIViewController *unit) {
             remaining.text = [remaining.text stringByReplacingOccurrencesOfString:@"-" withString:@"\u2212"];
         }
     }
+}
 
+// The ordinary player's duration unit and the AI DJ's (DJMDurationElementsUnit) hold the same progress bar and times.
+static void durationLaidOut(UIViewController *unit) {
+    sg_durationUnit = unit;
+    sg_durationHost = unit.viewIfLoaded;
+    UIView *host = sg_durationHost;
+    if (!host) return;
+    watchSlider(host);
+    updateDurationForQueue();
+
+    UILabel *taken = monospaced(host, @"now-playing-time-take-label-internal", &kTakeKey);
     // Whether Spotify's font has digits of one width shows in the descriptor's feature settings.
     if (!taken) return;
     static dispatch_once_t once;
