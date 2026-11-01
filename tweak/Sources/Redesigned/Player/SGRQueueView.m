@@ -1908,7 +1908,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
 
     _subtitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     _subtitleLabel.font = [UIFont systemFontOfSize:14.5 weight:UIFontWeightRegular];
-    _subtitleLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.55];
+    _subtitleLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.75];
     _subtitleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     [_rowContentView addSubview:_subtitleLabel];
 
@@ -1917,7 +1917,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     [_rowContentView addSubview:_handleHitView];
 
     _handleBarsLayer = [CAShapeLayer layer];
-    _handleBarsLayer.fillColor = [UIColor colorWithWhite:1.0 alpha:0.23].CGColor;
+    _handleBarsLayer.fillColor = [UIColor colorWithWhite:1.0 alpha:0.38].CGColor;
     [_handleHitView.layer addSublayer:_handleBarsLayer];
 
     _reorderPan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleReorderPan:)];
@@ -2021,7 +2021,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
 
     _titleLabel.frame = CGRectMake(textLeft, 3.5, titleW, 22.0);
     if (hasExp) {
-        _explicitView.frame = CGRectMake(textLeft + titleW + 5.0, 8.5, 12.5, 12.5);
+        _explicitView.frame = CGRectMake(textLeft + titleW + 5.0, 7.0, 12.5, 12.5);
     }
     _subtitleLabel.frame = CGRectMake(textLeft, 26.5, availW, 18.0);
 
@@ -2462,7 +2462,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     _historyClearButton = [UIButton buttonWithType:UIButtonTypeSystem];
     [_historyClearButton setTitle:@"Clear" forState:UIControlStateNormal];
     _historyClearButton.titleLabel.font = [UIFont systemFontOfSize:15.5 weight:UIFontWeightSemibold];
-    [_historyClearButton setTitleColor:[UIColor colorWithWhite:1.0 alpha:0.56] forState:UIControlStateNormal];
+    [_historyClearButton setTitleColor:[UIColor colorWithWhite:1.0 alpha:0.75] forState:UIControlStateNormal];
     [_historyClearButton addTarget:self action:@selector(handleClearHistoryTap) forControlEvents:UIControlEventTouchUpInside];
     [_historyHeaderView addSubview:_historyClearButton];
 
@@ -2505,7 +2505,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
 
     _npArtistLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     _npArtistLabel.font = [UIFont systemFontOfSize:15.5 weight:UIFontWeightRegular];
-    _npArtistLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.60];
+    _npArtistLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.75];
     _npArtistLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     [_npDetailsView addSubview:_npArtistLabel];
 
@@ -2519,7 +2519,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     _npMoreButton = [UIButton buttonWithType:UIButtonTypeCustom];
     _npMoreButton.backgroundColor = UIColor.clearColor;
     UIImageSymbolConfiguration *moreCfg = [UIImageSymbolConfiguration configurationWithPointSize:18.0 weight:UIImageSymbolWeightBold];
-    [_npMoreButton setImage:[[UIImage systemImageNamed:@"ellipsis" withConfiguration:moreCfg] imageWithTintColor:[UIColor colorWithWhite:1.0 alpha:0.60] renderingMode:UIImageRenderingModeAlwaysOriginal] forState:UIControlStateNormal];
+    [_npMoreButton setImage:[[UIImage systemImageNamed:@"ellipsis" withConfiguration:moreCfg] imageWithTintColor:UIColor.whiteColor renderingMode:UIImageRenderingModeAlwaysOriginal] forState:UIControlStateNormal];
     [_npDetailsView addSubview:_npMoreButton];
     SGRPlayerMenuWatchProxy(_npMoreButton);
 
@@ -2550,7 +2550,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
 
     _continueSubtitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     _continueSubtitleLabel.font = [UIFont systemFontOfSize:13.0 weight:UIFontWeightRegular];
-    _continueSubtitleLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.56];
+    _continueSubtitleLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.68];
     _continueSubtitleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     [_continueHeaderView addSubview:_continueSubtitleLabel];
 
@@ -2698,12 +2698,12 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     if (plain) {
         UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:19.0 weight:UIImageSymbolWeightBold];
         NSString *sym = isSaved ? @"checkmark" : @"plus";
-        UIColor *tint = isSaved ? SGRAccent() : [UIColor colorWithWhite:1.0 alpha:0.60];
+        UIColor *tint = isSaved ? SGRAccent() : UIColor.whiteColor;
         return [[UIImage systemImageNamed:sym withConfiguration:cfg] imageWithTintColor:tint renderingMode:UIImageRenderingModeAlwaysOriginal];
     } else {
         UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:21.0 weight:UIImageSymbolWeightRegular];
         NSString *sym = isSaved ? @"checkmark.circle.fill" : @"plus.circle";
-        UIColor *tint = isSaved ? SGRAccent() : [UIColor colorWithWhite:1.0 alpha:0.60];
+        UIColor *tint = isSaved ? SGRAccent() : UIColor.whiteColor;
         return [[UIImage systemImageNamed:sym withConfiguration:cfg] imageWithTintColor:tint renderingMode:UIImageRenderingModeAlwaysOriginal];
     }
 }
@@ -2914,7 +2914,7 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     CGFloat titleY = 15.5;
     _npTitleLabel.frame = CGRectMake(npTextLeft, titleY, npTitleW, 22.0);
     if (npHasExp) {
-        _npExplicitView.frame = CGRectMake(npTextLeft + npTitleW + 5.0, titleY + 4.0, 14.0, 14.0);
+        _npExplicitView.frame = CGRectMake(npTextLeft + npTitleW + 5.0, titleY + 2.5, 14.0, 14.0);
     }
     _npArtistLabel.frame = CGRectMake(npTextLeft, titleY + 22.0 + 1.0, npAvailW, 19.0);
 
