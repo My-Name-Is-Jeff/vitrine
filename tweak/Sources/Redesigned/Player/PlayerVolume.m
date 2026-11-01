@@ -26,7 +26,7 @@ static const CGFloat kGlyphsHalf = 14;
 // scale (each clamped to the room the row has on that side). Music's own held numbers are 18, 7, 9 and 1.08.
 static const CGFloat kTrackRest = 7, kTrackHeld = 12, kStretch = 5, kGlyphShift = 6, kGlyphHeldScale = 1.02;
 // White's opacity: the fill at rest and held, the empty part, the glyphs at rest (held they are full white).
-static const CGFloat kFillRest = 0.65, kFillHeld = 1, kEmpty = 0.24, kGlyphRest = 0.68;
+static const CGFloat kFillRest = 0.65, kFillHeld = 1, kEmpty = 0.24, kGlyphRest = 0.62;
 
 static char kSessionContext;
 

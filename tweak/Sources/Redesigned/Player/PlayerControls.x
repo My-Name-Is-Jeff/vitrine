@@ -24,7 +24,7 @@
 #import "Shared/Lyrics/Lyrics.h"
 #import "Player.h"
 
-static const CGFloat kSkipGlyphSize = 29.5, kPlayGlyphSize = 40.0;
+static const CGFloat kSkipGlyphSize = 33.5, kPlayGlyphSize = 44.5;
 // A spinner that is still up this long after a state change is buffering, not a track starting.
 static const NSTimeInterval kSpinnerCheck = 0.6;
 
@@ -298,18 +298,12 @@ static void updateTransportPositionsForQueue(UIView *host) {
 
     BOOL queueOpen = SGRPlayerQueueOpen();
     if (queueOpen) {
-        CGFloat w = host.bounds.size.width;
-        if (w < 100.0) w = [UIScreen mainScreen].bounds.size.width;
-        CGFloat targetPrevX = round(w * 0.5 - 104.5);
-        CGFloat targetNextX = round(w * 0.5 + 104.5);
-        CGPoint prevCenter = [prev.superview convertPoint:prev.center toView:host];
-        prevCenter.x -= prev.transform.tx;
-        CGPoint nextCenter = [next.superview convertPoint:next.center toView:host];
-        nextCenter.x -= next.transform.tx;
-        CGFloat prevMove = round(targetPrevX - prevCenter.x);
-        CGFloat nextMove = round(targetNextX - nextCenter.x);
-        CGAffineTransform prevT = CGAffineTransformMakeTranslation(prevMove, 0.0);
-        CGAffineTransform nextT = CGAffineTransformMakeTranslation(nextMove, 0.0);
+        // Spotify distributes 5 equal columns across 390 pt width:
+        // Slot 1 (Previous) center = 117.0 pt. Moving by -26.5 pt places center at exactly x = 90.5 pt.
+        // Slot 3 (Next) center = 273.0 pt. Moving by +26.5 pt places center at exactly x = 299.5 pt.
+        // Distance from screen center (195.0 pt) is exactly 104.5 pt on both sides, matching Apple Music.
+        CGAffineTransform prevT = CGAffineTransformMakeTranslation(-26.5, 0.0);
+        CGAffineTransform nextT = CGAffineTransformMakeTranslation(26.5, 0.0);
         if (!CGAffineTransformEqualToTransform(prev.transform, prevT)) prev.transform = prevT;
         if (!CGAffineTransformEqualToTransform(next.transform, nextT)) next.transform = nextT;
 

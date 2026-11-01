@@ -1917,7 +1917,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     [_rowContentView addSubview:_handleHitView];
 
     _handleBarsLayer = [CAShapeLayer layer];
-    _handleBarsLayer.fillColor = [UIColor colorWithWhite:1.0 alpha:0.28].CGColor;
+    _handleBarsLayer.fillColor = [UIColor colorWithWhite:1.0 alpha:0.23].CGColor;
     [_handleHitView.layer addSublayer:_handleBarsLayer];
 
     _reorderPan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleReorderPan:)];
@@ -2284,6 +2284,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     UILabel *_npTitleLabel;
     UIImageView *_npExplicitView;
     UILabel *_npArtistLabel;
+    UIButton *_npStarButton;
     UIButton *_npMoreButton;
 
     // Section 2: Continue Playing Sticky Header & Rows
@@ -2506,6 +2507,12 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     _npArtistLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     [_npDetailsView addSubview:_npArtistLabel];
 
+    // Star favorite button matching Apple Music's Now Playing mini-card (center x = 295 pt)
+    _npStarButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    _npStarButton.backgroundColor = UIColor.clearColor;
+    [_npStarButton addTarget:self action:@selector(handleNowPlayingStarTap) forControlEvents:UIControlEventTouchUpInside];
+    [_npDetailsView addSubview:_npStarButton];
+
     // Bare white ellipsis button matching Apple Music's Now Playing mini-card; single-tap opens the full system menu
     _npMoreButton = [UIButton buttonWithType:UIButtonTypeCustom];
     _npMoreButton.backgroundColor = UIColor.clearColor;
@@ -2690,6 +2697,15 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     _npExplicitView.hidden = !item.isExplicit;
     _continueSubtitleLabel.text = subtitle ?: @"";
 
+    NSString *trackURI = item.uri ?: @"";
+    BOOL isSaved = [[SGRQueueSession shared] isTrackSaved:trackURI];
+    UIImageSymbolConfiguration *starCfg = [UIImageSymbolConfiguration configurationWithPointSize:19.0 weight:UIImageSymbolWeightBold];
+    UIImage *starImg = isSaved
+        ? [[UIImage systemImageNamed:@"star.fill" withConfiguration:starCfg] imageWithTintColor:UIColor.whiteColor renderingMode:UIImageRenderingModeAlwaysOriginal]
+        : [[UIImage systemImageNamed:@"star" withConfiguration:starCfg] imageWithTintColor:[UIColor colorWithWhite:1.0 alpha:0.60] renderingMode:UIImageRenderingModeAlwaysOriginal];
+    [_npStarButton setImage:starImg forState:UIControlStateNormal];
+    _npStarButton.hidden = (item.uri.length == 0);
+
     UIImage *liveArt = SGRNowPlayingArtwork(NULL, NULL);
     if (liveArt) {
         _npArtView.image = liveArt;
@@ -2868,10 +2884,13 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     _npArtView.frame = CGRectMake(kSideMargin, 0.0, 72.0, 72.0);
     _npDetailsView.bounds = CGRectMake(0.0, 0.0, w, 72.0);
     _npDetailsView.center = CGPointMake(w * 0.5, 36.0);
-    _npMoreButton.frame = CGRectMake(w - kSideMargin - 32.0, round((72.0 - 32.0) * 0.5), 32.0, 32.0);
+    CGFloat moreW = 32.0;
+    CGFloat starW = 28.0;
+    _npMoreButton.frame = CGRectMake(w - kSideMargin - moreW, round((72.0 - moreW) * 0.5), moreW, moreW);
+    _npStarButton.frame = CGRectMake(w - kSideMargin - moreW - 10.0 - starW, round((72.0 - starW) * 0.5), starW, starW);
 
     CGFloat npTextLeft = kSideMargin + 72.0 + 13.0; // 117.0 pt
-    CGFloat npMaxRight = w - kSideMargin - 32.0 - 8.0;
+    CGFloat npMaxRight = w - kSideMargin - moreW - 10.0 - starW - 8.0;
     CGFloat npAvailW = MAX(40.0, npMaxRight - npTextLeft);
     BOOL npHasExp = !_npExplicitView.hidden;
     CGFloat npBadgeW = npHasExp ? (14.0 + 5.0) : 0.0;
@@ -3300,6 +3319,28 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
 
 - (void)handleNowPlayingArtTap {
     SGRPlayerToggleQueue();
+}
+
+- (void)handleNowPlayingStarTap {
+    NSString *trackURI = _currentItem.uri ?: @"";
+    if (!trackURI.length) return;
+    BOOL wasSaved = [[SGRQueueSession shared] isTrackSaved:trackURI];
+    BOOL newSaved = !wasSaved;
+    [[SGRQueueSession shared] setTrackURI:trackURI saved:newSaved];
+
+    UIImageSymbolConfiguration *starCfg = [UIImageSymbolConfiguration configurationWithPointSize:19.0 weight:UIImageSymbolWeightBold];
+    UIImage *starImg = newSaved
+        ? [[UIImage systemImageNamed:@"star.fill" withConfiguration:starCfg] imageWithTintColor:UIColor.whiteColor renderingMode:UIImageRenderingModeAlwaysOriginal]
+        : [[UIImage systemImageNamed:@"star" withConfiguration:starCfg] imageWithTintColor:[UIColor colorWithWhite:1.0 alpha:0.60] renderingMode:UIImageRenderingModeAlwaysOriginal];
+    [_npStarButton setImage:starImg forState:UIControlStateNormal];
+
+    [UIView animateWithDuration:0.12 animations:^{
+        self->_npStarButton.transform = CGAffineTransformMakeScale(1.25, 1.25);
+    } completion:^(BOOL finished) {
+        [UIView animateWithDuration:0.15 animations:^{
+            self->_npStarButton.transform = CGAffineTransformIdentity;
+        }];
+    }];
 }
 
 - (void)handleClearHistoryTap {
