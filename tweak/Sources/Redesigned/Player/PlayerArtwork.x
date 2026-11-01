@@ -397,9 +397,12 @@ static UIView *coverOfImage(UIView *image) {
 }
 - (void)didMoveToWindow {
     %orig;
-    if (self.window) sg_activeCoverList = (UIView *)self;
+    UIView *v = (UIView *)self;
+    if (v.window) sg_activeCoverList = v;
 }
 %end
+
+static SGRPlayerArtworkWatcher *sg_artworkWatcher;
 
 %ctor {
     if (!SGRedesignedUI()) return;
