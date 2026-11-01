@@ -412,8 +412,12 @@ static SGRLyricsLayout layoutIn(UIView *host, SGRPlayerInlineMode mode) {
         return l;
     }
 
-    CGRect area = SGRPlayerArtworkAreaIn(host), cover = SGRPlayerCoverFrameIn(host);
-    if (CGRectIsNull(area) || CGRectIsNull(cover)) return l;
+    CGRect area = SGRPlayerArtworkAreaIn(host);
+    if (CGRectIsNull(area) || area.size.width < 100.0) {
+        area = CGRectMake(0.0, 80.0, host.bounds.size.width, host.bounds.size.width + 40.0);
+    }
+    CGRect cover = validCoverFrameIn(host);
+    if (CGRectIsNull(cover)) return l;
 
     CGFloat thumbSide = kThumbSide;
     CGFloat thumbGap = kThumbGap;
@@ -1194,9 +1198,7 @@ static void replace(void) {
     }
     if (!stageOpen) return;
 
-    SGRPlayerLyricsOverlay *overlay = (sg_inlineMode == SGRPlayerInlineModeQueue)
-        ? overlayIn(host)
-        : objc_getAssociatedObject(host, &kOverlayKey);
+    SGRPlayerLyricsOverlay *overlay = overlayIn(host);
     if (!overlay.superview) return;
     if (overlay.superview == host && host.subviews.lastObject != overlay) [host bringSubviewToFront:overlay];
     if (sg_alone && sg_inlineMode == SGRPlayerInlineModeLyrics) {
@@ -1209,8 +1211,25 @@ static void replace(void) {
     place(overlay, host, l);
     overlay.thumb.transform = thumbTransform(l);
     overlay.cover.layer.cornerRadius = thumbRadiusForMode(l, YES, sg_inlineMode);
+    if (!overlay.cover.image) {
+        UIImage *picture = liveCoverImageIn(host);
+        if (picture) overlay.cover.image = picture;
+    }
     if (sg_inlineMode == SGRPlayerInlineModeLyrics) {
+        overlay.stage.hidden = NO;
+        overlay.stage.alpha = 1.0;
+        overlay.stage.transform = CGAffineTransformIdentity;
+        overlay.thumb.hidden = NO;
+        overlay.thumb.alpha = 1.0;
+        overlay.lyrics.hidden = NO;
+        overlay.lyrics.alpha = 1.0;
         overlay.lyrics.frame = overlay.stage.bounds;
+        if (overlay.existingQueue) {
+            overlay.existingQueue.hidden = YES;
+            overlay.existingQueue.alpha = 0.0;
+        }
+        setHeaderShownForQueue(YES, NO);
+        if (sg_info.viewIfLoaded) sg_info.viewIfLoaded.alpha = 1.0;
     } else if (sg_inlineMode == SGRPlayerInlineModeQueue) {
         SGRPlayerSetCoverHidden(YES);
         if (sg_info.viewIfLoaded) sg_info.viewIfLoaded.alpha = 0;
@@ -1273,25 +1292,26 @@ static void replace(void) {
 }
 
 // The bar morphs back out of a full size cover as the player closes, so the thumbnail is put away first.
-// While Queue is open, swiping down to minimize Now Playing and reopening it preserves the open Queue state.
+// While Queue or Lyrics is open, swiping down to minimize Now Playing and reopening it preserves the open stage state.
 - (void)viewWillDisappear:(BOOL)animated {
-    if (sg_inlineMode == SGRPlayerInlineModeLyrics) {
-        setMode(SGRPlayerInlineModeNone, NO);
-    }
     // The landscape screen outlives the lines for a track without lyrics, but not the player.
     SGRPlayerShowLandscape(NO);
     %orig;
 }
 
 - (void)viewDidDisappear:(BOOL)animated {
-    if (sg_inlineMode == SGRPlayerInlineModeLyrics) {
-        setMode(SGRPlayerInlineModeNone, NO);
-    }
     %orig;
 }
 
 - (void)viewWillAppear:(BOOL)animated {
     %orig;
+    UIView *host = ((UIViewController *)self).viewIfLoaded;
+    if (host) sg_host = host;
+    if (sg_inlineMode == SGRPlayerInlineModeLyrics && !sg_rest && !sg_alone) {
+        restartRest();
+    }
+    SGRPlayerLyricsChanged();
+    SGRPlayerQueueChanged();
     replace();
 }
 %end
