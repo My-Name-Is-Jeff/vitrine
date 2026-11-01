@@ -48,10 +48,24 @@ static UIView *coverIn(UIView *tilt) {
 }
 
 static BOOL inCoverCell(UIView *tilt) {
-    static Class cell;
-    if (!cell) cell = NSClassFromString(@"_TtC28NowPlaying_ContentLayersImpl16CoverArtCellImpl");
+    static Class cell, legacyCell, partyCell, videoCell;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        cell = NSClassFromString(@"_TtC28NowPlaying_ContentLayersImpl16CoverArtCellImpl");
+        legacyCell = NSClassFromString(@"_TtC28NowPlaying_ContentLayersImpl22LegacyCoverArtCellImpl");
+        partyCell = NSClassFromString(@"_TtC39ListeningParties_NowPlayingViewModeImpl34NowPlayingLiveRoomCoverArtCellImpl");
+        videoCell = NSClassFromString(@"_TtC28NowPlaying_ContentLayersImpl31VerticalVideoCellImplementation");
+    });
     for (UIView *v = tilt.superview; v; v = v.superview) {
-        if ([v isKindOfClass:cell]) return YES;
+        if ((cell && [v isKindOfClass:cell]) ||
+            (legacyCell && [v isKindOfClass:legacyCell]) ||
+            (partyCell && [v isKindOfClass:partyCell]) ||
+            (videoCell && [v isKindOfClass:videoCell])) {
+            return YES;
+        }
+        if ([v isKindOfClass:UICollectionViewCell.class]) {
+            return YES;
+        }
     }
     return NO;
 }
@@ -66,6 +80,8 @@ static void scaleCover(UIView *tilt, CGFloat scale) {
 }
 
 #pragma mark - where the cover is
+
+static __weak UIView *sg_activeCoverList;
 
 // The tilt view of the cover on screen: the queue is a cover per cell and the cells out of view are
 // kept hidden (player/02.txt:521), so the one showing is the one in a window with nothing hidden over it. On the first
@@ -83,9 +99,15 @@ static UIView *showingTilt(void) {
 
 UIView *SGRPlayerCoverList(void) {
     for (UIView *v = showingTilt(); v; v = v.superview) {
-        if ([v isKindOfClass:UICollectionView.class]) return v;
+        if ([v isKindOfClass:UICollectionView.class]) {
+            sg_activeCoverList = v;
+            return v;
+        }
     }
-    return nil;
+    if (sg_activeCoverList && sg_activeCoverList.window) {
+        return sg_activeCoverList;
+    }
+    return sg_activeCoverList;
 }
 
 CGRect SGRPlayerCoverFrameIn(UIView *host) {
@@ -125,7 +147,13 @@ void SGRPlayerSetCoverHidden(BOOL hidden) {
     if (!hidden) return;
     UIView *tilt = showingTilt();
     UIView *cover = coverIn(tilt);
-    if (!cover) return;
+    if (!cover) {
+        if (tilt) {
+            tilt.alpha = 0;
+            sg_hiddenCover = tilt;
+        }
+        return;
+    }
     UIView *plate = SGRShadowPlateIn(tilt, &kPlateKey);
     cover.alpha = 0;
     plate.alpha = 0;
@@ -362,7 +390,16 @@ static UIView *coverOfImage(UIView *image) {
 
 @end
 
-static SGRPlayerArtworkWatcher *sg_artworkWatcher;
+%hook _TtC35NowPlaying_ContentLayerPlatformImpl24AccessibleCollectionView
+- (void)layoutSubviews {
+    %orig;
+    sg_activeCoverList = (UIView *)self;
+}
+- (void)didMoveToWindow {
+    %orig;
+    if (self.window) sg_activeCoverList = (UIView *)self;
+}
+%end
 
 %ctor {
     if (!SGRedesignedUI()) return;

@@ -1783,9 +1783,9 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
         CGRect rect = CGRectMake(0, 0, size.width, size.height);
         UIBezierPath *capsule = [UIBezierPath bezierPathWithRoundedRect:rect cornerRadius:size.height * 0.5];
 
-        // Active:   rgba(255, 255, 255, 0.72) over backdrop blur
+        // Active:   rgba(255, 255, 255, 0.60) over backdrop blur
         // Inactive: rgba(255, 255, 255, 0.12)
-        UIColor *fill = active ? [UIColor colorWithWhite:1.0 alpha:0.72] : [UIColor colorWithWhite:1.0 alpha:0.12];
+        UIColor *fill = active ? [UIColor colorWithWhite:1.0 alpha:0.60] : [UIColor colorWithWhite:1.0 alpha:0.12];
         [fill setFill];
         [capsule fill];
 
@@ -1794,8 +1794,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
         if (isTransitionsGlyph) {
             SGRDrawTransitionsOverlappingCircles(cg, center, active);
         } else if (symbolName.length) {
-            UIImageSymbolWeight weight = [symbolName isEqualToString:@"infinity"] ? UIImageSymbolWeightSemibold : UIImageSymbolWeightBold;
-            UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:16.0 weight:weight];
+            UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:16.0 weight:UIImageSymbolWeightSemibold];
             if (active) {
                 // Render symbol masked out via DestinationOut knockout
                 UIImage *sym = [[UIImage systemImageNamed:symbolName withConfiguration:cfg] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
@@ -1953,8 +1952,8 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     static CGPathRef sharedBarsPath;
     static dispatch_once_t barsOnce;
     dispatch_once(&barsOnce, ^{
-        CGFloat barLeft = 15.0, barW = 22.0, barH = 2.3, barPitch = 4.8;
-        CGFloat barTop = round((48.0 - (barH * 3.0 + 2.5 * 2.0)) * 0.5);
+        CGFloat barLeft = 15.0, barW = 21.5, barH = 1.8, barPitch = 4.5;
+        CGFloat barTop = round((48.0 - (barH * 3.0 + 2.7 * 2.0)) * 0.5);
         UIBezierPath *bars = [UIBezierPath bezierPath];
         for (int i = 0; i < 3; i++) {
             CGRect r = CGRectMake(barLeft, barTop + i * barPitch, barW, barH);
@@ -1963,7 +1962,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
         sharedBarsPath = CGPathRetain(bars.CGPath);
     });
     _handleBarsLayer = [CAShapeLayer layer];
-    _handleBarsLayer.fillColor = [UIColor colorWithWhite:1.0 alpha:0.28].CGColor;
+    _handleBarsLayer.fillColor = [UIColor colorWithWhite:1.0 alpha:0.32].CGColor;
     _handleBarsLayer.path = sharedBarsPath;
     [_handleHitView.layer addSublayer:_handleBarsLayer];
 
@@ -2049,13 +2048,13 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     CGFloat artY = 0.0;
     _artView.frame = CGRectMake(kSideMargin, artY, 48.0, 48.0);
 
-    // 3-line handle aligned to right margin (x_right = 354 pt, 36 pt inset from right edge of 390 pt screen)
-    CGFloat barW = 22.0;
+    // 3-line handle aligned to right margin (inset 35.5 pt matching Apple Music @ 390 pt screen)
+    CGFloat barW = 21.5;
     CGFloat handleTouchW = 52.0;
-    _handleHitView.frame = CGRectMake(w - 36.0 - barW - 15.0, 0, handleTouchW, 48.0);
+    _handleHitView.frame = CGRectMake(w - 35.5 - barW - 15.0, 0, handleTouchW, 48.0);
 
     CGFloat textLeft = kSideMargin + 48.0 + 13.0; // 93.0 pt
-    CGFloat maxRight = _showsHandle ? (w - 36.0 - barW - 10.0) : (w - kSideMargin);
+    CGFloat maxRight = _showsHandle ? (w - 35.5 - barW - 10.0) : (w - kSideMargin);
     CGFloat availW = MAX(40.0, maxRight - textLeft);
 
     BOOL hasExp = !_explicitView.hidden;
@@ -2325,6 +2324,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     // Section 1: Now Playing Card (Clipped along y = 84.7pt so it never peeks above pinned 4-pill bar)
     UIView *_nowPlayingClipView;
     UIView *_nowPlayingCard;
+    UIView *_npArtShadowView;
     UIImageView *_npArtView;
     UIView *_npDetailsView;
     UILabel *_npTitleLabel;
@@ -2546,7 +2546,17 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     [_nowPlayingCard addInteraction:npCardMenu];
     [_nowPlayingClipView addSubview:_nowPlayingCard];
 
-    _npArtView = [[UIImageView alloc] initWithFrame:CGRectMake(kSideMargin, 6.0, 72.0, 72.0)];
+    _npArtShadowView = [[UIView alloc] initWithFrame:CGRectMake(kSideMargin, 0.0, 72.0, 72.0)];
+    _npArtShadowView.backgroundColor = UIColor.clearColor;
+    _npArtShadowView.clipsToBounds = NO;
+    _npArtShadowView.layer.shadowColor = UIColor.blackColor.CGColor;
+    _npArtShadowView.layer.shadowOpacity = 0.38;
+    _npArtShadowView.layer.shadowRadius = 11.0;
+    _npArtShadowView.layer.shadowOffset = CGSizeMake(0.0, 5.0);
+    _npArtShadowView.layer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(0.0, 0.0, 72.0, 72.0) cornerRadius:11.0].CGPath;
+    [_nowPlayingCard addSubview:_npArtShadowView];
+
+    _npArtView = [[UIImageView alloc] initWithFrame:CGRectMake(0.0, 0.0, 72.0, 72.0)];
     _npArtView.contentMode = UIViewContentModeScaleAspectFill;
     _npArtView.clipsToBounds = YES;
     _npArtView.layer.cornerRadius = 11.0;
@@ -2554,7 +2564,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     _npArtView.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.12];
     _npArtView.userInteractionEnabled = YES;
     [_npArtView addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleNowPlayingArtTap)]];
-    [_nowPlayingCard addSubview:_npArtView];
+    [_npArtShadowView addSubview:_npArtView];
 
     _npDetailsView = [[UIView alloc] initWithFrame:CGRectZero];
     _npDetailsView.backgroundColor = UIColor.clearColor;
@@ -2694,7 +2704,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
 
 - (void)setTransitionArtworkHidden:(BOOL)hidden {
     _transitionArtHidden = hidden;
-    _npArtView.alpha = hidden ? 0.0 : 1.0;
+    _npArtShadowView.alpha = hidden ? 0.0 : 1.0;
 }
 
 - (void)setHeaderSlideOffset:(CGFloat)headerOffsetY listSlideOffset:(CGFloat)listOffsetY {
@@ -2734,8 +2744,8 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
 }
 
 - (CGRect)visibleNowPlayingArtworkFrameInView:(UIView *)targetView {
-    if (_npArtView && !_nowPlayingClipView.hidden && _scrollView.contentOffset.y <= 4.0) {
-        CGRect rect = [_npArtView convertRect:_npArtView.bounds toView:targetView ?: self];
+    if (_npArtShadowView && !_nowPlayingClipView.hidden && _scrollView.contentOffset.y <= 4.0) {
+        CGRect rect = [_npArtShadowView convertRect:_npArtShadowView.bounds toView:targetView ?: self];
         if (rect.size.width >= 40.0 && rect.size.height >= 40.0) return rect;
     }
     return [self nowPlayingArtworkFrameInView:targetView];
@@ -2870,7 +2880,7 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
             });
         }
     }
-    _npArtView.alpha = _transitionArtHidden ? 0.0 : 1.0;
+    _npArtShadowView.alpha = _transitionArtHidden ? 0.0 : 1.0;
 }
 
 - (void)reconcileTrackRowsAnimated:(BOOL)animateReorder {
@@ -3026,8 +3036,10 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         [self applyHistoryInsetPreservingOffset];
     }
 
-    // Section 1: Now Playing Card subviews (72x72 art at x=32, screenY = 80.0 pt)
-    _npArtView.frame = CGRectMake(kSideMargin, 0.0, 72.0, 72.0);
+    // Section 1: Now Playing Card subviews (72x72 art with soft shadow at x=32, screenY = 80.0 pt)
+    _npArtShadowView.frame = CGRectMake(kSideMargin, 0.0, 72.0, 72.0);
+    _npArtView.frame = CGRectMake(0.0, 0.0, 72.0, 72.0);
+    _npArtShadowView.layer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:_npArtView.bounds cornerRadius:11.0].CGPath;
     _npDetailsView.bounds = CGRectMake(0.0, 0.0, w, 72.0);
     _npDetailsView.center = CGPointMake(w * 0.5, 36.0);
     CGFloat moreW = 28.0;
@@ -3091,10 +3103,10 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         _emptyQueuePromptLabel.center = CGPointMake(w * 0.5, 230.5);
     }
 
-    _continueTitleLabel.font = [UIFont systemFontOfSize:19.0 weight:UIFontWeightBold];
+    _continueTitleLabel.font = [UIFont systemFontOfSize:19.5 weight:UIFontWeightBold];
     _continueTitleLabel.frame = CGRectMake(kSideMargin, hasPills ? 56.3 : 0.0, w - kSideMargin * 2.0, 22.0);
     _continueSubtitleLabel.font = [UIFont systemFontOfSize:15.0 weight:UIFontWeightRegular];
-    _continueSubtitleLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.55];
+    _continueSubtitleLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.58];
     _continueSubtitleLabel.frame = CGRectMake(kSideMargin, hasPills ? 80.3 : 22.0, w - kSideMargin * 2.0, 18.0);
 
     // Section 0 Header subviews: "History" + "Clear" aligned at x = 32 .. w - 32
@@ -3164,6 +3176,7 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     CGFloat npClipBottomDocY = MIN(kNowPlayingDocY + kNowPlayingHeight, queueHeaderDocY);
     CGFloat npClipH = MAX(0.0, npClipBottomDocY - npClipTopDocY);
     _nowPlayingClipView.frame = CGRectMake(0.0, npClipTopDocY, w, npClipH);
+    _nowPlayingClipView.clipsToBounds = (scrollY > 1.0);
     _nowPlayingClipView.hidden = (npClipH <= 0.5);
     _nowPlayingCard.frame = CGRectMake(0.0, kNowPlayingDocY - npClipTopDocY, w, kNowPlayingHeight);
 
