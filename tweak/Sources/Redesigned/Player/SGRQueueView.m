@@ -1667,29 +1667,23 @@ static void SGRDrawTransitionsOverlappingCircles(CGContextRef cg, CGPoint center
     CGFloat rightInnerR = 1.7;
 
     if (active) {
-        // Cut out directly through the translucent capsule so background shows through!
+        // Render glyph in transparency layer then knock out of capsule so center hole is preserved
+        CGContextSaveGState(cg);
         CGContextSetBlendMode(cg, kCGBlendModeDestinationOut);
+        CGContextBeginTransparencyLayer(cg, NULL);
 
-        // 1. Left circle ring at 55% knockout so warm background bleeds through matching Apple Music
+        // 1. Left circle ring at 55% knockout
         UIBezierPath *leftRing = [UIBezierPath bezierPathWithArcCenter:CGPointMake(leftX, center.y)
                                                                 radius:leftR
                                                             startAngle:0
                                                               endAngle:(CGFloat)(M_PI * 2.0)
                                                              clockwise:YES];
-        leftRing.lineWidth = 1.8;
+        leftRing.lineWidth = 1.5;
         [[UIColor colorWithWhite:0.0 alpha:0.55] setStroke];
         [leftRing stroke];
 
-        // 2. Clear overlapping interior of the left ring directly beneath the right donut
-        UIBezierPath *occluder = [UIBezierPath bezierPathWithArcCenter:CGPointMake(rightX, center.y)
-                                                                radius:rightOuterR
-                                                            startAngle:0
-                                                              endAngle:(CGFloat)(M_PI * 2.0)
-                                                             clockwise:YES];
-        [[UIColor colorWithWhite:0.0 alpha:1.0] setFill];
-        [occluder fill];
-
-        // 3. Right donut at 100% knockout
+        // 2. Cut out where right donut overlaps the left ring
+        CGContextSetBlendMode(cg, kCGBlendModeClear);
         UIBezierPath *rightDonut = [UIBezierPath bezierPathWithArcCenter:CGPointMake(rightX, center.y)
                                                                   radius:rightOuterR
                                                               startAngle:0
@@ -1700,8 +1694,15 @@ static void SGRDrawTransitionsOverlappingCircles(CGContextRef cg, CGPoint center
                                                            startAngle:0
                                                              endAngle:(CGFloat)(M_PI * 2.0)
                                                             clockwise:YES] bezierPathByReversingPath]];
+        [rightDonut fill];
+
+        // 3. Right donut at 100% knockout with center hole intact
+        CGContextSetBlendMode(cg, kCGBlendModeNormal);
         [[UIColor colorWithWhite:0.0 alpha:1.0] setFill];
         [rightDonut fill];
+
+        CGContextEndTransparencyLayer(cg);
+        CGContextRestoreGState(cg);
     } else {
         // Inactive / grayed-out: solid white right donut and 55% white left ring matching Apple Music exactly
         CGContextSaveGState(cg);
@@ -1755,7 +1756,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
 
         // Active:   rgba(255, 255, 255, 0.72) over backdrop blur
         // Inactive: rgba(255, 255, 255, 0.12)
-        UIColor *fill = active ? [UIColor colorWithWhite:1.0 alpha:0.72] : [UIColor colorWithWhite:1.0 alpha:0.12];
+        UIColor *fill = active ? [UIColor colorWithWhite:1.0 alpha:0.60] : [UIColor colorWithWhite:1.0 alpha:0.12];
         [fill setFill];
         [capsule fill];
 
@@ -2698,12 +2699,12 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     if (plain) {
         UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:19.0 weight:UIImageSymbolWeightBold];
         NSString *sym = isSaved ? @"checkmark" : @"plus";
-        UIColor *tint = isSaved ? SGRAccent() : UIColor.whiteColor;
+        UIColor *tint = UIColor.whiteColor;
         return [[UIImage systemImageNamed:sym withConfiguration:cfg] imageWithTintColor:tint renderingMode:UIImageRenderingModeAlwaysOriginal];
     } else {
         UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:21.0 weight:UIImageSymbolWeightRegular];
         NSString *sym = isSaved ? @"checkmark.circle.fill" : @"plus.circle";
-        UIColor *tint = isSaved ? SGRAccent() : UIColor.whiteColor;
+        UIColor *tint = UIColor.whiteColor;
         return [[UIImage systemImageNamed:sym withConfiguration:cfg] imageWithTintColor:tint renderingMode:UIImageRenderingModeAlwaysOriginal];
     }
 }
@@ -3051,9 +3052,8 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         if (row.isSwipeParked) [row closeSwipeAnimated:YES];
     }
     _dragStartOffsetY = scrollView.contentOffset.y;
-    // User started dragging inside "Continue Playing": clamp minContentOffset.y = 0 so downward pan/fling
-    // stops cleanly at scrollY = 0 with zero overshoot into History, without ever mutating contentInset mid-drag.
-    _clampAtZeroOnDragOrDecel = (_dragStartOffsetY > 2.0);
+    // Clamping detent at scrollY = 0 is active when dragging back toward Now Playing from either Queue or History
+    _clampAtZeroOnDragOrDecel = (fabs(_dragStartOffsetY) > 2.0);
 }
 
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView {
@@ -3133,12 +3133,9 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     // Case 3: Swiping or scrolling inside History (_dragStartOffsetY < -2.0)
     // Any upward swipe/fling towards Now Playing snaps cleanly to scrollY = 0 pt, matching downward snap from Queue
     if (_dragStartOffsetY < -2.0) {
-        if (targetContentOffset->y > -24.0 || (currentY > -72.0 && velocity.y > 0.10) || targetContentOffset->y > 0.0) {
+        if (velocity.y > 0.05 || targetContentOffset->y >= -54.0 || targetContentOffset->y > 0.0) {
             targetContentOffset->y = 0.0;
             _clampAtZeroOnDragOrDecel = YES;
-        } else if (targetContentOffset->y > -54.0) {
-            targetContentOffset->y = MAX(-histH, -54.0);
-            _clampAtZeroOnDragOrDecel = NO;
         } else {
             targetContentOffset->y = MAX(-histH, targetContentOffset->y);
             _clampAtZeroOnDragOrDecel = NO;
