@@ -2542,13 +2542,13 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
 
     _continueTitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     _continueTitleLabel.text = @"Continue Playing";
-    _continueTitleLabel.font = [UIFont systemFontOfSize:18.5 weight:UIFontWeightBold];
+    _continueTitleLabel.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightBold];
     _continueTitleLabel.textColor = UIColor.whiteColor;
     [_continueHeaderView addSubview:_continueTitleLabel];
 
     _continueSubtitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _continueSubtitleLabel.font = [UIFont systemFontOfSize:14.5 weight:UIFontWeightRegular];
-    _continueSubtitleLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.55];
+    _continueSubtitleLabel.font = [UIFont systemFontOfSize:13.0 weight:UIFontWeightRegular];
+    _continueSubtitleLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.58];
     _continueSubtitleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     [_continueHeaderView addSubview:_continueSubtitleLabel];
 
@@ -2940,8 +2940,8 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     }
 
     BOOL hasPills = (numPills > 0);
-    _continueTitleLabel.frame = CGRectMake(kSideMargin, hasPills ? 56.3 : 0.0, w - kSideMargin * 2.0, 24.0);
-    _continueSubtitleLabel.frame = CGRectMake(kSideMargin, hasPills ? 80.3 : 24.0, w - kSideMargin * 2.0, 19.0);
+    _continueTitleLabel.frame = CGRectMake(kSideMargin, hasPills ? 56.3 : 0.0, w - kSideMargin * 2.0, 21.0);
+    _continueSubtitleLabel.frame = CGRectMake(kSideMargin, hasPills ? 78.5 : 22.0, w - kSideMargin * 2.0, 16.0);
 
     // Section 0 Header subviews: "History" + "Clear" aligned at x = 32 .. w - 32
     _historyTitleLabel.frame = CGRectMake(kSideMargin, 6.0, 160.0, 24.0);
