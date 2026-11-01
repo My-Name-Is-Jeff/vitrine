@@ -2691,6 +2691,21 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     }
 }
 
+static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
+    BOOL plain = SGRPlainCheckOn();
+    if (plain) {
+        UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:19.0 weight:UIImageSymbolWeightBold];
+        NSString *sym = isSaved ? @"checkmark" : @"plus";
+        UIColor *tint = isSaved ? SGRAccent() : [UIColor colorWithWhite:1.0 alpha:0.60];
+        return [[UIImage systemImageNamed:sym withConfiguration:cfg] imageWithTintColor:tint renderingMode:UIImageRenderingModeAlwaysOriginal];
+    } else {
+        UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:21.0 weight:UIImageSymbolWeightRegular];
+        NSString *sym = isSaved ? @"checkmark.circle.fill" : @"plus.circle";
+        UIColor *tint = isSaved ? SGRAccent() : [UIColor colorWithWhite:1.0 alpha:0.60];
+        return [[UIImage systemImageNamed:sym withConfiguration:cfg] imageWithTintColor:tint renderingMode:UIImageRenderingModeAlwaysOriginal];
+    }
+}
+
 - (void)updateNowPlayingCardWithItem:(SGRQueueItem *)item subtitle:(NSString *)subtitle {
     _npTitleLabel.text = item.title.length ? item.title : @"Not Playing";
     _npArtistLabel.text = item.artist ?: @"";
@@ -2699,12 +2714,9 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
 
     NSString *trackURI = item.uri ?: @"";
     BOOL isSaved = [[SGRQueueSession shared] isTrackSaved:trackURI];
-    UIImageSymbolConfiguration *starCfg = [UIImageSymbolConfiguration configurationWithPointSize:19.0 weight:UIImageSymbolWeightBold];
-    UIImage *starImg = isSaved
-        ? [[UIImage systemImageNamed:@"star.fill" withConfiguration:starCfg] imageWithTintColor:UIColor.whiteColor renderingMode:UIImageRenderingModeAlwaysOriginal]
-        : [[UIImage systemImageNamed:@"star" withConfiguration:starCfg] imageWithTintColor:[UIColor colorWithWhite:1.0 alpha:0.60] renderingMode:UIImageRenderingModeAlwaysOriginal];
-    [_npStarButton setImage:starImg forState:UIControlStateNormal];
+    [_npStarButton setImage:SGRNowPlayingSaveImage(isSaved) forState:UIControlStateNormal];
     _npStarButton.hidden = (item.uri.length == 0);
+    _npStarButton.accessibilityLabel = isSaved ? @"Remove from Your Library" : @"Add to Your Library";
 
     UIImage *liveArt = SGRNowPlayingArtwork(NULL, NULL);
     if (liveArt) {
@@ -3328,14 +3340,11 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     BOOL newSaved = !wasSaved;
     [[SGRQueueSession shared] setTrackURI:trackURI saved:newSaved];
 
-    UIImageSymbolConfiguration *starCfg = [UIImageSymbolConfiguration configurationWithPointSize:19.0 weight:UIImageSymbolWeightBold];
-    UIImage *starImg = newSaved
-        ? [[UIImage systemImageNamed:@"star.fill" withConfiguration:starCfg] imageWithTintColor:UIColor.whiteColor renderingMode:UIImageRenderingModeAlwaysOriginal]
-        : [[UIImage systemImageNamed:@"star" withConfiguration:starCfg] imageWithTintColor:[UIColor colorWithWhite:1.0 alpha:0.60] renderingMode:UIImageRenderingModeAlwaysOriginal];
-    [_npStarButton setImage:starImg forState:UIControlStateNormal];
+    [_npStarButton setImage:SGRNowPlayingSaveImage(newSaved) forState:UIControlStateNormal];
+    _npStarButton.accessibilityLabel = newSaved ? @"Remove from Your Library" : @"Add to Your Library";
 
     [UIView animateWithDuration:0.12 animations:^{
-        self->_npStarButton.transform = CGAffineTransformMakeScale(1.25, 1.25);
+        self->_npStarButton.transform = CGAffineTransformMakeScale(1.22, 1.22);
     } completion:^(BOOL finished) {
         [UIView animateWithDuration:0.15 animations:^{
             self->_npStarButton.transform = CGAffineTransformIdentity;
