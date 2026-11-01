@@ -65,6 +65,13 @@ static SGRGlyphView *glyphFor(UIView *owner, NSString *symbol, CGFloat size) {
     if (!glyph) {
         glyph = [[SGRGlyphView alloc] initWithSymbol:symbol pointSize:size weight:UIImageSymbolWeightRegular];
         objc_setAssociatedObject(owner, &kGlyphKey, glyph, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    } else {
+        UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:size weight:UIImageSymbolWeightRegular];
+        if (![glyph.preferredSymbolConfiguration isEqual:cfg]) {
+            glyph.preferredSymbolConfiguration = cfg;
+            glyph.image = [UIImage systemImageNamed:symbol withConfiguration:cfg];
+            [glyph sizeToFit];
+        }
     }
     return glyph;
 }
@@ -94,7 +101,8 @@ static void skipGlyph(UIView *host, NSString *identifier, const void *findKey, N
     }
     static Class icon;
     if (!icon) icon = NSClassFromString(@"SPTEncoreIconView");
-    SGRGlyphView *glyph = glyphFor(button, symbol, kSkipGlyphSize);
+    CGFloat pointSize = SGRPlayerQueueOpen() ? 25.0 : kSkipGlyphSize;
+    SGRGlyphView *glyph = glyphFor(button, symbol, pointSize);
     SGForEachView(content, ^(UIView *view) {
         if (view != glyph && [view isKindOfClass:icon]) SGRPlayerVanish(view);
     });
@@ -279,7 +287,8 @@ void SGRPlayerPlayGlyphIn(UIView *host) {
     }
 
     // Inside the button, over the disc it replaces, so it follows the button's own press.
-    SGRGlyphView *glyph = glyphFor(play, symbolFor(state.isPaused), kPlayGlyphSize);
+    CGFloat playSize = SGRPlayerQueueOpen() ? 34.0 : kPlayGlyphSize;
+    SGRGlyphView *glyph = glyphFor(play, symbolFor(state.isPaused), playSize);
     keepOnTop(glyph, button);
     sg_playView = play;
     sg_playButton = button;
@@ -298,9 +307,15 @@ static void updateTransportPositionsForQueue(UIView *host) {
 
     BOOL queueOpen = SGRPlayerQueueOpen();
     if (queueOpen) {
-        // Moving by +10.0 pt and -10.0 pt centers Rewind at x = 88.0 pt and Fast-Forward at x = 301.7 pt (106.8 pt from Play center at 195.0 pt)
-        CGAffineTransform prevT = CGAffineTransformMakeTranslation(10.0, 0.0);
-        CGAffineTransform nextT = CGAffineTransformMakeTranslation(-10.0, 0.0);
+        // Center Rewind at x = 90.5 pt and Fast-Forward at x = 299.2 pt (106.2 pt center-to-center from Play at 195.0 pt)
+        CGFloat prevTargetX = 90.5;
+        CGFloat nextTargetX = 299.2;
+        CGFloat prevCurX = [prev convertPoint:CGPointMake(CGRectGetMidX(prev.bounds), CGRectGetMidY(prev.bounds)) toView:host].x - prev.transform.tx;
+        CGFloat nextCurX = [next convertPoint:CGPointMake(CGRectGetMidX(next.bounds), CGRectGetMidY(next.bounds)) toView:host].x - next.transform.tx;
+        CGFloat prevDx = round(prevTargetX - prevCurX);
+        CGFloat nextDx = round(nextTargetX - nextCurX);
+        CGAffineTransform prevT = CGAffineTransformMakeTranslation(prevDx, 0.0);
+        CGAffineTransform nextT = CGAffineTransformMakeTranslation(nextDx, 0.0);
         if (!CGAffineTransformEqualToTransform(prev.transform, prevT)) prev.transform = prevT;
         if (!CGAffineTransformEqualToTransform(next.transform, nextT)) next.transform = nextT;
 
@@ -570,11 +585,11 @@ static void updateDurationForQueue(void) {
 
     if (taken) {
         taken.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightSemibold];
-        taken.textColor = [UIColor colorWithWhite:1.0 alpha:0.42];
+        taken.textColor = [UIColor colorWithWhite:1.0 alpha:0.45];
     }
     if (remaining) {
         remaining.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightSemibold];
-        remaining.textColor = [UIColor colorWithWhite:1.0 alpha:0.42];
+        remaining.textColor = [UIColor colorWithWhite:1.0 alpha:0.45];
         if ([remaining.text containsString:@"-"] && ![remaining.text containsString:@"\u2212"]) {
             remaining.text = [remaining.text stringByReplacingOccurrencesOfString:@"-" withString:@"\u2212"];
         }

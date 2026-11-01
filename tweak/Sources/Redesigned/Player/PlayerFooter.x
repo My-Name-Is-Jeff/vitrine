@@ -130,7 +130,7 @@ static UIImage *SGRQueueActiveKnockoutIconImage(CGSize size) {
     UIImage *img = [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
         CGRect rect = CGRectMake(0, 0, size.width, size.height);
         UIBezierPath *circle = [UIBezierPath bezierPathWithOvalInRect:rect];
-        [[UIColor colorWithWhite:1.0 alpha:0.65] setFill];
+        [[UIColor colorWithWhite:1.0 alpha:0.72] setFill];
         [circle fill];
 
         // Knockout SF Symbol list.bullet using kCGBlendModeClear
@@ -164,7 +164,7 @@ void SGRPlayerQueueChanged(void) {
             glyph.glyph.image = SGRQueueActiveKnockoutIconImage(CGSizeMake(38.0, 38.0));
             glyph.glyph.tintColor = nil;
             glyph.backgroundColor = UIColor.clearColor;
-            glyph.layer.compositingFilter = @"plusL";
+            glyph.layer.compositingFilter = nil;
         } else {
             glyph.glyph.image = [UIImage systemImageNamed:kQueueSymbol withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:kLyricsGlyphSize weight:UIImageSymbolWeightRegular]];
             glyph.glyph.tintColor = [UIColor colorWithWhite:1.0 alpha:0.65];

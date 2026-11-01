@@ -250,6 +250,7 @@ static void paintTree(UIView *root) {
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     SGForEachView(root, ^(UIView *view) {
+        if ([view isKindOfClass:NSClassFromString(@"SGRGlyphView")] || [view isKindOfClass:NSClassFromString(@"SGRGlyphButton")]) return;
         if ([view.accessibilityIdentifier isEqualToString:SGRPlainCheckIdentifier]) view.tintColor = sg_cover < 0 ? SGRAccent() : coverColor();
         else if ([view isKindOfClass:UIImageView.class]) paintImageView((UIImageView *)view);
         else if (lottie && [view isKindOfClass:lottie]) paintLayers(view.layer);

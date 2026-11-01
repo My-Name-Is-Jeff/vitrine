@@ -116,9 +116,9 @@ static const CGFloat kNowPlayingDocY = 0.0;           // screenY = 80.0 + 0.0 = 
 static const CGFloat kNowPlayingHeight = 87.0;        // 72pt thumbnail + 15pt gap below to pills (screenY = 167.0)
 static const CGFloat kContinueHeaderDocY = 87.0;      // Now playing ends at 87.0, pills start at screenY = 167.0
 static const CGFloat kContinueHeaderPinOffset = 2.0;  // Pins at viewportY = 2.0 (screenY = 82.0)
-static const CGFloat kContinueHeaderHeight = 98.0;    // 38pt pills + 19pt gap + 21pt title + 16pt subtitle (matches Apple Music y=535..649 px)
-static const CGFloat kQueueRowsStartDocY = 195.0;     // screenY = 80.0 + 195.0 = 275.0 (Row 1 art starts at 649 px exact match)
-static const CGFloat kQueueRowPitch = 57.0;           // 48pt art + 9pt vertical gap (Row 5 art starts at 505.5 pt)
+static const CGFloat kContinueHeaderHeight = 107.0;   // 38pt pills + 18.3pt gap + 22pt title + 2.0pt gap + 18pt subtitle + 8.7pt to 107
+static const CGFloat kQueueRowsStartDocY = 194.0;     // screenY = 80.0 + 194.0 = 274.0 pt (Row 1 art starts at 274.0 pt exact match)
+static const CGFloat kQueueRowPitch = 56.0;           // 48pt art + 8pt vertical gap (Row 5 art starts at 498.0 pt, ends at 546.0 pt)
 static const CGFloat kHistoryHeaderHeight = 46.0;
 static const CGFloat kHistoryHeaderClipOffset = 31.0; // Clips scrolling History rows at screenY = 79.0 + 31.0 = 110.0 pt
 static const CGFloat kHistoryRowPitch = 58.0;
@@ -1600,16 +1600,16 @@ static UIImage *SGRExplicitBadgeImageNP(void) {
     static UIImage *badge = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        CGSize size = CGSizeMake(13.3, 13.3);
+        CGSize size = CGSizeMake(15.0, 15.0);
         UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:size];
         badge = [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
             CGContextRef cg = ctx.CGContext;
-            UIBezierPath *bg = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, size.width, size.height) cornerRadius:2.5];
-            [[UIColor colorWithWhite:1.0 alpha:0.60] setFill];
+            UIBezierPath *bg = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, size.width, size.height) cornerRadius:3.5];
+            [[UIColor colorWithWhite:1.0 alpha:0.62] setFill];
             [bg fill];
 
             CGContextSetBlendMode(cg, kCGBlendModeClear);
-            UIFont *font = [UIFont systemFontOfSize:8.8 weight:UIFontWeightHeavy];
+            UIFont *font = [UIFont systemFontOfSize:9.8 weight:UIFontWeightHeavy];
             NSDictionary *attrs = @{
                 NSFontAttributeName: font,
                 NSForegroundColorAttributeName: UIColor.blackColor,
@@ -1634,8 +1634,8 @@ static UIImage *SGRExplicitBadgeImageRow(void) {
         UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:size];
         badge = [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
             CGContextRef cg = ctx.CGContext;
-            UIBezierPath *bg = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, size.width, size.height) cornerRadius:2.5];
-            [[UIColor colorWithWhite:1.0 alpha:0.60] setFill];
+            UIBezierPath *bg = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, size.width, size.height) cornerRadius:3.0];
+            [[UIColor colorWithWhite:1.0 alpha:0.62] setFill];
             [bg fill];
 
             CGContextSetBlendMode(cg, kCGBlendModeClear);
@@ -1672,14 +1672,14 @@ static void SGRDrawTransitionsOverlappingCircles(CGContextRef cg, CGPoint center
         CGContextSetBlendMode(cg, kCGBlendModeDestinationOut);
         CGContextBeginTransparencyLayer(cg, NULL);
 
-        // 1. Left circle ring at 25% knockout
+        // 1. Left circle ring at 55% knockout
         UIBezierPath *leftRing = [UIBezierPath bezierPathWithArcCenter:CGPointMake(leftX, center.y)
                                                                 radius:leftR
                                                             startAngle:0
                                                               endAngle:(CGFloat)(M_PI * 2.0)
                                                              clockwise:YES];
         leftRing.lineWidth = 1.5;
-        [[UIColor colorWithWhite:0.0 alpha:0.25] setStroke];
+        [[UIColor colorWithWhite:0.0 alpha:0.55] setStroke];
         [leftRing stroke];
 
         // 2. Cut out where right donut overlaps the left ring
@@ -1698,7 +1698,7 @@ static void SGRDrawTransitionsOverlappingCircles(CGContextRef cg, CGPoint center
 
         // 3. Right donut at 100% knockout with center hole intact
         CGContextSetBlendMode(cg, kCGBlendModeNormal);
-        [[UIColor colorWithWhite:0.0 alpha:0.90] setFill];
+        [[UIColor colorWithWhite:0.0 alpha:1.0] setFill];
         [rightDonut fill];
 
         CGContextEndTransparencyLayer(cg);
@@ -1765,7 +1765,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
         if (isTransitionsGlyph) {
             SGRDrawTransitionsOverlappingCircles(cg, center, active);
         } else if (symbolName.length) {
-            UIImageSymbolWeight weight = [symbolName isEqualToString:@"infinity"] ? UIImageSymbolWeightSemibold : UIImageSymbolWeightBold;
+            UIImageSymbolWeight weight = [symbolName isEqualToString:@"infinity"] ? UIImageSymbolWeightBold : UIImageSymbolWeightBold;
             UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:16.0 weight:weight];
             if (active) {
                 // Render symbol masked out via DestinationOut knockout
@@ -1897,7 +1897,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     [_rowContentView addSubview:_artView];
 
     _titleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _titleLabel.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightRegular];
+    _titleLabel.font = [UIFont systemFontOfSize:16.5 weight:UIFontWeightRegular];
     _titleLabel.textColor = UIColor.whiteColor;
     _titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     [_rowContentView addSubview:_titleLabel];
@@ -1918,7 +1918,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     [_rowContentView addSubview:_handleHitView];
 
     _handleBarsLayer = [CAShapeLayer layer];
-    _handleBarsLayer.fillColor = [UIColor colorWithWhite:1.0 alpha:0.25].CGColor;
+    _handleBarsLayer.fillColor = [UIColor colorWithWhite:1.0 alpha:0.28].CGColor;
     [_handleHitView.layer addSublayer:_handleBarsLayer];
 
     _reorderPan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleReorderPan:)];
@@ -2001,9 +2001,9 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     CGFloat handleTouchW = 52.0;
     _handleHitView.frame = CGRectMake(w - 36.0 - barW - 15.0, 0, handleTouchW, 48.0);
     CGFloat barLeft = 15.0;
-    CGFloat barH = 1.5;
-    CGFloat barPitch = 4.3; // 1.5 bar + 2.8 gap -> 10.1 pt total height matching Apple Music exactly
-    CGFloat barTop = round((48.0 - (barH * 3.0 + 2.8 * 2.0)) * 0.5);
+    CGFloat barH = 2.3;
+    CGFloat barPitch = 4.8; // 2.3 bar + 2.5 gap -> 11.9 pt total height matching Apple Music exactly
+    CGFloat barTop = round((48.0 - (barH * 3.0 + 2.5 * 2.0)) * 0.5);
     UIBezierPath *bars = [UIBezierPath bezierPath];
     for (int i = 0; i < 3; i++) {
         CGRect r = CGRectMake(barLeft, barTop + i * barPitch, barW, barH);
@@ -2747,10 +2747,12 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
 - (void)updateNowPlayingCardWithItem:(SGRQueueItem *)item subtitle:(NSString *)subtitle {
     NSString *titleText = item.title.length ? item.title : @"Not Playing";
     _npTitleLabel.attributedText = [[NSAttributedString alloc] initWithString:titleText attributes:@{
-        NSFontAttributeName: [UIFont systemFontOfSize:18.5 weight:UIFontWeightSemibold],
+        NSFontAttributeName: [UIFont systemFontOfSize:19.0 weight:UIFontWeightSemibold],
         NSForegroundColorAttributeName: UIColor.whiteColor,
         NSKernAttributeName: @(-0.3)
     }];
+    _npArtistLabel.font = [UIFont systemFontOfSize:16.0 weight:UIFontWeightRegular];
+    _npArtistLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.60];
     _npArtistLabel.text = item.artist ?: @"";
     _npExplicitView.hidden = !item.isExplicit;
     _continueSubtitleLabel.text = subtitle ?: @"";
@@ -2911,17 +2913,17 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     _bottomFadeMask.frame = _viewportClipView.bounds;
-    // Fade starts at y = 494.0 pt (top of Row 5) and ramps down to y = 546.0 pt (progress bar)
-    CGFloat locStart = MAX(0.0, MIN(1.0, (viewportH - 52.0) / viewportH));
-    CGFloat locMid1  = MAX(0.0, MIN(1.0, (viewportH - 32.0) / viewportH));
-    CGFloat locMid2  = MAX(0.0, MIN(1.0, (viewportH - 14.0) / viewportH));
-    _bottomFadeMask.locations = @[@0.0, @(locStart), @(locMid1), @(locMid2), @1.0];
+    // Fade starts at y = 508.0 pt and ramps down to y = 545.0 pt (right above progress bar at 546.0 pt)
+    CGFloat locStart = MAX(0.0, MIN(1.0, (viewportH - 38.0) / viewportH));
+    CGFloat locMid   = MAX(0.0, MIN(1.0, (viewportH - 18.0) / viewportH));
+    CGFloat locEnd   = MAX(0.0, MIN(1.0, (viewportH - 1.0) / viewportH));
+    _bottomFadeMask.locations = @[@0.0, @(locStart), @(locMid), @(locEnd), @1.0];
     _bottomFadeMask.colors = @[
         (id)[UIColor colorWithWhite:1.0 alpha:1.0].CGColor,
         (id)[UIColor colorWithWhite:1.0 alpha:1.0].CGColor,
         (id)[UIColor colorWithWhite:1.0 alpha:0.45].CGColor,
-        (id)[UIColor colorWithWhite:1.0 alpha:0.18].CGColor,
-        (id)[UIColor colorWithWhite:1.0 alpha:0.02].CGColor
+        (id)[UIColor colorWithWhite:1.0 alpha:0.0].CGColor,
+        (id)[UIColor colorWithWhite:1.0 alpha:0.0].CGColor
     ];
     [CATransaction commit];
 
@@ -2952,15 +2954,15 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     CGFloat npMaxRight = (starCenterX - starW * 0.5) - 6.0;
     CGFloat npAvailW = MAX(40.0, npMaxRight - npTextLeft);
     BOOL npHasExp = !_npExplicitView.hidden;
-    CGFloat npBadgeW = npHasExp ? (13.3 + 5.0) : 0.0;
+    CGFloat npBadgeW = npHasExp ? (15.0 + 5.0) : 0.0;
     CGSize npTitleNat = [_npTitleLabel sizeThatFits:CGSizeMake(CGFLOAT_MAX, 22.0)];
     CGFloat npTitleW = MIN(npAvailW - npBadgeW, ceil(npTitleNat.width));
-    CGFloat titleY = 15.5;
-    _npTitleLabel.frame = CGRectMake(npTextLeft, titleY, npTitleW, 22.0);
+    CGFloat titleY = 13.5;
+    _npTitleLabel.frame = CGRectMake(npTextLeft, titleY, npTitleW, 21.0);
     if (npHasExp) {
-        _npExplicitView.frame = CGRectMake(npTextLeft + npTitleW + 5.0, titleY + 3.5, 13.3, 13.3);
+        _npExplicitView.frame = CGRectMake(npTextLeft + npTitleW + 5.0, titleY + 3.0, 15.0, 15.0);
     }
-    _npArtistLabel.frame = CGRectMake(npTextLeft, titleY + 22.0 + 1.0, npAvailW, 19.0);
+    _npArtistLabel.frame = CGRectMake(npTextLeft, titleY + 21.0 + 5.0, npAvailW, 19.0);
 
     // Section 2 Header subviews: configurable pills (height = 38, cornerRadius = 19, x = 32 .. w - 32) + Continue Playing title & subtitle
     NSArray<NSNumber *> *activeSlots = [self activePillSlots];
@@ -3000,8 +3002,11 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         _emptyQueuePromptLabel.center = CGPointMake(w * 0.5, 230.5);
     }
 
-    _continueTitleLabel.frame = CGRectMake(kSideMargin, hasPills ? 57.0 : 0.0, w - kSideMargin * 2.0, 21.0);
-    _continueSubtitleLabel.frame = CGRectMake(kSideMargin, hasPills ? 78.0 : 21.0, w - kSideMargin * 2.0, 16.0);
+    _continueTitleLabel.font = [UIFont systemFontOfSize:19.0 weight:UIFontWeightBold];
+    _continueTitleLabel.frame = CGRectMake(kSideMargin, hasPills ? 56.3 : 0.0, w - kSideMargin * 2.0, 22.0);
+    _continueSubtitleLabel.font = [UIFont systemFontOfSize:15.0 weight:UIFontWeightRegular];
+    _continueSubtitleLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.55];
+    _continueSubtitleLabel.frame = CGRectMake(kSideMargin, hasPills ? 80.3 : 22.0, w - kSideMargin * 2.0, 18.0);
 
     // Section 0 Header subviews: "History" + "Clear" aligned at x = 32 .. w - 32
     _historyTitleLabel.frame = CGRectMake(kSideMargin, 6.0, 160.0, 24.0);

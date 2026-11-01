@@ -26,7 +26,7 @@ static const CGFloat kGlyphsHalf = 14;
 // scale (each clamped to the room the row has on that side). Music's own held numbers are 18, 7, 9 and 1.08.
 static const CGFloat kTrackRest = 7, kTrackHeld = 12, kStretch = 5, kGlyphShift = 6, kGlyphHeldScale = 1.02;
 // White's opacity: the fill at rest and held, the empty part, the glyphs at rest (held they are full white).
-static const CGFloat kFillRest = 0.55, kFillHeld = 1, kEmpty = 0.16, kGlyphRest = 0.62;
+static const CGFloat kFillRest = 0.65, kFillHeld = 1, kEmpty = 0.16, kGlyphRest = 0.62;
 
 static char kSessionContext;
 
@@ -401,12 +401,12 @@ BOOL SGRPlayerPlaceVolume(UIView *stack, UIView *controls, UIView *row, CGFloat 
     CGFloat height = kRowHeight, room = below - above;
     CGRect frame = CGRectMake(margin, round((above + below - height) / 2), MAX(0, stack.bounds.size.width - 2 * margin), height);
     if (SGRPlayerQueueOpen()) {
-        // Apple Music target: volume track at y = 722.7 pt on 844 pt screen (height - (87.3 + safeBottom)).
+        // Apple Music target: volume track at y = 722.7 pt on 844 pt screen (height - (83.9 + safeBottom)).
         UIView *player = stack.superview;
         UIWindow *window = stack.window ?: player.window;
         CGFloat safeBottom = window ? window.safeAreaInsets.bottom : 34.0;
         CGFloat playerHeight = player ? player.bounds.size.height : (window ? window.bounds.size.height : 844.0);
-        CGFloat targetTrackY = playerHeight - (87.3 + safeBottom);
+        CGFloat targetTrackY = playerHeight - (83.9 + safeBottom);
         CGFloat stackY = player ? [stack convertPoint:CGPointZero toView:player].y : stack.frame.origin.y;
         CGFloat targetCenterY = targetTrackY - stackY;
         frame.origin.y = round(targetCenterY - height * 0.5);
