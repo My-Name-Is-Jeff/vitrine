@@ -110,15 +110,15 @@ static id SGRShareItemForSpotifyURI(NSString *uri) {
 
 static const CGFloat kGrabberWidth = 60.0;
 static const CGFloat kGrabberHeight = 4.0;
-static const CGFloat kViewportTopOffset = 26.0;       // Grabber at y=0 (screenY=54), Viewport at y=26 (screenY=80)
+static const CGFloat kViewportTopOffset = 26.0;       // Grabber at y=2.0 (screenY=56), Viewport at y=26 (screenY=80)
 static const CGFloat kSideMargin = 32.0;              // Left/right column alignment across artwork, pills, headers & rows
 static const CGFloat kNowPlayingDocY = 0.0;           // screenY = 80.0 + 0.0 = 80.0 at scrollY = 0
 static const CGFloat kNowPlayingHeight = 87.0;        // 72pt thumbnail + 15pt gap below to pills (screenY = 167.0)
 static const CGFloat kContinueHeaderDocY = 87.0;      // Now playing ends at 87.0, pills start at screenY = 167.0
 static const CGFloat kContinueHeaderPinOffset = 2.0;  // Pins at viewportY = 2.0 (screenY = 82.0)
-static const CGFloat kContinueHeaderHeight = 100.0;   // 38pt pills + 18.3pt gap + 24pt title + 19pt subtitle
-static const CGFloat kQueueRowsStartDocY = 194.0;     // screenY = 80.0 + 194.0 = 274.0 (Row 1 art starts at 274.0 pt)
-static const CGFloat kQueueRowPitch = 57.0;           // 48pt art + 9pt vertical gap (Row 5 art starts at 502.0 pt)
+static const CGFloat kContinueHeaderHeight = 101.0;   // 38pt pills + 21pt gap + 21pt title + 16pt subtitle
+static const CGFloat kQueueRowsStartDocY = 197.5;     // screenY = 80.0 + 197.5 = 277.5 (Row 1 art starts at 277.5 pt)
+static const CGFloat kQueueRowPitch = 57.0;           // 48pt art + 9pt vertical gap (Row 5 art starts at 505.5 pt)
 static const CGFloat kHistoryHeaderHeight = 46.0;
 static const CGFloat kHistoryHeaderClipOffset = 31.0; // Clips scrolling History rows at screenY = 79.0 + 31.0 = 110.0 pt
 static const CGFloat kHistoryRowPitch = 58.0;
@@ -2000,11 +2000,13 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     CGFloat handleTouchW = 52.0;
     _handleHitView.frame = CGRectMake(w - 36.0 - barW - 15.0, 0, handleTouchW, 48.0);
     CGFloat barLeft = 15.0;
-    CGFloat barTop = round((48.0 - 11.9) * 0.5);
+    CGFloat barH = 1.5;
+    CGFloat barPitch = 4.3; // 1.5 bar + 2.8 gap -> 10.1 pt total height matching Apple Music exactly
+    CGFloat barTop = round((48.0 - (barH * 3.0 + 2.8 * 2.0)) * 0.5);
     UIBezierPath *bars = [UIBezierPath bezierPath];
     for (int i = 0; i < 3; i++) {
-        CGRect r = CGRectMake(barLeft, barTop + i * (2.3 + 2.5), barW, 2.3);
-        [bars appendPath:[UIBezierPath bezierPathWithRoundedRect:r cornerRadius:1.15]];
+        CGRect r = CGRectMake(barLeft, barTop + i * barPitch, barW, barH);
+        [bars appendPath:[UIBezierPath bezierPathWithRoundedRect:r cornerRadius:barH * 0.5]];
     }
     _handleBarsLayer.path = bars.CGPath;
 
@@ -2542,13 +2544,13 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
 
     _continueTitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     _continueTitleLabel.text = @"Continue Playing";
-    _continueTitleLabel.font = [UIFont systemFontOfSize:16.5 weight:UIFontWeightBold];
+    _continueTitleLabel.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightBold];
     _continueTitleLabel.textColor = UIColor.whiteColor;
     [_continueHeaderView addSubview:_continueTitleLabel];
 
     _continueSubtitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     _continueSubtitleLabel.font = [UIFont systemFontOfSize:13.0 weight:UIFontWeightRegular];
-    _continueSubtitleLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.58];
+    _continueSubtitleLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.56];
     _continueSubtitleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     [_continueHeaderView addSubview:_continueSubtitleLabel];
 
@@ -2860,7 +2862,7 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     if (w < 100.0 || h < 100.0) return;
 
     _grabberPill.bounds = CGRectMake(0.0, 0.0, kGrabberWidth, kGrabberHeight);
-    _grabberPill.center = CGPointMake(w * 0.5, 0.0);
+    _grabberPill.center = CGPointMake(w * 0.5, 2.0);
 
     CGFloat viewportH = MAX(100.0, h - kViewportTopOffset);
     _viewportClipView.frame = CGRectMake(0.0, kViewportTopOffset, w, viewportH);
@@ -2909,7 +2911,7 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     CGFloat npBadgeW = npHasExp ? (14.0 + 5.0) : 0.0;
     CGSize npTitleNat = [_npTitleLabel sizeThatFits:CGSizeMake(npAvailW - npBadgeW, 24.0)];
     CGFloat npTitleW = MIN(npAvailW - npBadgeW, ceil(npTitleNat.width));
-    CGFloat titleY = 14.5;
+    CGFloat titleY = 15.5;
     _npTitleLabel.frame = CGRectMake(npTextLeft, titleY, npTitleW, 22.0);
     if (npHasExp) {
         _npExplicitView.frame = CGRectMake(npTextLeft + npTitleW + 5.0, titleY + 4.0, 14.0, 14.0);
@@ -2941,8 +2943,8 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     }
 
     BOOL hasPills = (numPills > 0);
-    _continueTitleLabel.frame = CGRectMake(kSideMargin, hasPills ? 56.3 : 0.0, w - kSideMargin * 2.0, 21.0);
-    _continueSubtitleLabel.frame = CGRectMake(kSideMargin, hasPills ? 78.0 : 22.0, w - kSideMargin * 2.0, 16.0);
+    _continueTitleLabel.frame = CGRectMake(kSideMargin, hasPills ? 59.0 : 0.0, w - kSideMargin * 2.0, 21.0);
+    _continueSubtitleLabel.frame = CGRectMake(kSideMargin, hasPills ? 75.0 : 20.0, w - kSideMargin * 2.0, 16.0);
 
     // Section 0 Header subviews: "History" + "Clear" aligned at x = 32 .. w - 32
     _historyTitleLabel.frame = CGRectMake(kSideMargin, 6.0, 160.0, 24.0);
@@ -3057,14 +3059,23 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView {
     CGFloat y = scrollView.contentOffset.y;
 
-    // Hard stop at scrollY = 0 whenever returning upward from "Continue Playing" (both finger drag & deceleration)
-    if (_clampAtZeroOnDragOrDecel && y < 0.0) {
-        scrollView.contentOffset = CGPointZero;
-        if (!scrollView.isTracking) {
-            _clampAtZeroOnDragOrDecel = NO;
+    // Hard stop at scrollY = 0 whenever returning towards "Now Playing" from either direction
+    if (_clampAtZeroOnDragOrDecel) {
+        if (_dragStartOffsetY > 2.0 && y < 0.0) {
+            scrollView.contentOffset = CGPointZero;
+            if (!scrollView.isTracking) {
+                _clampAtZeroOnDragOrDecel = NO;
+            }
+            [self updateStickyHeadersAndClipping];
+            return;
+        } else if (_dragStartOffsetY < -2.0 && y > 0.0) {
+            scrollView.contentOffset = CGPointZero;
+            if (!scrollView.isTracking) {
+                _clampAtZeroOnDragOrDecel = NO;
+            }
+            [self updateStickyHeadersAndClipping];
+            return;
         }
-        [self updateStickyHeadersAndClipping];
-        return;
     }
 
     [self updateStickyHeadersAndClipping];
@@ -3120,12 +3131,9 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     }
 
     // Case 3: Swiping or scrolling inside History (_dragStartOffsetY < -2.0)
+    // Any upward swipe/fling towards Now Playing snaps cleanly to scrollY = 0 pt, matching downward snap from Queue
     if (_dragStartOffsetY < -2.0) {
-        if (targetContentOffset->y > 120.0) {
-            // Strong upward fling (projectedTargetY > +120 pt) continues smoothly into "Continue Playing"
-            _clampAtZeroOnDragOrDecel = NO;
-        } else if (targetContentOffset->y > -24.0 || (currentY > -72.0 && velocity.y > 0.12)) {
-            // Moderate upward swipe (projectedTargetY <= +120 pt) docks cleanly on "Now Playing" at scrollY = 0 pt
+        if (targetContentOffset->y > -24.0 || (currentY > -72.0 && velocity.y > 0.10) || targetContentOffset->y > 0.0) {
             targetContentOffset->y = 0.0;
             _clampAtZeroOnDragOrDecel = YES;
         } else if (targetContentOffset->y > -54.0) {
@@ -3135,6 +3143,7 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
             targetContentOffset->y = MAX(-histH, targetContentOffset->y);
             _clampAtZeroOnDragOrDecel = NO;
         }
+        return;
     }
 }
 
