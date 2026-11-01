@@ -116,8 +116,8 @@ static const CGFloat kNowPlayingDocY = 0.0;           // screenY = 80.0 + 0.0 = 
 static const CGFloat kNowPlayingHeight = 87.0;        // 72pt thumbnail + 15pt gap below to pills (screenY = 167.0)
 static const CGFloat kContinueHeaderDocY = 87.0;      // Now playing ends at 87.0, pills start at screenY = 167.0
 static const CGFloat kContinueHeaderPinOffset = 2.0;  // Pins at viewportY = 2.0 (screenY = 82.0)
-static const CGFloat kContinueHeaderHeight = 110.0;   // 38pt pills + 21pt gap + 21pt title + 10pt gap + 16pt subtitle
-static const CGFloat kQueueRowsStartDocY = 206.5;     // screenY = 80.0 + 206.5 = 286.5 (Row 1 art starts at 286.5 pt)
+static const CGFloat kContinueHeaderHeight = 98.0;    // 38pt pills + 19pt gap + 21pt title + 16pt subtitle (matches Apple Music y=535..649 px)
+static const CGFloat kQueueRowsStartDocY = 195.0;     // screenY = 80.0 + 195.0 = 275.0 (Row 1 art starts at 649 px exact match)
 static const CGFloat kQueueRowPitch = 57.0;           // 48pt art + 9pt vertical gap (Row 5 art starts at 505.5 pt)
 static const CGFloat kHistoryHeaderHeight = 46.0;
 static const CGFloat kHistoryHeaderClipOffset = 31.0; // Clips scrolling History rows at screenY = 79.0 + 31.0 = 110.0 pt
@@ -2944,8 +2944,8 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     }
 
     BOOL hasPills = (numPills > 0);
-    _continueTitleLabel.frame = CGRectMake(kSideMargin, hasPills ? 59.0 : 0.0, w - kSideMargin * 2.0, 21.0);
-    _continueSubtitleLabel.frame = CGRectMake(kSideMargin, hasPills ? 85.0 : 26.0, w - kSideMargin * 2.0, 16.0);
+    _continueTitleLabel.frame = CGRectMake(kSideMargin, hasPills ? 57.0 : 0.0, w - kSideMargin * 2.0, 21.0);
+    _continueSubtitleLabel.frame = CGRectMake(kSideMargin, hasPills ? 78.0 : 21.0, w - kSideMargin * 2.0, 16.0);
 
     // Section 0 Header subviews: "History" + "Clear" aligned at x = 32 .. w - 32
     _historyTitleLabel.frame = CGRectMake(kSideMargin, 6.0, 160.0, 24.0);
