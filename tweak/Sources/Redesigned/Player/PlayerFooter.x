@@ -129,10 +129,10 @@ static UIImage *SGRQueueActiveKnockoutIconImage(CGSize size) {
     UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:size format:fmt];
     UIImage *img = [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
         CGContextRef cg = ctx.CGContext;
-        // Background capsule at rgba(255, 255, 255, 0.62)
+        // Background capsule at rgba(255, 255, 255, 0.65)
         CGRect rect = CGRectMake(0, 0, size.width, size.height);
         UIBezierPath *circle = [UIBezierPath bezierPathWithOvalInRect:rect];
-        [[UIColor colorWithWhite:1.0 alpha:0.62] setFill];
+        [[UIColor colorWithWhite:1.0 alpha:0.65] setFill];
         [circle fill];
 
         // Knockout SF Symbol list.bullet (19.3 pt width) using DestinationOut for pixel-perfect match to Apple Music
@@ -160,14 +160,20 @@ void SGRPlayerQueueChanged(void) {
     BOOL open = SGRPlayerQueueOpen();
     BOOL animated = glyph.window && !SGRPlayerIsTransitioning();
     void (^mark)(void) = ^{
+        glyph.opaque = NO;
+        glyph.layer.opaque = NO;
+        glyph.glyph.opaque = NO;
+        glyph.glyph.layer.opaque = NO;
         if (open) {
             glyph.glyph.image = SGRQueueActiveKnockoutIconImage(CGSizeMake(38.0, 38.0));
             glyph.glyph.tintColor = nil;
             glyph.backgroundColor = UIColor.clearColor;
+            glyph.layer.compositingFilter = @"plusL";
         } else {
             glyph.glyph.image = [UIImage systemImageNamed:kQueueSymbol withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:kLyricsGlyphSize weight:UIImageSymbolWeightRegular]];
             glyph.glyph.tintColor = [UIColor colorWithWhite:1.0 alpha:0.65];
             glyph.backgroundColor = UIColor.clearColor;
+            glyph.layer.compositingFilter = nil;
         }
         glyph.layer.cornerRadius = 19.0;
         glyph.layer.cornerCurve = kCACornerCurveContinuous;

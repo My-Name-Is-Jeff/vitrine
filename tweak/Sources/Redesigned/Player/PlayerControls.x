@@ -555,10 +555,10 @@ static void updateDurationForQueue(void) {
             CGAffineTransform scaleT = CGAffineTransformMakeScale(targetScale, 1.0);
             if (!CGAffineTransformEqualToTransform(slider.transform, scaleT)) slider.transform = scaleT;
 
-            CGAffineTransform takenT = CGAffineTransformMakeTranslation(7.0, 0.0);
+            CGAffineTransform takenT = CGAffineTransformMakeTranslation(7.0, 3.7);
             if (taken && !CGAffineTransformEqualToTransform(taken.transform, takenT)) taken.transform = takenT;
 
-            CGAffineTransform remT = CGAffineTransformMakeTranslation(-7.0, 0.0);
+            CGAffineTransform remT = CGAffineTransformMakeTranslation(-7.0, 3.7);
             if (remaining && !CGAffineTransformEqualToTransform(remaining.transform, remT)) remaining.transform = remT;
         } else {
             if (!CGAffineTransformIsIdentity(slider.transform)) slider.transform = CGAffineTransformIdentity;

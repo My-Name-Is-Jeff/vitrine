@@ -1600,16 +1600,16 @@ static UIImage *SGRExplicitBadgeImageNP(void) {
     static UIImage *badge = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        CGSize size = CGSizeMake(14.0, 14.0);
+        CGSize size = CGSizeMake(13.3, 13.3);
         UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:size];
         badge = [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
             CGContextRef cg = ctx.CGContext;
-            UIBezierPath *bg = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, size.width, size.height) cornerRadius:3.3];
-            [[UIColor colorWithWhite:1.0 alpha:0.62] setFill];
+            UIBezierPath *bg = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, size.width, size.height) cornerRadius:2.5];
+            [[UIColor colorWithWhite:1.0 alpha:0.60] setFill];
             [bg fill];
 
             CGContextSetBlendMode(cg, kCGBlendModeClear);
-            UIFont *font = [UIFont systemFontOfSize:9.2 weight:UIFontWeightHeavy];
+            UIFont *font = [UIFont systemFontOfSize:8.8 weight:UIFontWeightHeavy];
             NSDictionary *attrs = @{
                 NSFontAttributeName: font,
                 NSForegroundColorAttributeName: UIColor.blackColor,
@@ -1634,8 +1634,8 @@ static UIImage *SGRExplicitBadgeImageRow(void) {
         UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:size];
         badge = [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
             CGContextRef cg = ctx.CGContext;
-            UIBezierPath *bg = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, size.width, size.height) cornerRadius:2.7];
-            [[UIColor colorWithWhite:1.0 alpha:0.62] setFill];
+            UIBezierPath *bg = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, size.width, size.height) cornerRadius:2.5];
+            [[UIColor colorWithWhite:1.0 alpha:0.60] setFill];
             [bg fill];
 
             CGContextSetBlendMode(cg, kCGBlendModeClear);
@@ -1672,14 +1672,14 @@ static void SGRDrawTransitionsOverlappingCircles(CGContextRef cg, CGPoint center
         CGContextSetBlendMode(cg, kCGBlendModeDestinationOut);
         CGContextBeginTransparencyLayer(cg, NULL);
 
-        // 1. Left circle ring at 55% knockout
+        // 1. Left circle ring at 25% knockout
         UIBezierPath *leftRing = [UIBezierPath bezierPathWithArcCenter:CGPointMake(leftX, center.y)
                                                                 radius:leftR
                                                             startAngle:0
                                                               endAngle:(CGFloat)(M_PI * 2.0)
                                                              clockwise:YES];
         leftRing.lineWidth = 1.5;
-        [[UIColor colorWithWhite:0.0 alpha:0.55] setStroke];
+        [[UIColor colorWithWhite:0.0 alpha:0.25] setStroke];
         [leftRing stroke];
 
         // 2. Cut out where right donut overlaps the left ring
@@ -1756,7 +1756,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
 
         // Active:   rgba(255, 255, 255, 0.72) over backdrop blur
         // Inactive: rgba(255, 255, 255, 0.12)
-        UIColor *fill = active ? [UIColor colorWithWhite:1.0 alpha:0.60] : [UIColor colorWithWhite:1.0 alpha:0.12];
+        UIColor *fill = active ? [UIColor colorWithWhite:1.0 alpha:0.72] : [UIColor colorWithWhite:1.0 alpha:0.12];
         [fill setFill];
         [capsule fill];
 
@@ -1897,7 +1897,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     [_rowContentView addSubview:_artView];
 
     _titleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _titleLabel.font = [UIFont systemFontOfSize:16.5 weight:UIFontWeightRegular];
+    _titleLabel.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightRegular];
     _titleLabel.textColor = UIColor.whiteColor;
     _titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     [_rowContentView addSubview:_titleLabel];
@@ -1909,7 +1909,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
 
     _subtitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     _subtitleLabel.font = [UIFont systemFontOfSize:14.5 weight:UIFontWeightRegular];
-    _subtitleLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.75];
+    _subtitleLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.55];
     _subtitleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     [_rowContentView addSubview:_subtitleLabel];
 
@@ -2295,6 +2295,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     UIButton *_pillButtons[4];
     UILabel *_continueTitleLabel;
     UILabel *_continueSubtitleLabel;
+    UILabel *_emptyQueuePromptLabel;
 
     UIView *_queueRowsClipView;
     UIView *_queueRowsContainerView;
@@ -2494,7 +2495,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     [_nowPlayingCard addSubview:_npDetailsView];
 
     _npTitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _npTitleLabel.font = [UIFont systemFontOfSize:19.0 weight:UIFontWeightSemibold];
+    _npTitleLabel.font = [UIFont systemFontOfSize:18.5 weight:UIFontWeightSemibold];
     _npTitleLabel.textColor = UIColor.whiteColor;
     _npTitleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     [_npDetailsView addSubview:_npTitleLabel];
@@ -2554,6 +2555,29 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     _continueSubtitleLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.68];
     _continueSubtitleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     [_continueHeaderView addSubview:_continueSubtitleLabel];
+
+    _emptyQueuePromptLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    _emptyQueuePromptLabel.numberOfLines = 2;
+    _emptyQueuePromptLabel.textAlignment = NSTextAlignmentCenter;
+    _emptyQueuePromptLabel.hidden = YES;
+    _emptyQueuePromptLabel.layer.compositingFilter = @"plusL";
+
+    UIFont *promptFont = [UIFont systemFontOfSize:17.0 weight:UIFontWeightRegular];
+    UIColor *promptColor = [UIColor colorWithWhite:1.0 alpha:0.55];
+    NSMutableAttributedString *promptStr = [[NSMutableAttributedString alloc] initWithString:@"To keep music playing, turn on\n"
+                                                                                  attributes:@{NSFontAttributeName: promptFont, NSForegroundColorAttributeName: promptColor}];
+    UIImageSymbolConfiguration *infCfg = [UIImageSymbolConfiguration configurationWithPointSize:17.0 weight:UIImageSymbolWeightBold];
+    UIImage *infImg = [[UIImage systemImageNamed:@"infinity" withConfiguration:infCfg] imageWithTintColor:promptColor renderingMode:UIImageRenderingModeAlwaysOriginal];
+    if (infImg) {
+        NSTextAttachment *att = [[NSTextAttachment alloc] init];
+        att.image = infImg;
+        att.bounds = CGRectMake(0, -2.0, infImg.size.width, infImg.size.height);
+        [promptStr appendAttributedString:[NSAttributedString attributedStringWithAttachment:att]];
+    }
+    [promptStr appendAttributedString:[[NSAttributedString alloc] initWithString:@" AutoPlay."
+                                                                      attributes:@{NSFontAttributeName: promptFont, NSForegroundColorAttributeName: promptColor}]];
+    _emptyQueuePromptLabel.attributedText = promptStr;
+    [_scrollView addSubview:_emptyQueuePromptLabel];
 
     [self updatePlaybackPillsWithState:SGPlayerState()];
 }
@@ -2695,18 +2719,10 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
 }
 
 static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
-    BOOL plain = SGRPlainCheckOn();
-    if (plain) {
-        UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:19.0 weight:UIImageSymbolWeightBold];
-        NSString *sym = isSaved ? @"checkmark" : @"plus";
-        UIColor *tint = UIColor.whiteColor;
-        return [[UIImage systemImageNamed:sym withConfiguration:cfg] imageWithTintColor:tint renderingMode:UIImageRenderingModeAlwaysOriginal];
-    } else {
-        UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:21.0 weight:UIImageSymbolWeightRegular];
-        NSString *sym = isSaved ? @"checkmark.circle.fill" : @"plus.circle";
-        UIColor *tint = UIColor.whiteColor;
-        return [[UIImage systemImageNamed:sym withConfiguration:cfg] imageWithTintColor:tint renderingMode:UIImageRenderingModeAlwaysOriginal];
-    }
+    UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:19.5 weight:UIImageSymbolWeightRegular];
+    NSString *sym = isSaved ? @"star.fill" : @"star";
+    UIColor *tint = UIColor.whiteColor;
+    return [[UIImage systemImageNamed:sym withConfiguration:cfg] imageWithTintColor:tint renderingMode:UIImageRenderingModeAlwaysOriginal];
 }
 
 - (void)updateNowPlayingCardWithItem:(SGRQueueItem *)item subtitle:(NSString *)subtitle {
@@ -2899,23 +2915,26 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     _npArtView.frame = CGRectMake(kSideMargin, 0.0, 72.0, 72.0);
     _npDetailsView.bounds = CGRectMake(0.0, 0.0, w, 72.0);
     _npDetailsView.center = CGPointMake(w * 0.5, 36.0);
-    CGFloat moreW = 32.0;
+    CGFloat moreW = 28.0;
     CGFloat starW = 28.0;
-    CGFloat saveGap = 18.0;
-    _npMoreButton.frame = CGRectMake(w - kSideMargin - moreW, round((72.0 - moreW) * 0.5), moreW, moreW);
-    _npStarButton.frame = CGRectMake(w - kSideMargin - moreW - saveGap - starW, round((72.0 - starW) * 0.5), starW, starW);
+    CGFloat moreCenterX = round(w * (341.5 / 390.0));
+    CGFloat starCenterX = round(w * (293.3 / 390.0));
+    _npMoreButton.bounds = CGRectMake(0.0, 0.0, moreW, moreW);
+    _npMoreButton.center = CGPointMake(moreCenterX, 36.0);
+    _npStarButton.bounds = CGRectMake(0.0, 0.0, starW, starW);
+    _npStarButton.center = CGPointMake(starCenterX, 36.0);
 
     CGFloat npTextLeft = kSideMargin + 72.0 + 13.0; // 117.0 pt
-    CGFloat npMaxRight = w - kSideMargin - moreW - saveGap - starW - 8.0;
+    CGFloat npMaxRight = (starCenterX - starW * 0.5) - 6.0;
     CGFloat npAvailW = MAX(40.0, npMaxRight - npTextLeft);
     BOOL npHasExp = !_npExplicitView.hidden;
-    CGFloat npBadgeW = npHasExp ? (14.0 + 5.0) : 0.0;
+    CGFloat npBadgeW = npHasExp ? (13.3 + 5.0) : 0.0;
     CGSize npTitleNat = [_npTitleLabel sizeThatFits:CGSizeMake(npAvailW - npBadgeW, 24.0)];
     CGFloat npTitleW = MIN(npAvailW - npBadgeW, ceil(npTitleNat.width));
     CGFloat titleY = 15.5;
     _npTitleLabel.frame = CGRectMake(npTextLeft, titleY, npTitleW, 22.0);
     if (npHasExp) {
-        _npExplicitView.frame = CGRectMake(npTextLeft + npTitleW + 5.0, titleY + 2.5, 14.0, 14.0);
+        _npExplicitView.frame = CGRectMake(npTextLeft + npTitleW + 5.0, titleY + 3.5, 13.3, 13.3);
     }
     _npArtistLabel.frame = CGRectMake(npTextLeft, titleY + 22.0 + 1.0, npAvailW, 19.0);
 
@@ -2944,6 +2963,19 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     }
 
     BOOL hasPills = (numPills > 0);
+    BOOL queueEmpty = (_futureItems.count == 0 && !SGFlag(SGRKeyQueueAutoplay, YES));
+    _emptyQueuePromptLabel.hidden = !queueEmpty;
+    _continueTitleLabel.hidden = queueEmpty;
+    _continueSubtitleLabel.hidden = queueEmpty;
+
+    if (queueEmpty) {
+        CGFloat promptW = 280.0;
+        CGFloat promptH = 50.0;
+        _emptyQueuePromptLabel.bounds = CGRectMake(0.0, 0.0, promptW, promptH);
+        // screenY = 310.5 pt -> docY inside _scrollView = 310.5 - kViewportTopOffset (26.0) - 54.0 (stage top) = 230.5 pt
+        _emptyQueuePromptLabel.center = CGPointMake(w * 0.5, 230.5);
+    }
+
     _continueTitleLabel.frame = CGRectMake(kSideMargin, hasPills ? 57.0 : 0.0, w - kSideMargin * 2.0, 21.0);
     _continueSubtitleLabel.frame = CGRectMake(kSideMargin, hasPills ? 78.0 : 21.0, w - kSideMargin * 2.0, 16.0);
 

@@ -402,7 +402,7 @@ static SGRLyricsLayout layoutIn(UIView *host, SGRPlayerInlineMode mode) {
     if (mode == SGRPlayerInlineModeQueue) {
         // Grabber at y = 54.0 pt, queue viewport at y = 80.0..546.0 pt (height 466 pt flush to progress bar).
         CGFloat top = 54.0;
-        CGFloat bottom = queueDurationTopIn(host);
+        CGFloat bottom = queueDurationTopIn(host) + 3.0; // extends bottom clip to exactly 546.0 pt
         l.cover = validCoverFrameIn(host);
         l.thumb = CGRectMake(32.0, 80.0, 72.0, 72.0);
         l.stage = CGRectMake(0.0, top, host.bounds.size.width, MAX(0.0, bottom - top));
