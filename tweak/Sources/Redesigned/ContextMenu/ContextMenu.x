@@ -307,6 +307,7 @@ static UIMenu *inlineGroup(NSArray<UIMenuElement *> *children) {
 - (void)adoptSheet:(UIViewController *)presented from:(UIViewController *)presenter completion:(void (^)(void))completion;
 - (void)rowPresented;
 - (UIMenu *)menu;
+- (void)showSheetIfNoMenu;
 // The rows stored for this menu's kind, nil when none are.
 - (NSArray<UIMenuElement *> *)storedElements;
 @end
@@ -413,6 +414,7 @@ static void fadeButton(UIView *button, BOOL away) {
     if (!self.items && ![session storedElements].count) {
         session.openWhenRead = YES;
         [session requestSheet];
+        [session showSheetIfNoMenu];
         return nil;
     }
     self.menu = [session menu];
@@ -629,8 +631,9 @@ static void raiseHost(UIWindow *window) {
     _requestedAt = CACurrentMediaTime();
     sg_requesting = self;
     sg_requestedAt = _requestedAt;
-    // Speed and pitch's sheet test (and Edit info's) counts the ⋯'s touch, which the menu kept from Spotify's ⋯.
-    SGPlayerMenuMarkPlayers();
+    // Speed and pitch's sheet test (and Edit info's) counts the ⋯'s touch, which the menu kept from Spotify's ⋯. The
+    // player's only: a page's sheet taken for the player's got Edit info for the local file that plays.
+    if (self.items) SGPlayerMenuMarkPlayers();
     NSString *how = fireControl(self.spotify);
     SGLog(@"system menu: Spotify's sheet asked for, %.3f s after the touch down, by %@", _requestedAt - self.touchedAt, how);
     __weak SGRMenuSession *weakSelf = self;
@@ -644,6 +647,20 @@ static void raiseHost(UIWindow *window) {
         NSArray<dispatch_block_t> *waiting = session->_whenRead;
         session->_whenRead = [NSMutableArray array];
         for (dispatch_block_t block in waiting) block();
+    });
+}
+
+// A page's ⋯ that waits for its rows (openWhenRead) and has no menu up once Spotify's sheet has had its time
+// (kRequestWindow): its sheet came with no rows, or slowly, so the sheet itself is shown, and rows read after that open
+// no menu. A sheet that never came is not the menu's to show: Spotify's ⋯ got nothing either.
+- (void)showSheetIfNoMenu {
+    __weak SGRMenuSession *weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kRequestWindow * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        SGRMenuSession *session = weakSelf;
+        if (!session || !session.openWhenRead || session.displayed || session.ended) return;
+        session.openWhenRead = NO;
+        SGLog(@"system menu: no page menu %.0f s after the touch, %@", kRequestWindow, session.presented ? @"Spotify's sheet shown" : @"and no sheet came");
+        [session reveal];
     });
 }
 
@@ -1414,24 +1431,43 @@ static NSString *controllersIn(UIViewController *presented) {
     return [names componentsJoinedByString:@" > "];
 }
 
-// The kinds a page's rows are stored under: the page itself, by its URI (a playlist, an album, an artist), and its kind
-// of page, by its controller's class, for a page whose own are not stored yet. Rows stored for another page of the kind
-// show only until the live ones come, a fraction of a second, and a row picked before then fires only if the page's own
-// sheet has a row of that title; otherwise the sheet itself is shown.
+// Which page the ⋯ is on, read where the rest of the mod reads it: spt_pageURI or URI on the page's controllers, the
+// album's or playlist's model (Shared/AlbumQueue's SGEntityPage, looked up by name: the menu harness has no Swift), or
+// else the id at the end of Spotify's ⋯'s identifier (Components.UI.ContextMenuButton-<id>), all an artist page gives.
+static NSString *pageIdentity(UIViewController *page, UIView *button) {
+    Class entityPage = NSClassFromString(@"SGEntityPage");
+    for (UIViewController *vc = page; vc; vc = vc.parentViewController) {
+        for (NSString *name in @[@"spt_pageURI", @"URI"]) {
+            SEL selector = NSSelectorFromString(name);
+            if (![vc respondsToSelector:selector]) continue;
+            id value = ((id (*)(id, SEL))objc_msgSend)(vc, selector);
+            NSString *uri = [value isKindOfClass:NSURL.class] ? ((NSURL *)value).absoluteString : [value isKindOfClass:NSString.class] ? value : nil;
+            if (uri.length) return uri;
+        }
+        if ([entityPage respondsToSelector:@selector(entityURI:)]) {
+            id uri = ((id (*)(id, SEL, id))objc_msgSend)(entityPage, @selector(entityURI:), vc);
+            if ([uri isKindOfClass:NSString.class] && [uri length]) return uri;
+        }
+    }
+    UIView *spotify = [button respondsToSelector:@selector(source)] ? [button valueForKey:@"source"] : button;
+    NSString *identifier = [spotify isKindOfClass:UIView.class] ? spotify.accessibilityIdentifier : nil;
+    NSString *prefix = @"Components.UI.ContextMenuButton-";
+    return identifier.length > prefix.length && [identifier hasPrefix:prefix] ? [identifier substringFromIndex:prefix.length] : nil;
+}
+
+// The kinds a page's rows are stored under: the page itself (pageIdentity), and its kind of page, by its controller's
+// class, for a page whose own are not stored yet. Rows stored for another page of the kind show only until the live ones
+// come, a fraction of a second, and a row picked before then fires only if the page's own sheet has a row of that
+// title; otherwise the sheet itself is shown.
 static void pageKinds(UIView *button, SGRMenuSession *session) {
     UIViewController *page = nil;
     for (UIResponder *r = button.nextResponder; r && !page; r = r.nextResponder) {
         if ([r isKindOfClass:UIViewController.class]) page = (UIViewController *)r;
     }
     if (!page) return;
-    NSString *uri = nil;
-    for (UIViewController *vc = page; vc && !uri; vc = vc.parentViewController) {
-        if (![vc respondsToSelector:@selector(URI)]) continue;
-        id value = ((id (*)(id, SEL))objc_msgSend)(vc, @selector(URI));
-        uri = [value isKindOfClass:NSURL.class] ? ((NSURL *)value).absoluteString : [value isKindOfClass:NSString.class] ? value : nil;
-    }
+    NSString *identity = pageIdentity(page, button);
     session.fallbackKind = [@"page." stringByAppendingString:NSStringFromClass(page.class)];
-    session.kind = uri.length ? [@"page." stringByAppendingString:uri] : session.fallbackKind;
+    session.kind = identity.length ? [@"page." stringByAppendingString:identity] : session.fallbackKind;
 }
 
 // Whether this sheet is a watched ⋯'s, and if so its session, with the sheet's presentation now the menu's.

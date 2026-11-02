@@ -93,6 +93,8 @@ void SGRPlayerMenuSetBackground(NSInteger kind) { sg_background = kind; SGPlayer
 SPTPlayerState *SGPlayerState(void) { return nil; }
 NSString *SGURIString(id uri) { return nil; }
 UIView *SGRPinnedMoreRecentButton(void) { return nil; }
+@class SGRMirrorButton;
+void (*SGRPinnedMoreHook)(SGRMirrorButton *button);
 void SGRAnimate(NSInteger motion, void (^animations)(void), void (^completion)(BOOL finished)) {
     [UIView animateWithDuration:0.2 animations:animations completion:completion];
 }
