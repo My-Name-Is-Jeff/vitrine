@@ -4051,11 +4051,7 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         // Cancel button: Liquid Glass capsule button (white text)
         UIButtonConfiguration *cancelConfig;
         UIButtonConfiguration *clearConfig;
-        BOOL hasGlassButton = NO;
         if (@available(iOS 26.0, *)) {
-            hasGlassButton = [UIButtonConfiguration respondsToSelector:@selector(glassButtonConfiguration)];
-        }
-        if (hasGlassButton) {
             cancelConfig = [UIButtonConfiguration glassButtonConfiguration];
             clearConfig = [UIButtonConfiguration glassButtonConfiguration];
         } else {
@@ -4093,7 +4089,7 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         [_clearPromptClearButton addTarget:self action:@selector(confirmClearUserQueue) forControlEvents:UIControlEventTouchUpInside];
         [_clearPromptCard addSubview:_clearPromptClearButton];
 
-        if (!hasGlassButton) {
+        if (!@available(iOS 26.0, *)) {
             static char kCancelFallbackGlassKey, kClearFallbackGlassKey;
             SGRGlassCapsuleInside(_clearPromptCancelButton, &kCancelFallbackGlassKey, CGSizeMake(btnW, 48.0), NO);
             SGRGlassCapsuleInside(_clearPromptClearButton, &kClearFallbackGlassKey, CGSizeMake(btnW, 48.0), NO);
