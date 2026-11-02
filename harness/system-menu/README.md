@@ -4,7 +4,7 @@
 Spotify's player ⋯ and its context menu sheet (`ContextMenu_InternalImpl.ContextMenuViewController` under its
 class name, inside a navigation controller): 15 rows, each an Encore-style ListRow control whose identifier is
 Spotify's item number and which acts on touch up inside, no `didSelect`, Sleep timer last and below the sheet's
-fold, as on the phone. Speed, pitch, reverb and Animated artwork are stubs that log.
+fold, as on the phone. On the iOS 16 simulator the redesign runs as untested (`spotifyglass.redesign.untested`). Speed, pitch, reverb and Animated artwork are stubs that log.
 
     THEOS=$HOME/theos ./build.sh
     xcrun simctl install <udid> build/SystemMenuHarness.app
@@ -48,10 +48,15 @@ sheet is the player's, and that the sheet is in the mod's window under the app's
 - `close`: closing the menu with no pick takes the hidden sheet away within 1 s, and a second tap opens again.
 - `subpage`: the quick Share taps Spotify's Share, which pushes a page inside the sheet: the sheet is shown over
   the player, on that page; closed, the mod's window goes back under the app's.
-- `sleep`: More's Sleep timer pushes its options page 0.3 s later: the same.
-- `sleeppresent`: More's Sleep timer presents a context menu sheet of its own from the player, as on the phone:
-  that sheet shows as Spotify's, in the app's window, no menu comes up for it, Spotify's ⋯ action ran once, and
-  the card it came from goes unseen.
+- `sleep`: More's Sleep timer (item 51) is a submenu: opening it taps Spotify's row on the hidden sheet, which pushes
+  its options page (Encore list rows, no table) 0.3 s later; the submenu shows the page's rows, the sheet stays hidden,
+  and picking 5 minutes taps it on the page, after which the page and the sheet go, unseen.
+- `sleeppresent`: the same with Sleep timer presenting a context menu sheet of its own from the player, as on the
+  phone: it goes up from the hidden sheet instead (UIKit turns down a presentation from the player while its menu
+  is up), hidden and taking no touches, and its table rows fill the submenu.
+- `pagepopup`: Voice language (item 0), a row the mod does not know, pushes a page: the first pick opens the page's
+  rows as a menu of their own from the ⋯, under its heading, with Back and the picked row checked, and the row is kept
+  as one that opens a page; Back pops the page and opens the menu again, where Voice language is now a submenu.
 - `sort`: a row of the mod's own in the sheet's header (as the playlist's Sort) is in More and fires.
 - `animated`: Show Animated Artwork switches it on and the sheet goes.
 - `wrapped`: Spotify presents a controller of its own that puts the sheet in only as it appears
