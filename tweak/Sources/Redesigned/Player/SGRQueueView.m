@@ -2531,7 +2531,6 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
 
     // Clear Queue Confirmation Prompt Overlay ("Are you sure you want to clear your queue?")
     UIControl *_clearPromptOverlay;
-    CAShapeLayer *_clearPromptDimLayer;
     UIControl *_clearPromptCard;
     UIVisualEffectView *_clearPromptGlass;
     UIButton *_clearPromptCancelButton;
@@ -3975,24 +3974,14 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         SGShapeGlass(_clearPromptGlass, 32.0, NO);
     }
 
+    _clearPromptCard.layer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:_clearPromptCard.bounds cornerRadius:32.0].CGPath;
+
     CGFloat btnW = (cardW - 32.0 - 8.0) * 0.5;
     if (_clearPromptCancelButton) {
         _clearPromptCancelButton.frame = CGRectMake(16.0, 84.33, btnW, 48.0);
     }
     if (_clearPromptClearButton) {
         _clearPromptClearButton.frame = CGRectMake(16.0 + btnW + 8.0, 84.33, btnW, 48.0);
-    }
-
-    if (_clearPromptDimLayer) {
-        [CATransaction begin];
-        [CATransaction setDisableActions:YES];
-        _clearPromptDimLayer.frame = _clearPromptOverlay.bounds;
-        UIBezierPath *fullPath = [UIBezierPath bezierPathWithRect:_clearPromptOverlay.bounds];
-        UIBezierPath *holePath = [UIBezierPath bezierPathWithRoundedRect:cardRect cornerRadius:32.0];
-        [fullPath appendPath:holePath];
-        fullPath.usesEvenOddFillRule = YES;
-        _clearPromptDimLayer.path = fullPath.CGPath;
-        [CATransaction commit];
     }
 }
 
@@ -4007,22 +3996,20 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
 
     if (!_clearPromptOverlay) {
         _clearPromptOverlay = [[UIControl alloc] initWithFrame:hostView.bounds];
-        _clearPromptOverlay.backgroundColor = UIColor.clearColor;
+        _clearPromptOverlay.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.46];
         _clearPromptOverlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         [_clearPromptOverlay addTarget:self action:@selector(dismissClearQueuePrompt) forControlEvents:UIControlEventTouchUpInside];
-
-        // Full-screen 46% black dimming layer with an even-odd cutout under the card so UIVisualEffectView
-        // inside the card blurs the un-dimmed album backdrop while the entire screen outside dims by 46%!
-        _clearPromptDimLayer = [CAShapeLayer layer];
-        _clearPromptDimLayer.fillRule = kCAFillRuleEvenOdd;
-        _clearPromptDimLayer.fillColor = [UIColor colorWithWhite:0.0 alpha:0.46].CGColor;
-        [_clearPromptOverlay.layer addSublayer:_clearPromptDimLayer];
 
         // Liquid Glass Dialog Card (iOS 26+ UIGlassEffect with continuous 32pt corner configuration)
         _clearPromptCard = [[UIControl alloc] initWithFrame:CGRectMake(0.0, 0.0, cardW, cardH)];
         _clearPromptCard.backgroundColor = UIColor.clearColor;
         _clearPromptCard.clipsToBounds = NO;
         _clearPromptCard.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+        _clearPromptCard.layer.shadowColor = UIColor.blackColor.CGColor;
+        _clearPromptCard.layer.shadowOpacity = 0.35;
+        _clearPromptCard.layer.shadowRadius = 24.0;
+        _clearPromptCard.layer.shadowOffset = CGSizeMake(0.0, 10.0);
+        _clearPromptCard.layer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:_clearPromptCard.bounds cornerRadius:32.0].CGPath;
 
         _clearPromptGlass = [[UIVisualEffectView alloc] initWithEffect:SGGlassEffect()];
         _clearPromptGlass.frame = _clearPromptCard.bounds;
@@ -4048,14 +4035,14 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
 
         CGFloat btnW = (cardW - 32.0 - 8.0) * 0.5;
 
-        // Cancel button: Liquid Glass capsule button (white text)
+        // Cancel button: Prominent Liquid Glass capsule button (white text, matching Apple Music)
         UIButtonConfiguration *cancelConfig;
         UIButtonConfiguration *clearConfig;
         if (@available(iOS 26.0, *)) {
-            cancelConfig = [UIButtonConfiguration glassButtonConfiguration];
+            cancelConfig = [UIButtonConfiguration prominentGlassButtonConfiguration];
             clearConfig = [UIButtonConfiguration glassButtonConfiguration];
         } else {
-            cancelConfig = [UIButtonConfiguration grayButtonConfiguration];
+            cancelConfig = [UIButtonConfiguration filledButtonConfiguration];
             clearConfig = [UIButtonConfiguration grayButtonConfiguration];
         }
         cancelConfig.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
@@ -4091,7 +4078,7 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
 
         if (!@available(iOS 26.0, *)) {
             static char kCancelFallbackGlassKey, kClearFallbackGlassKey;
-            SGRGlassCapsuleInside(_clearPromptCancelButton, &kCancelFallbackGlassKey, CGSizeMake(btnW, 48.0), NO);
+            SGRGlassCapsuleInside(_clearPromptCancelButton, &kCancelFallbackGlassKey, CGSizeMake(btnW, 48.0), YES);
             SGRGlassCapsuleInside(_clearPromptClearButton, &kClearFallbackGlassKey, CGSizeMake(btnW, 48.0), NO);
         }
 
