@@ -48,17 +48,17 @@ sheet is the player's, and that the sheet is in the mod's window under the app's
 - `close`: closing the menu with no pick takes the hidden sheet away within 1 s, and a second tap opens again.
 - `subpage`: the quick Share taps Spotify's Share, which pushes a page inside the sheet: the sheet is shown over
   the player, on that page; closed, the mod's window goes back under the app's.
-- `sleep`: More's Sleep timer (item 51) is a submenu: opening it taps Spotify's row on the hidden sheet, which pushes
-  its options page (Encore list rows, no table) 0.3 s later; the submenu shows the page's rows, the sheet stays hidden,
-  and picking 5 minutes taps it on the page, after which the page and the sheet go, unseen.
+- `sleep`: More's Sleep timer (item 51) is picked: the menu goes, Spotify's row is tapped on the hidden sheet, which
+  pushes its options page (Encore list rows, no table) 0.3 s later, and the page's rows open as a menu of their own
+  from the ⋯, under its heading, with Back; the sheet stays hidden, and picking 5 minutes taps it on the page, after
+  which the page and the sheet go, unseen.
 - `sleeppresent`: the same with Sleep timer presenting a context menu sheet of its own from the player, as on the
-  phone: it goes up from the hidden sheet instead (UIKit turns down a presentation from the player while its menu
-  is up), hidden and taking no touches, and its table rows fill the submenu.
+  phone: it goes up from the hidden sheet instead, hidden and taking no touches, and its table rows fill the menu.
 - `sleepwrapped`: the same, with the sleep timer's sheet inside a container that puts it in only as it appears
-  (NavigationUI_SheetImpl.ContainerViewController on the phone): it is still kept hidden and fills the submenu.
-- `pagepopup`: Voice language (item 0), a row the mod does not know, pushes a page: the first pick opens the page's
-  rows as a menu of their own from the ⋯, under its heading, with Back and the picked row checked, and the row is kept
-  as one that opens a page; Back pops the page and opens the menu again, where Voice language is now a submenu.
+  (NavigationUI_SheetImpl.ContainerViewController on the phone): it is still kept hidden and fills the menu.
+- `pagepopup`: Voice language (item 0), a row the mod does not know, pushes a page: its rows open as a menu of their
+  own, under its heading, with Back and the picked row checked, and the row is kept as one that opens a page; Back pops
+  the page and opens the menu again, and Voice language picked again opens its page's menu again.
 - `sort`: a row of the mod's own in the sheet's header (as the playlist's Sort) is in More and fires.
 - `animated`: Show Animated Artwork switches it on and the sheet goes.
 - `wrapped`: Spotify presents a controller of its own that puts the sheet in only as it appears

@@ -606,14 +606,12 @@ static void openAnchorMenu(SGRMenuAnchor *anchor, BOOL (^up)(void)) {
     // The row fired last (fire:), whose page, should it open one, is shown as a menu of its own.
     SGRSheetRow *_firedRow;
     // A page of Spotify's a row opened, kept hidden: the row, the page (pushed inside the sheet or presented as a sheet of
-    // its own), its rows and heading as read, the submenus waiting for them, and the poll for them. `_pagePopup`: the row
-    // was picked as an ordinary one, so the page's rows open as a menu of their own from the ⋯ rather than as a submenu.
+    // its own), its rows and heading as read, and the poll for them. The page's rows open as a menu of their own from the ⋯.
     SGRSheetRow *_pageRow;
     __weak UIViewController *_page;
-    BOOL _pagePresented, _pagePopup;
+    BOOL _pagePresented;
     NSArray<SGRSheetRow *> *_pageRows;
     NSString *_pageTitle;
-    NSMutableArray<void (^)(NSArray<UIMenuElement *> *)> *_pageWaiting;
     NSTimer *_pagePoll;
     // The menu closed with nothing picked (a page still on its way goes as it comes); a menu opened again from code, for
     // a page or back from one, not up yet.
@@ -875,7 +873,6 @@ static void openAnchorMenu(SGRMenuAnchor *anchor, BOOL (^up)(void)) {
         UIButton *button = (UIButton *)row.control;
         if (button.menu && button.showsMenuAsPrimaryAction) return button.menu;
     }
-    if (row.path && row.enabled && [self opensPage:row.title identifier:row.identifier]) return [self pageMenuTitled:row.title image:row.image subtitle:row.subtitle];
     return [self actionFor:row];
 }
 
@@ -887,7 +884,8 @@ static void openAnchorMenu(SGRMenuAnchor *anchor, BOOL (^up)(void)) {
     return self.kind.length ? self.kind : @"track";
 }
 
-// Whether the row opens a page of Spotify's: Sleep timer, and every row seen to open one on a sheet of this kind.
+// Whether the row opens a page of Spotify's: Sleep timer, and every row seen to open one on a sheet of this kind. Such a
+// row's page is waited for longer (kPageWait): Sleep timer's took 1.06 s on the phone, past kSettle.
 - (BOOL)opensPage:(NSString *)title identifier:(NSString *)identifier {
     if ([identifier isEqualToString:kSleepTimerItem]) return YES;
     if (!title.length) return NO;
@@ -906,27 +904,6 @@ static void openAnchorMenu(SGRMenuAnchor *anchor, BOOL (^up)(void)) {
     SGLog(@"system menu: %@ opens a page of its own, a submenu from now on", row.title);
 }
 
-// A row that opens a page, as a submenu: opening it fires the row on the hidden sheet and shows the page's rows, which
-// Spotify's page keeps hidden; the submenu's back is the page's.
-- (UIMenu *)pageMenuTitled:(NSString *)title image:(UIImage *)image subtitle:(NSString *)subtitle {
-    __weak SGRMenuSession *weakSelf = self;
-    UIDeferredMenuElement *rows = [UIDeferredMenuElement elementWithUncachedProvider:^(void (^completion)(NSArray<UIMenuElement *> *)) {
-        SGRMenuSession *session = weakSelf;
-        if (session) [session openPageTitled:title completion:completion];
-        else completion(@[]);
-    }];
-    UIMenu *menu = [UIMenu menuWithTitle:title image:image identifier:pageMenuIdentifier(title) options:0 children:@[rows]];
-    menu.subtitle = subtitle;
-    return menu;
-}
-
-- (SGRSheetRow *)rowTitled:(NSString *)title {
-    for (NSArray<SGRSheetRow *> *group in _groups) {
-        for (SGRSheetRow *row in group) if (row.path && [row.title isEqualToString:title]) return row;
-    }
-    return nil;
-}
-
 // A row picked as a tap on it would be, on the hidden sheet.
 - (void)press:(SGRSheetRow *)row {
     if (row.control) {
@@ -937,83 +914,6 @@ static void openAnchorMenu(SGRMenuAnchor *anchor, BOOL (^up)(void)) {
     if (table.window) selectRow(table, row.path);
 }
 
-// A submenu for a page opened: its row fired, the page waited for and its rows handed over. Only one page is open at a
-// time; another's is closed first.
-- (void)openPageTitled:(NSString *)title completion:(void (^)(NSArray<UIMenuElement *> *))completion {
-    __weak SGRMenuSession *weakSelf = self;
-    if (self.ended || self.revealed) {
-        completion(@[]);
-        return;
-    }
-    if (!_groups) {
-        if (_failed) {
-            completion([self unavailable]);
-            return;
-        }
-        if (!_whenRead) _whenRead = [NSMutableArray array];
-        [_whenRead addObject:^{
-            SGRMenuSession *session = weakSelf;
-            if (session && session->_groups) [session openPageTitled:title completion:completion];
-            else completion(session ? [session unavailable] : @[]);
-        }];
-        if (self.direct) [self requestSheet];
-        if (self.presented) [self pollRows];
-        return;
-    }
-    if (_pageRow && !_pagePopup && [_pageRow.title isEqualToString:title]) {
-        if (_pageRows) completion([self pageRowElements]);
-        else [_pageWaiting addObject:completion];
-        return;
-    }
-    if (_pageRow) {
-        [self closePage:^{ [weakSelf openPageTitled:title completion:completion]; }];
-        return;
-    }
-    SGRSheetRow *row = [self rowTitled:title];
-    if (!row || !self.presented.presentingViewController) {
-        completion([self unavailable]);
-        return;
-    }
-    _pageRow = row;
-    _pagePopup = NO;
-    _pageWaiting = [NSMutableArray arrayWithObject:completion];
-    sg_firing = self;
-    SGLog(@"system menu: %@ opened as a submenu, its page fired on the hidden sheet", title);
-    [self press:row];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kPageWait * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        SGRMenuSession *session = weakSelf;
-        if (!session || session->_pageRow != row || session->_page) return;
-        if (sg_firing == session) sg_firing = nil;
-        SGLog(@"system menu: %@ opened no page in %.0f s", title, kPageWait);
-        [session finishPage:[session unavailable]];
-        session->_pageRow = nil;
-    });
-}
-
-- (void)finishPage:(NSArray<UIMenuElement *> *)elements {
-    NSArray *waiting = _pageWaiting;
-    _pageWaiting = nil;
-    for (void (^completion)(NSArray<UIMenuElement *> *) in waiting) completion(elements);
-    if (!waiting.count || !elements.count) return;
-    // UIKit can leave its loading row up although the rows were handed to it (the deferred rows say more): the submenu
-    // up is given them in its place.
-    NSString *identifier = pageMenuIdentifier(_pageRow.title);
-    __weak SGRMenuSession *weakSelf = self;
-    for (NSNumber *after in @[@0.15, @0.45]) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(after.doubleValue * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            SGRMenuSession *later = weakSelf;
-            if (!later || later.ended) return;
-            [later.anchor.contextMenuInteraction updateVisibleMenuWithBlock:^UIMenu *(UIMenu *visible) {
-                if (![visible.identifier isEqualToString:identifier]) return visible;
-                BOOL loading = [visible.children indexOfObjectPassingTest:^BOOL(UIMenuElement *child, NSUInteger index, BOOL *stop) {
-                    return [child isKindOfClass:UIDeferredMenuElement.class];
-                }] != NSNotFound;
-                return loading ? [visible menuByReplacingChildren:elements] : visible;
-            }];
-        });
-    }
-}
-
 - (BOOL)takePage:(UIViewController *)page presented:(BOOL)presented {
     if (self.revealed || _page) return NO;
     // A sheet of the row's own that is no menu (song credits) is shown as it is. Spotify's sheet container
@@ -1022,14 +922,12 @@ static void openAnchorMenu(SGRMenuAnchor *anchor, BOOL (^up)(void)) {
     if (presented && !sheetIn(page)) {
         if (page.childViewControllers.count || [page isKindOfClass:UIAlertController.class] || [page isKindOfClass:UIActivityViewController.class]) return NO;
     }
-    if (!_pageRow) {
-        // A row picked as an ordinary one: its page opens as a menu of its own from the ⋯, the first time.
-        if (!_firedRow.path) return NO;
-        _pageRow = _firedRow;
-        _pagePopup = YES;
-        // The pick's own check (fire:) is over: the page is the menu's now, even once Back has closed it.
-        _firedRow = nil;
-    }
+    // The row picked: its page opens as a menu of its own from the ⋯ once the picked one has gone. Not a submenu of the
+    // menu still up: on the phone that menu went away as the page was presented under it.
+    if (!_firedRow.path) return NO;
+    _pageRow = _firedRow;
+    // The pick's own check (fire:) is over: the page is the menu's now, even once Back has closed it.
+    _firedRow = nil;
     _page = page;
     _pagePresented = presented;
     if (presented) sg_pageSheet = page;
@@ -1110,24 +1008,21 @@ static void openAnchorMenu(SGRMenuAnchor *anchor, BOOL (^up)(void)) {
 
 - (void)pageRead {
     if (sg_firing == self) sg_firing = nil;
-    SGLog(@"system menu: %@ opened %@ with %lu rows, shown as %@", _pageRow.title, _pageTitle ?: @"a page", (unsigned long)_pageRows.count,
-          _pagePopup ? @"a menu of its own" : @"a submenu");
+    SGLog(@"system menu: %@ opened %@ with %lu rows, shown as a menu of its own", _pageRow.title, _pageTitle ?: @"a page", (unsigned long)_pageRows.count);
     [self learnPageRow:_pageRow];
     if (_menuGone) {
         [self dismissAll];
         return;
     }
-    if (_pagePopup) [self showPageMenu];
-    else [self finishPage:[self pageRowElements]];
+    [self showPageMenu];
 }
 
 - (void)pageUnread {
     if (sg_firing == self) sg_firing = nil;
     SGLog(@"system menu: the page %@ opened %@%@", _pageRow.title, [self pageIsNoMenu] ? @"is no menu" : [NSString stringWithFormat:@"showed no rows in %.0f s", kPageWait],
-          _pagePopup ? @", so it is shown" : @"");
+          @", so it is shown");
     if (_menuGone) [self dismissAll];
-    else if (_pagePopup) [self revealPage];
-    else [self finishPage:[self unavailable]];
+    else [self revealPage];
 }
 
 - (NSArray<UIMenuElement *> *)pageRowElements {
@@ -1251,14 +1146,11 @@ static void openAnchorMenu(SGRMenuAnchor *anchor, BOOL (^up)(void)) {
     _pagePoll = nil;
     if (sg_pageSheet && sg_pageSheet == _page) sg_pageSheet = nil;
     if (sg_firing == self) sg_firing = nil;
-    NSArray *waiting = _pageWaiting;
-    _pageWaiting = nil;
-    for (void (^completion)(NSArray<UIMenuElement *> *) in waiting) completion(@[]);
     _page = nil;
     _pageRow = nil;
     _pageRows = nil;
     _pageTitle = nil;
-    _pagePresented = _pagePopup = NO;
+    _pagePresented = NO;
 }
 
 // The open page closed, the sheet left as it was before the row: pushed, popped; presented, dismissed.
@@ -1362,12 +1254,7 @@ static void rememberPage(NSString *kind) {
             NSString *subtitle = row[@"subtitle"];
             if ([subtitle isKindOfClass:NSString.class]) action.subtitle = subtitle;
             else subtitle = nil;
-            NSString *identifier = [row[@"identifier"] isKindOfClass:NSString.class] ? row[@"identifier"] : nil;
             if ([row[@"enabled"] isEqual:@NO]) action.attributes = UIMenuElementAttributesDisabled;
-            else if ([self opensPage:title identifier:identifier]) {
-                [actions addObject:[self pageMenuTitled:title image:image subtitle:subtitle]];
-                continue;
-            }
             [actions addObject:action];
         }
         if (actions.count) [elements addObject:inlineGroup(actions)];
@@ -1745,7 +1632,8 @@ static void rememberPage(NSString *kind) {
 - (void)fire:(SGRSheetRow *)row {
     UIViewController *presented = self.presented;
     if (!presented.presentingViewController || self.revealed) return;
-    // A page a submenu opened is closed first, so the row is picked on the sheet as it was.
+    // A page still open (its menu closed with a pick of the root menu's) is closed first, so the row is picked on the sheet
+    // as it was.
     if (_pageRow) {
         __weak SGRMenuSession *weakSelf = self;
         [self closePage:^{ [weakSelf fire:row]; }];
@@ -1755,9 +1643,11 @@ static void rememberPage(NSString *kind) {
     _rowPresented = NO;
     _firedRow = row;
     [self press:row];
-    // A row that pushes a page of its own inside the sheet shows it as it pushes (the push hook below); one that
-    // leaves the sheet up some other way shows it after kSettle.
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kSettle * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    // A row that opens a page has its page read into a menu of its own (takePage); one that leaves the sheet up some other
+    // way shows it after kSettle, or kPageWait for a row known to open a page, which Spotify can take longer than kSettle
+    // to bring.
+    NSTimeInterval settle = [self opensPage:row.title identifier:row.identifier] ? kPageWait : kSettle;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(settle * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         // A page the row opened is the menu's now (takePage).
         if (self->_firedRow != row) return;
         if (sg_firing == self) sg_firing = nil;

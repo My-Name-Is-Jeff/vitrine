@@ -792,8 +792,11 @@ static NSArray<NSString *> *quickTitles(void) {
             pick(@"More");
             waitFor(^BOOL { return menuShows(@"Sleep timer"); }, 3, ^{
                 pick(@"Sleep timer");
-                waitFor(^BOOL { return menuShows(@"5 minutes"); }, 4, ^{
-                    check(menuShowsAll(@[@"1 minute", @"5 minutes"]), @"Sleep timer opens as a submenu holding its page's rows");
+                // The menu goes, the row fires on the hidden sheet, and the page's rows open as a menu of their own.
+                waitFor(^BOOL { return menuShows(@"5 minutes"); }, 6, ^{
+                    // The pushed page has Spotify's heading; the presented mock sheet has none, so the row's title stands for it.
+                    check(menuShowsAll(@[@"Back", @"1 minute", @"5 minutes"]) && menuShows(presents ? @"Sleep timer" : @"Stop audio in"),
+                          @"Sleep timer's page opens as a menu of its own, under its heading, with Back");
                     check([sg_selected isEqualToString:@"Sleep timer"], [NSString stringWithFormat:@"Spotify's Sleep timer row was tapped (%@)", sg_selected]);
                     check(!self.sheetShown, @"Spotify's sheet stays hidden");
                     if (presents) {
@@ -838,10 +841,9 @@ static NSArray<NSString *> *quickTitles(void) {
                         check([self.sheet.topViewController isKindOfClass:_TtC24ContextMenu_InternalImpl25ContextMenuViewController.class], @"and the page is popped off the hidden sheet");
                         pick(@"More");
                         waitFor(^BOOL { return menuShows(@"Voice language"); }, 3, ^{
-                            check([sg_elements[@"Voice language"] isKindOfClass:UIMenu.class], @"Voice language is a submenu now");
                             pick(@"Voice language");
-                            waitFor(^BOOL { return menuShows(@"German"); }, 4, ^{
-                                check(menuShowsAll(@[@"English", @"German"]), @"the submenu holds the page's rows");
+                            waitFor(^BOOL { return menuShows(@"German"); }, 6, ^{
+                                check(menuShowsAll(@[@"Back", @"English", @"German"]), @"picked again, the page opens as its menu again");
                                 pick(@"German");
                                 CFTimeInterval picked = CACurrentMediaTime();
                                 waitFor(^BOOL { return !openMenu() && self.sheetGone; }, 6, ^{
