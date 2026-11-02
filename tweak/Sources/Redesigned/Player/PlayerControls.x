@@ -175,34 +175,39 @@ static void suppressButton(UIView *button) {
 // Each is looked for only in its own end of the row, so a row without it (a podcast's) costs a walk of one
 // element, not the unit. While the inline queue is open, both are hidden on the main transport bar since
 // Shuffle and Repeat live in the queue's 4-pill header bar, matching Apple Music.
+static void setQueueOuterSlotHidden(UIView *slotView, UIView *innerButton, BOOL hidePermanently, BOOL queueOpen) {
+    if (hidePermanently) {
+        suppressButton(innerButton);
+        return;
+    }
+    UIView *target = innerButton ?: slotView;
+    if (!target) return;
+    if (queueOpen) {
+        SGRPlayerVanish(target);
+        if (slotView && slotView != target) SGRPlayerVanish(slotView);
+    } else {
+        target.alpha = 1.0;
+        target.userInteractionEnabled = YES;
+        target.accessibilityElementsHidden = NO;
+        if (slotView && slotView != target) {
+            slotView.alpha = 1.0;
+            slotView.userInteractionEnabled = YES;
+            slotView.accessibilityElementsHidden = NO;
+        }
+    }
+}
+
 static void hideShuffleAndRepeat(UIView *host, UIStackView *row) {
     sg_buttonsHost = host;
-    UIView *shuffle = SGRFindByIdentifier(row.arrangedSubviews.firstObject, kShuffleID, &kShuffleKey);
-    UIView *repeat = SGRFindByIdentifier(row.arrangedSubviews.lastObject, kRepeatID, &kRepeatKey);
+    NSArray<UIView *> *arranged = row.arrangedSubviews;
+    UIView *firstSlot = arranged.count >= 5 ? arranged.firstObject : nil;
+    UIView *lastSlot  = arranged.count >= 5 ? arranged.lastObject  : nil;
+    UIView *shuffle = SGRFindByIdentifier(firstSlot, kShuffleID, &kShuffleKey);
+    UIView *repeat  = SGRFindByIdentifier(lastSlot, kRepeatID, &kRepeatKey);
     ensureButtonArrivalHook(shuffle ?: repeat);
     BOOL queueOpen = SGRPlayerQueueOpen();
-    if (sg_hideShuffle) {
-        suppressButton(shuffle);
-    } else if (shuffle) {
-        if (queueOpen) {
-            SGRPlayerVanish(shuffle);
-        } else {
-            shuffle.alpha = 1;
-            shuffle.userInteractionEnabled = YES;
-            shuffle.accessibilityElementsHidden = NO;
-        }
-    }
-    if (sg_hideRepeat) {
-        suppressButton(repeat);
-    } else if (repeat) {
-        if (queueOpen) {
-            SGRPlayerVanish(repeat);
-        } else {
-            repeat.alpha = 1;
-            repeat.userInteractionEnabled = YES;
-            repeat.accessibilityElementsHidden = NO;
-        }
-    }
+    setQueueOuterSlotHidden(firstSlot, shuffle, sg_hideShuffle, queueOpen);
+    setQueueOuterSlotHidden(lastSlot, repeat, sg_hideRepeat, queueOpen);
 }
 
 void SGRPlayerControlsQueueChanged(void) {
@@ -301,6 +306,13 @@ static void updateTransportPositionsForQueue(UIView *host) {
     if (!host) return;
     UIView *prev = SGRFindByIdentifier(host, @"SPTNowPlayingPreviousTrackButton", &kPreviousKey);
     UIView *next = SGRFindByIdentifier(host, @"SPTNowPlayingNextTrackButton", &kNextKey);
+    if (!prev || !next) {
+        UIStackView *row = (UIStackView *)SGFindRemembered(host, &kRowKey, ^BOOL(UIView *v) { return SGIsRow(v); });
+        if (row.arrangedSubviews.count >= 5) {
+            if (!prev) prev = row.arrangedSubviews[1];
+            if (!next) next = row.arrangedSubviews[3];
+        }
+    }
     if (!prev || !next) return;
 
     SGRGlyphView *prevGlyph = objc_getAssociatedObject(prev, &kGlyphKey);
@@ -321,13 +333,14 @@ static void updateTransportPositionsForQueue(UIView *host) {
         if (!CGAffineTransformEqualToTransform(prev.transform, prevT)) prev.transform = prevT;
         if (!CGAffineTransformEqualToTransform(next.transform, nextT)) next.transform = nextT;
 
-        CGFloat skipScale = 26.5 / kSkipGlyphSize;
+        // Visual size in Apple Music Queue: 39.7x22.7 pt for skip glyphs (pointSize 30.0) and 31.7x35.7 pt for play glyph (pointSize 42.6)
+        CGFloat skipScale = 30.0 / kSkipGlyphSize;
         CGAffineTransform skipScaleT = CGAffineTransformMakeScale(skipScale, skipScale);
         if (prevGlyph && !CGAffineTransformEqualToTransform(prevGlyph.transform, skipScaleT)) prevGlyph.transform = skipScaleT;
         if (nextGlyph && !CGAffineTransformEqualToTransform(nextGlyph.transform, skipScaleT)) nextGlyph.transform = skipScaleT;
 
         if (sg_playGlyph) {
-            CGFloat playScale = 35.0 / kPlayGlyphSize;
+            CGFloat playScale = 42.6 / kPlayGlyphSize;
             CGAffineTransform playT = CGAffineTransformMakeScale(playScale, playScale);
             if (!CGAffineTransformEqualToTransform(sg_playGlyph.transform, playT)) sg_playGlyph.transform = playT;
         }
@@ -587,10 +600,11 @@ static void updateDurationForQueue(void) {
             CGAffineTransform scaleT = CGAffineTransformMakeScale(targetScale, 1.0);
             if (!CGAffineTransformEqualToTransform(slider.transform, scaleT)) slider.transform = scaleT;
 
-            CGAffineTransform takenT = CGAffineTransformMakeTranslation(7.0, 9.5);
+            // Places elapsed & remaining time labels at y = 566.3..575.0 pt matching Apple Music
+            CGAffineTransform takenT = CGAffineTransformMakeTranslation(7.0, 5.1);
             if (taken && !CGAffineTransformEqualToTransform(taken.transform, takenT)) taken.transform = takenT;
 
-            CGAffineTransform remT = CGAffineTransformMakeTranslation(-7.0, 9.5);
+            CGAffineTransform remT = CGAffineTransformMakeTranslation(-7.0, 5.1);
             if (remaining && !CGAffineTransformEqualToTransform(remaining.transform, remT)) remaining.transform = remT;
         } else {
             if (!CGAffineTransformIsIdentity(slider.transform)) slider.transform = CGAffineTransformIdentity;
@@ -599,6 +613,13 @@ static void updateDurationForQueue(void) {
         }
         slider.minimumTrackTintColor = [UIColor colorWithWhite:1.0 alpha:0.55];
         slider.maximumTrackTintColor = [UIColor colorWithWhite:1.0 alpha:0.16];
+
+        // Hide extra labels inside DurationElementUnit (such as Podcast chapter title) while Queue is open
+        SGForEachView(host, ^(UIView *v) {
+            if ([v isKindOfClass:UILabel.class] && v != taken && v != remaining) {
+                v.alpha = queueOpen ? 0.0 : 1.0;
+            }
+        });
     }
 
     if (taken) {

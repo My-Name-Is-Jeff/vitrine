@@ -140,7 +140,7 @@ static UIImage *SGRQueueActiveKnockoutIconImage(CGSize size) {
 
         // Knockout SF Symbol list.bullet using kCGBlendModeDestinationOut + template alpha mask
         // (kCGBlendModeClear in Quartz clears the entire rectangular bounding box instead of masking by alpha)
-        UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:17.5 weight:UIImageSymbolWeightSemibold];
+        UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:19.8 weight:UIImageSymbolWeightSemibold];
         UIImage *sym = [[UIImage systemImageNamed:kQueueSymbol withConfiguration:cfg] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
         if (sym) {
             CGRect symRect = CGRectMake((size.width - sym.size.width) * 0.5,
@@ -415,7 +415,7 @@ void SGRPlayerLowerRow(UIView *row) {
     if (queueOpen && controlsView) {
         // In Queue view, center the 3-button transport row at Apple Music's y = 638.2 pt (height - (171.8 + safeBottom) on 844pt)
         CGFloat ctrlMiddle = [stack convertPoint:controlsView.center toView:player].y;
-        CGFloat targetCtrlMiddle = height - (171.8 + safeBottom);
+        CGFloat targetCtrlMiddle = height - (175.6 + safeBottom);
         CGAffineTransform queueFollow = CGAffineTransformMakeTranslation(0, round(targetCtrlMiddle - ctrlMiddle));
         if (!CGAffineTransformEqualToTransform(controlsView.transform, queueFollow)) controlsView.transform = queueFollow;
     } else {

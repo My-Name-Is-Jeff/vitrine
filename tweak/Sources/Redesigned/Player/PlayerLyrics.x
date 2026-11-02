@@ -274,7 +274,7 @@ static void placeQueueBottomChrome(UIView *host, BOOL queueOpen) {
             CGRect rawBar = SGFrameIn(dur, host);
             rawBar = CGRectOffset(rawBar, -dur.transform.tx, -dur.transform.ty);
             // Lift dur so the top edge of the slider track sits at exactly screen y = 546.0 pt
-            CGFloat dy = round((targetSliderY - sliderLocalY) - CGRectGetMinY(rawBar)) - 10.4;
+            CGFloat dy = round((targetSliderY - sliderLocalY) - CGRectGetMinY(rawBar)) - 3.7;
             CGAffineTransform up = CGAffineTransformMakeTranslation(0.0, dy);
             if (!CGAffineTransformEqualToTransform(dur.transform, up)) dur.transform = up;
         } else {
@@ -1069,9 +1069,7 @@ static void setMode(SGRPlayerInlineMode targetMode, BOOL animated) {
                 [q setContentSlideOffset:0.0 opacity:1.0];
                 overlay.thumb.alpha = 0.0;
                 overlay.thumb.hidden = YES;
-                UIView *cl = SGRPlayerCoverList();
-                if (cl) cl.alpha = 0.0;
-                SGRPlayerSetCoverHidden(YES);
+                SGRPlayerCoverList().alpha = 0.0;
                 if (sg_info.viewIfLoaded) sg_info.viewIfLoaded.alpha = 0.0;
                 setHeaderShownForQueue(NO, YES);
                 return;
@@ -1081,8 +1079,7 @@ static void setMode(SGRPlayerInlineMode targetMode, BOOL animated) {
             q.hidden = YES;
             q.alpha = 0.0;
             SGRPlayerSetCoverHidden(NO);
-            UIView *cl = SGRPlayerCoverList();
-            if (cl) cl.alpha = 1.0;
+            SGRPlayerCoverList().alpha = 1.0;
             if (sg_info.viewIfLoaded) {
                 sg_info.viewIfLoaded.alpha = 1.0;
                 sg_info.viewIfLoaded.transform = CGAffineTransformIdentity;
@@ -1097,8 +1094,7 @@ static void setMode(SGRPlayerInlineMode targetMode, BOOL animated) {
             if (open) {
                 // 1. Fade out Main Player title, inline lyric preview, and top header rapidly (0.00s..0.14s)
                 [UIView animateWithDuration:0.14 delay:0.0 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction animations:^{
-                    UIView *coverList = SGRPlayerCoverList();
-                    if (coverList) coverList.alpha = 0.0;
+                    SGRPlayerCoverList().alpha = 0.0;
                     sg_floating.viewIfLoaded.alpha = 0.0;
                     if (sg_info.viewIfLoaded) sg_info.viewIfLoaded.alpha = 0.0;
                     setHeaderShownForQueue(NO, NO);
@@ -1122,8 +1118,7 @@ static void setMode(SGRPlayerInlineMode targetMode, BOOL animated) {
                 } completion:nil];
                 // 3. Fade in Main Player title, inline lyric preview, and top header as they settle into place (0.15s..0.33s)
                 [UIView animateWithDuration:0.18 delay:0.15 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction animations:^{
-                    UIView *coverList = SGRPlayerCoverList();
-                    if (coverList) coverList.alpha = 1.0;
+                    SGRPlayerCoverList().alpha = 1.0;
                     sg_floating.viewIfLoaded.alpha = 1.0;
                     if (sg_info.viewIfLoaded) sg_info.viewIfLoaded.alpha = 1.0;
                     setHeaderShownForQueue(YES, NO);
