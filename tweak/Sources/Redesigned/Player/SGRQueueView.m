@@ -2244,25 +2244,26 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     CGFloat artY = 0.0;
     _artView.frame = CGRectMake(kSideMargin, artY, 48.0, 48.0);
 
-    // 3-line handle aligned to right margin (x_right = 354 pt, 36 pt inset from right edge of 390 pt screen)
+    // 3-line handle aligned to right margin (x = 333.0..354.33 pt, 35.67 pt inset from right edge of 390 pt screen)
     CGFloat barW = 22.0;
     CGFloat handleTouchW = 52.0;
-    _handleHitView.frame = CGRectMake(w - 36.0 - barW - 15.0, 0, handleTouchW, 48.0);
+    _handleHitView.frame = CGRectMake(w - 35.33 - barW - 15.0, 0, handleTouchW, 48.0);
 
     CGFloat textLeft = kSideMargin + 48.0 + 12.0; // 92.0 pt (glyph leading at 93.0 pt)
-    CGFloat maxRight = _showsHandle ? (w - 36.0 - barW - 10.0) : (w - kSideMargin);
+    CGFloat maxRight = _showsHandle ? (w - 36.0 - barW - 21.0) : (w - kSideMargin); // 311.0 pt matching Apple Music
     CGFloat availW = MAX(40.0, maxRight - textLeft);
 
     BOOL hasExp = !_explicitView.hidden;
     BOOL hasSub = (_subtitleLabel.text.length > 0);
-    CGFloat badgeW = hasExp ? (12.0 + 5.0) : 0.0;
+    CGFloat badgeGap = 6.5;
+    CGFloat badgeW = hasExp ? (12.0 + badgeGap) : 0.0;
     CGSize naturalTitle = [_titleLabel sizeThatFits:CGSizeMake(availW - badgeW, 22.0)];
     CGFloat titleW = MIN(availW - badgeW, ceil(naturalTitle.width));
 
     CGFloat rowTitleY = hasSub ? 4.5 : 13.0;
     _titleLabel.frame = CGRectMake(textLeft, rowTitleY, titleW, 22.0);
     if (hasExp) {
-        _explicitView.frame = CGRectMake(textLeft + titleW + 5.0, rowTitleY + 4.8, 12.0, 12.0);
+        _explicitView.frame = CGRectMake(textLeft + titleW + badgeGap, rowTitleY + 4.8, 12.0, 12.0);
     }
     _subtitleLabel.frame = CGRectMake(textLeft, 26.8, availW, 18.0);
 
@@ -2530,6 +2531,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
 
     // Clear Queue Confirmation Prompt Overlay ("Are you sure you want to clear your queue?")
     UIControl *_clearPromptOverlay;
+    CAShapeLayer *_clearPromptDimLayer;
     UIView *_clearPromptCard;
 
     // Section 2B: Continue Playing Sticky Header & Rows
@@ -2812,23 +2814,26 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     [_userQueueRowsContainerView addSubview:_addSongsRowControl];
 
     _addSongsPlusBox = [[UIView alloc] initWithFrame:CGRectMake(kSideMargin, 0.0, 48.0, 48.0)];
-    _addSongsPlusBox.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.10];
+    _addSongsPlusBox.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.08];
+    _addSongsPlusBox.layer.compositingFilter = @"plusL";
     _addSongsPlusBox.layer.cornerRadius = 7.0;
     _addSongsPlusBox.layer.cornerCurve = kCACornerCurveContinuous;
     _addSongsPlusBox.userInteractionEnabled = NO;
     [_addSongsRowControl addSubview:_addSongsPlusBox];
 
-    UIImageSymbolConfiguration *plusCfg = [UIImageSymbolConfiguration configurationWithPointSize:18.0 weight:UIImageSymbolWeightSemibold];
+    UIImageSymbolConfiguration *plusCfg = [UIImageSymbolConfiguration configurationWithPointSize:20.0 weight:UIImageSymbolWeightSemibold];
     UIImage *plusImg = [[UIImage systemImageNamed:@"plus" withConfiguration:plusCfg] imageWithTintColor:UIColor.whiteColor renderingMode:UIImageRenderingModeAlwaysOriginal];
     _addSongsPlusIcon = [[UIImageView alloc] initWithImage:plusImg];
     _addSongsPlusIcon.contentMode = UIViewContentModeCenter;
-    _addSongsPlusIcon.frame = _addSongsPlusBox.bounds;
-    [_addSongsPlusBox addSubview:_addSongsPlusIcon];
+    _addSongsPlusIcon.frame = _addSongsPlusBox.frame;
+    [_addSongsRowControl addSubview:_addSongsPlusIcon];
 
     _addSongsLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _addSongsLabel.text = @"Add Songs to Queue";
-    _addSongsLabel.font = [UIFont systemFontOfSize:16.5 weight:UIFontWeightRegular];
-    _addSongsLabel.textColor = UIColor.whiteColor;
+    _addSongsLabel.attributedText = [[NSAttributedString alloc] initWithString:@"Add Songs to Queue" attributes:@{
+        NSFontAttributeName: [UIFont systemFontOfSize:17.0 weight:UIFontWeightRegular],
+        NSForegroundColorAttributeName: UIColor.whiteColor,
+        NSKernAttributeName: @(-0.35),
+    }];
     [_addSongsRowControl addSubview:_addSongsLabel];
 
     _userQueueHeaderView = [[UIView alloc] initWithFrame:CGRectZero];
@@ -2837,15 +2842,17 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     [_scrollView addSubview:_userQueueHeaderView];
 
     _userQueueTitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _userQueueTitleLabel.text = @"Queue";
-    _userQueueTitleLabel.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightBold];
-    _userQueueTitleLabel.textColor = UIColor.whiteColor;
+    _userQueueTitleLabel.attributedText = [[NSAttributedString alloc] initWithString:@"Queue" attributes:@{
+        NSFontAttributeName: [UIFont systemFontOfSize:17.0 weight:UIFontWeightBold],
+        NSForegroundColorAttributeName: UIColor.whiteColor,
+        NSKernAttributeName: @(-0.40),
+    }];
     [_userQueueHeaderView addSubview:_userQueueTitleLabel];
 
     _userQueueClearButton = [UIButton buttonWithType:UIButtonTypeSystem];
     [_userQueueClearButton setTitle:@"Clear" forState:UIControlStateNormal];
     _userQueueClearButton.titleLabel.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightRegular];
-    [_userQueueClearButton setTitleColor:[UIColor colorWithWhite:1.0 alpha:0.55] forState:UIControlStateNormal];
+    [_userQueueClearButton setTitleColor:[UIColor colorWithWhite:1.0 alpha:0.65] forState:UIControlStateNormal];
     _userQueueClearButton.layer.compositingFilter = @"plusL";
     [_userQueueClearButton addTarget:self action:@selector(handleClearUserQueueTap) forControlEvents:UIControlEventTouchUpInside];
     [_userQueueHeaderView addSubview:_userQueueClearButton];
@@ -2874,9 +2881,11 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     }
 
     _continueTitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _continueTitleLabel.text = @"Continue Playing";
-    _continueTitleLabel.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightBold];
-    _continueTitleLabel.textColor = UIColor.whiteColor;
+    _continueTitleLabel.attributedText = [[NSAttributedString alloc] initWithString:@"Continue Playing" attributes:@{
+        NSFontAttributeName: [UIFont systemFontOfSize:17.0 weight:UIFontWeightBold],
+        NSForegroundColorAttributeName: UIColor.whiteColor,
+        NSKernAttributeName: @(-0.40),
+    }];
     [_continueHeaderView addSubview:_continueTitleLabel];
 
     _continueSubtitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
@@ -2953,9 +2962,21 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     [self updateStickyHeadersAndClipping];
 }
 
+- (void)willMoveToWindow:(UIWindow *)newWindow {
+    [super willMoveToWindow:newWindow];
+    if (!newWindow && _clearPromptOverlay) {
+        _clearPromptOverlay.hidden = YES;
+        [_clearPromptOverlay removeFromSuperview];
+    }
+}
+
 - (void)setTransitionArtworkHidden:(BOOL)hidden {
     _transitionArtHidden = hidden;
     _npArtView.alpha = hidden ? 0.0 : 1.0;
+    if (hidden && _clearPromptOverlay && !_clearPromptOverlay.hidden) {
+        _clearPromptOverlay.hidden = YES;
+        [_clearPromptOverlay removeFromSuperview];
+    }
 }
 
 - (void)setHeaderSlideOffset:(CGFloat)headerOffsetY listSlideOffset:(CGFloat)listOffsetY {
@@ -3400,9 +3421,9 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     }
 
     // Section 2A ("Queue" + "Clear") header subviews:
-    // At rest (docY = 142.0 -> screenY = 222.0), "Queue" at y = 4.3 -> screenY = 226.3 (cap_top = 230.0 pt)
-    _userQueueTitleLabel.frame = CGRectMake(kSideMargin, 4.3, 140.0, 22.0);
-    _userQueueClearButton.frame = CGRectMake(w - kSideMargin - 52.0, 0.0, 52.0, 30.0);
+    // At rest (docY = 142.0 -> screenY = 222.0), "Queue" at y = 3.0 -> cap_top = 230.0 pt; "Clear" at y = -1.33 -> cap_top = 229.33 pt
+    _userQueueTitleLabel.frame = CGRectMake(kSideMargin, 3.0, 140.0, 22.0);
+    _userQueueClearButton.frame = CGRectMake(w - kSideMargin - 52.0, -1.33, 52.0, 30.0);
     _userQueueClearButton.contentHorizontalAlignment = UIControlContentHorizontalAlignmentRight;
 
     // Section 2B ("Continue Playing" + "From ...") header subviews (relative to _continueHeaderView top at docY = 142.0 or 315.33):
@@ -3425,11 +3446,11 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     }
     if (hasUserQueue) {
         CGFloat addRowY = _userQueueRowViews.count * kQueueRowPitch;
-        _addSongsRowControl.frame = CGRectMake(0.0, addRowY, w, 48.0);
+        _addSongsRowControl.frame = CGRectMake(0.0, addRowY, w, kAddSongsRowHeight);
         _addSongsPlusBox.frame = CGRectMake(kSideMargin, 0.0, 48.0, 48.0);
-        _addSongsPlusIcon.frame = _addSongsPlusBox.bounds;
+        _addSongsPlusIcon.frame = _addSongsPlusBox.frame;
         CGFloat addTextLeft = kSideMargin + 48.0 + 12.0;
-        _addSongsLabel.frame = CGRectMake(addTextLeft, 13.0, w - addTextLeft - kSideMargin, 22.0);
+        _addSongsLabel.frame = CGRectMake(addTextLeft, 13.33, w - addTextLeft - kSideMargin, 22.0);
     }
     for (NSUInteger i = 0; i < _queueRowViews.count; i++) {
         SGRQueueRowView *row = _queueRowViews[i];
@@ -3449,11 +3470,7 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     _scrollView.contentSize = CGSizeMake(w, minScrollContentH);
 
     if (_clearPromptOverlay && !_clearPromptOverlay.hidden) {
-        _clearPromptOverlay.frame = self.bounds;
-        CGFloat cardW = MIN(320.6, w - 69.3);
-        CGFloat cardH = 146.0;
-        // screenY = 356.0 pt -> local y in SGRQueueView (stage top = 54.0) = 302.0 pt
-        _clearPromptCard.frame = CGRectMake(round((w - cardW) * 0.5), 302.0, cardW, cardH);
+        [self layoutClearPromptOverlay];
     }
 
     [self updateStickyHeadersAndClipping];
@@ -3930,27 +3947,66 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     SGRPlayerMinimizeIfOpen();
 }
 
+- (void)layoutClearPromptOverlay {
+    if (!_clearPromptOverlay) return;
+    UIView *hostView = _clearPromptOverlay.superview ?: (self.window ?: (self.superview ?: self));
+    CGRect hostBounds = hostView.bounds;
+    _clearPromptOverlay.frame = hostBounds;
+
+    CGFloat w = hostBounds.size.width;
+    CGFloat cardW = MIN(320.67, w - 69.33);
+    CGFloat cardH = 148.0;
+    CGFloat cardX = round((w - cardW) * 1.5) / 3.0;
+    // In Apple Music @ 390x844, card top is at screenY = 354.33 pt (or 300.33 pt relative to SGRQueueView top = 54.0 pt)
+    CGPoint originInHost = [self convertPoint:CGPointMake(0.0, 300.33) toView:hostView];
+    CGFloat cardY = round(originInHost.y * 3.0) / 3.0;
+    CGRect cardRect = CGRectMake(cardX, cardY, cardW, cardH);
+
+    CGAffineTransform savedTx = _clearPromptCard.transform;
+    _clearPromptCard.transform = CGAffineTransformIdentity;
+    _clearPromptCard.frame = cardRect;
+    _clearPromptCard.transform = savedTx;
+
+    if (_clearPromptDimLayer) {
+        [CATransaction begin];
+        [CATransaction setDisableActions:YES];
+        _clearPromptDimLayer.frame = _clearPromptOverlay.bounds;
+        UIBezierPath *fullPath = [UIBezierPath bezierPathWithRect:_clearPromptOverlay.bounds];
+        UIBezierPath *holePath = [UIBezierPath bezierPathWithRoundedRect:cardRect cornerRadius:32.0];
+        [fullPath appendPath:holePath];
+        fullPath.usesEvenOddFillRule = YES;
+        _clearPromptDimLayer.path = fullPath.CGPath;
+        [CATransaction commit];
+    }
+}
+
 - (void)handleClearUserQueueTap {
     if (_userQueueItems.count == 0) return;
     [self closeParkedSwipeRowsExcept:nil animated:YES];
 
-    CGFloat w = self.bounds.size.width;
-    CGFloat cardW = MIN(320.6, w - 69.3);
-    CGFloat cardH = 146.0;
-    CGFloat cardX = round((w - cardW) * 0.5);
-    CGFloat cardY = 302.0; // screenY = 356.0 pt in Apple Music (stage top = 54.0 pt)
+    UIView *hostView = self.window ?: (self.superview ?: self);
+    CGFloat w = hostView.bounds.size.width;
+    CGFloat cardW = MIN(320.67, w - 69.33);
+    CGFloat cardH = 148.0;
 
     if (!_clearPromptOverlay) {
-        _clearPromptOverlay = [[UIControl alloc] initWithFrame:self.bounds];
-        _clearPromptOverlay.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.18];
+        _clearPromptOverlay = [[UIControl alloc] initWithFrame:hostView.bounds];
+        _clearPromptOverlay.backgroundColor = UIColor.clearColor;
         _clearPromptOverlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         [_clearPromptOverlay addTarget:self action:@selector(dismissClearQueuePrompt) forControlEvents:UIControlEventTouchUpInside];
 
-        _clearPromptCard = [[UIView alloc] initWithFrame:CGRectMake(cardX, cardY, cardW, cardH)];
+        // Full-screen 46% black dimming layer with an even-odd cutout under the card so UIVisualEffectView
+        // inside the card blurs the un-dimmed album backdrop while the entire screen outside dims by 46%!
+        _clearPromptDimLayer = [CAShapeLayer layer];
+        _clearPromptDimLayer.fillRule = kCAFillRuleEvenOdd;
+        _clearPromptDimLayer.fillColor = [UIColor colorWithWhite:0.0 alpha:0.46].CGColor;
+        [_clearPromptOverlay.layer addSublayer:_clearPromptDimLayer];
+
+        _clearPromptCard = [[UIView alloc] initWithFrame:CGRectMake(0.0, 0.0, cardW, cardH)];
         _clearPromptCard.layer.cornerRadius = 32.0;
         _clearPromptCard.layer.cornerCurve = kCACornerCurveContinuous;
-        _clearPromptCard.layer.borderWidth = 0.5;
-        _clearPromptCard.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.16].CGColor;
+        _clearPromptCard.layer.borderWidth = 0.67;
+        _clearPromptCard.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.28].CGColor;
         _clearPromptCard.clipsToBounds = YES;
 
         UIVisualEffectView *blurView = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterialDark]];
@@ -3958,58 +4014,73 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         blurView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         [_clearPromptCard addSubview:blurView];
 
-        UIView *tintOverlay = [[UIView alloc] initWithFrame:_clearPromptCard.bounds];
-        tintOverlay.backgroundColor = [UIColor colorWithWhite:0.10 alpha:0.42];
-        tintOverlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        tintOverlay.userInteractionEnabled = NO;
-        [_clearPromptCard addSubview:tintOverlay];
+        UIView *glassLiftOverlay = [[UIView alloc] initWithFrame:_clearPromptCard.bounds];
+        glassLiftOverlay.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.085];
+        glassLiftOverlay.layer.compositingFilter = @"plusL";
+        glassLiftOverlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        glassLiftOverlay.userInteractionEnabled = NO;
+        [_clearPromptCard addSubview:glassLiftOverlay];
 
-        UILabel *promptLabel = [[UILabel alloc] initWithFrame:CGRectMake(31.0, 20.0, cardW - 62.0, 44.0)];
+        UILabel *promptLabel = [[UILabel alloc] initWithFrame:CGRectMake(30.0, 21.0, cardW - 60.0, 48.0)];
         promptLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
         promptLabel.numberOfLines = 2;
-        promptLabel.text = @"Are you sure you want to clear\nyour queue?";
-        promptLabel.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightSemibold];
-        promptLabel.textColor = UIColor.whiteColor;
-        promptLabel.textAlignment = NSTextAlignmentLeft;
+        NSMutableParagraphStyle *pStyle = [[NSMutableParagraphStyle alloc] init];
+        pStyle.lineSpacing = 1.67;
+        pStyle.alignment = NSTextAlignmentLeft;
+        promptLabel.attributedText = [[NSAttributedString alloc] initWithString:@"Are you sure you want to clear\nyour queue?" attributes:@{
+            NSFontAttributeName: [UIFont systemFontOfSize:17.0 weight:UIFontWeightSemibold],
+            NSForegroundColorAttributeName: UIColor.whiteColor,
+            NSKernAttributeName: @(-0.43),
+            NSParagraphStyleAttributeName: pStyle,
+        }];
         [_clearPromptCard addSubview:promptLabel];
 
         CGFloat btnW = (cardW - 32.0 - 8.0) * 0.5;
         UIButton *cancelBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-        cancelBtn.frame = CGRectMake(16.0, 82.0, btnW, 48.0);
+        cancelBtn.frame = CGRectMake(16.0, 84.33, btnW, 48.0);
         cancelBtn.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleRightMargin;
-        cancelBtn.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.14];
+        cancelBtn.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.15];
         cancelBtn.layer.cornerRadius = 24.0;
         cancelBtn.layer.cornerCurve = kCACornerCurveContinuous;
-        [cancelBtn setTitle:@"Cancel" forState:UIControlStateNormal];
-        [cancelBtn setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-        cancelBtn.titleLabel.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightSemibold];
+        NSAttributedString *cancelAttr = [[NSAttributedString alloc] initWithString:@"Cancel" attributes:@{
+            NSFontAttributeName: [UIFont systemFontOfSize:17.0 weight:UIFontWeightSemibold],
+            NSForegroundColorAttributeName: UIColor.whiteColor,
+            NSKernAttributeName: @(-0.35),
+        }];
+        [cancelBtn setAttributedTitle:cancelAttr forState:UIControlStateNormal];
         [cancelBtn addTarget:self action:@selector(dismissClearQueuePrompt) forControlEvents:UIControlEventTouchUpInside];
         [_clearPromptCard addSubview:cancelBtn];
 
         UIButton *clearBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-        clearBtn.frame = CGRectMake(16.0 + btnW + 8.0, 82.0, btnW, 48.0);
+        clearBtn.frame = CGRectMake(16.0 + btnW + 8.0, 84.33, btnW, 48.0);
         clearBtn.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleLeftMargin;
-        clearBtn.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.14];
+        clearBtn.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.15];
         clearBtn.layer.cornerRadius = 24.0;
         clearBtn.layer.cornerCurve = kCACornerCurveContinuous;
-        [clearBtn setTitle:@"Clear Queue" forState:UIControlStateNormal];
-        // Exact Apple Music coral/salmon destructive tint: rgb(240, 140, 140)
-        [clearBtn setTitleColor:[UIColor colorWithRed:240.0/255.0 green:140.0/255.0 blue:140.0/255.0 alpha:1.0] forState:UIControlStateNormal];
-        clearBtn.titleLabel.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightSemibold];
+        // Exact Apple Music coral/salmon destructive tint: rgb(238, 120, 121)
+        UIColor *coralColor = [UIColor colorWithRed:238.0/255.0 green:120.0/255.0 blue:121.0/255.0 alpha:1.0];
+        NSAttributedString *clearAttr = [[NSAttributedString alloc] initWithString:@"Clear Queue" attributes:@{
+            NSFontAttributeName: [UIFont systemFontOfSize:17.0 weight:UIFontWeightSemibold],
+            NSForegroundColorAttributeName: coralColor,
+            NSKernAttributeName: @(-0.35),
+        }];
+        [clearBtn setAttributedTitle:clearAttr forState:UIControlStateNormal];
         [clearBtn addTarget:self action:@selector(confirmClearUserQueue) forControlEvents:UIControlEventTouchUpInside];
         [_clearPromptCard addSubview:clearBtn];
 
         [_clearPromptOverlay addSubview:_clearPromptCard];
-        [self addSubview:_clearPromptOverlay];
     }
 
-    _clearPromptOverlay.frame = self.bounds;
+    if (_clearPromptOverlay.superview != hostView) {
+        [_clearPromptOverlay removeFromSuperview];
+        [hostView addSubview:_clearPromptOverlay];
+    }
     _clearPromptCard.transform = CGAffineTransformIdentity;
-    _clearPromptCard.frame = CGRectMake(cardX, cardY, cardW, cardH);
+    [self layoutClearPromptOverlay];
     _clearPromptOverlay.hidden = NO;
     _clearPromptOverlay.alpha = 0.0;
     _clearPromptCard.transform = CGAffineTransformMakeScale(0.92, 0.92);
-    [self bringSubviewToFront:_clearPromptOverlay];
+    [hostView bringSubviewToFront:_clearPromptOverlay];
 
     UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
     [gen impactOccurred];
@@ -4028,6 +4099,7 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     } completion:^(__unused BOOL finished) {
         self->_clearPromptOverlay.hidden = YES;
         self->_clearPromptCard.transform = CGAffineTransformIdentity;
+        [self->_clearPromptOverlay removeFromSuperview];
     }];
 }
 
