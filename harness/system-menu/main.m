@@ -320,8 +320,13 @@ static SGHarnessPlayer *sg_player;
         return;
     }
     if ([row.title isEqualToString:@"Sleep timer"]) {
-        // As on the phone: the card stays while Spotify presents the timer's own sheet from the player.
-        after(0.3, ^{ [sg_player presentSleepOptions]; });
+        // The card stays while Spotify presents the timer's own sheet from the player (`sleeppresent`), or, as on the
+        // phone in 2026-11, Spotify takes the card down first (`sleepwrapped`).
+        if (is(@"sleepwrapped")) {
+            [navigation.presentingViewController dismissViewControllerAnimated:NO completion:^{ after(0.3, ^{ [sg_player presentSleepOptions]; }); }];
+        } else {
+            after(0.3, ^{ [sg_player presentSleepOptions]; });
+        }
         return;
     }
     [navigation.presentingViewController dismissViewControllerAnimated:YES completion:nil];
@@ -802,8 +807,9 @@ static NSArray<NSString *> *quickTitles(void) {
                     if (presents) {
                         UIViewController *sleepSheet = self.sleepSheet;
                         UIView *container = sleepSheet.presentationController.containerView;
-                        check(sleepSheet.viewIfLoaded.window != nil && sleepSheet.viewIfLoaded.window != self.view.window,
-                              @"the sleep timer's own sheet is up, in the mod's window, not turned down while the menu is up");
+                        // With the card gone (sleepwrapped) there is no hidden sheet to go up from: it stays in the app's window.
+                        check(sleepSheet.viewIfLoaded.window != nil && (is(@"sleepwrapped") || sleepSheet.viewIfLoaded.window != self.view.window),
+                              @"the sleep timer's own sheet is up (in the mod's window while the card is there)");
                         check(container.alpha == 0 && !container.userInteractionEnabled, @"and hidden, taking no touches");
                     } else {
                         check([self.sheet.topViewController.title isEqualToString:@"Stop audio in"], @"the options page is pushed in the hidden sheet");

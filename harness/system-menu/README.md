@@ -55,7 +55,8 @@ sheet is the player's, and that the sheet is in the mod's window under the app's
 - `sleeppresent`: the same with Sleep timer presenting a context menu sheet of its own from the player, as on the
   phone: it goes up from the hidden sheet instead, hidden and taking no touches, and its table rows fill the menu.
 - `sleepwrapped`: the same, with the sleep timer's sheet inside a container that puts it in only as it appears
-  (NavigationUI_SheetImpl.ContainerViewController on the phone): it is still kept hidden and fills the menu.
+  (NavigationUI_SheetImpl.ContainerViewController on the phone), and Spotify's card taken down before it, as on
+  the phone: it is still kept hidden and fills the menu, which opens though the card is gone.
 - `pagepopup`: Voice language (item 0), a row the mod does not know, pushes a page: its rows open as a menu of their
   own, under its heading, with Back and the picked row checked, and the row is kept as one that opens a page; Back pops
   the page and opens the menu again, and Voice language picked again opens its page's menu again.

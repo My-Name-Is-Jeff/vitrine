@@ -1067,8 +1067,11 @@ static void openAnchorMenu(SGRMenuAnchor *anchor, BOOL (^up)(void)) {
 - (void)reopenWith:(UIMenu *)menu {
     SGRMenuAnchor *anchor = self.anchor;
     if ([anchor isKindOfClass:SGRMenuFront.class] && anchor.superview) anchor = anchorIn(anchor.superview);
-    if (!anchor.window || !self.presented.presentingViewController || self.revealed) {
-        SGLog(@"system menu: the ⋯ left the screen before the menu could open again");
+    // The sheet may be gone by now: Spotify takes its card down before it presents Sleep timer's sheet from the player
+    // (phone, 2026-11-03). The page is what the menu needs then.
+    BOOL sheetUp = self.presented.presentingViewController || (_pagePresented && _page.presentingViewController);
+    if (!anchor.window || !sheetUp || self.revealed) {
+        SGLog(@"system menu: the menu could not open again (%@)", !anchor.window ? @"the ⋯ left the screen" : self.revealed ? @"Spotify's sheet is shown" : @"Spotify's sheet and page are gone");
         [self dismissAll];
         return;
     }
@@ -1685,7 +1688,8 @@ static void rememberPage(NSString *kind) {
             else self->_dropOnArrival = YES;
             return;
         }
-        if (!presented.presentingViewController) return;
+        // A page's own menu whose sheet Spotify took down (Sleep timer's) still has the page to pick on or let go of.
+        if (!presented.presentingViewController && !self->_page) return;
         if (!pick) {
             self->_menuGone = YES;
             [self dismissAll];
