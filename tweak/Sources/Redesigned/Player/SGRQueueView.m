@@ -2532,7 +2532,10 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     // Clear Queue Confirmation Prompt Overlay ("Are you sure you want to clear your queue?")
     UIControl *_clearPromptOverlay;
     CAShapeLayer *_clearPromptDimLayer;
-    UIView *_clearPromptCard;
+    UIControl *_clearPromptCard;
+    UIVisualEffectView *_clearPromptGlass;
+    UIButton *_clearPromptCancelButton;
+    UIButton *_clearPromptClearButton;
 
     // Section 2B: Continue Playing Sticky Header & Rows
     UIView *_continueHeaderView;
@@ -3967,6 +3970,19 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     _clearPromptCard.frame = cardRect;
     _clearPromptCard.transform = savedTx;
 
+    if (_clearPromptGlass) {
+        _clearPromptGlass.frame = _clearPromptCard.bounds;
+        SGShapeGlass(_clearPromptGlass, 32.0, NO);
+    }
+
+    CGFloat btnW = (cardW - 32.0 - 8.0) * 0.5;
+    if (_clearPromptCancelButton) {
+        _clearPromptCancelButton.frame = CGRectMake(16.0, 84.33, btnW, 48.0);
+    }
+    if (_clearPromptClearButton) {
+        _clearPromptClearButton.frame = CGRectMake(16.0 + btnW + 8.0, 84.33, btnW, 48.0);
+    }
+
     if (_clearPromptDimLayer) {
         [CATransaction begin];
         [CATransaction setDisableActions:YES];
@@ -4002,24 +4018,19 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         _clearPromptDimLayer.fillColor = [UIColor colorWithWhite:0.0 alpha:0.46].CGColor;
         [_clearPromptOverlay.layer addSublayer:_clearPromptDimLayer];
 
-        _clearPromptCard = [[UIView alloc] initWithFrame:CGRectMake(0.0, 0.0, cardW, cardH)];
-        _clearPromptCard.layer.cornerRadius = 32.0;
-        _clearPromptCard.layer.cornerCurve = kCACornerCurveContinuous;
-        _clearPromptCard.layer.borderWidth = 0.67;
-        _clearPromptCard.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.28].CGColor;
-        _clearPromptCard.clipsToBounds = YES;
+        // Liquid Glass Dialog Card (iOS 26+ UIGlassEffect with continuous 32pt corner configuration)
+        _clearPromptCard = [[UIControl alloc] initWithFrame:CGRectMake(0.0, 0.0, cardW, cardH)];
+        _clearPromptCard.backgroundColor = UIColor.clearColor;
+        _clearPromptCard.clipsToBounds = NO;
+        _clearPromptCard.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
 
-        UIVisualEffectView *blurView = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterialDark]];
-        blurView.frame = _clearPromptCard.bounds;
-        blurView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        [_clearPromptCard addSubview:blurView];
-
-        UIView *glassLiftOverlay = [[UIView alloc] initWithFrame:_clearPromptCard.bounds];
-        glassLiftOverlay.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.085];
-        glassLiftOverlay.layer.compositingFilter = @"plusL";
-        glassLiftOverlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        glassLiftOverlay.userInteractionEnabled = NO;
-        [_clearPromptCard addSubview:glassLiftOverlay];
+        _clearPromptGlass = [[UIVisualEffectView alloc] initWithEffect:SGGlassEffect()];
+        _clearPromptGlass.frame = _clearPromptCard.bounds;
+        _clearPromptGlass.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        _clearPromptGlass.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+        _clearPromptGlass.userInteractionEnabled = NO;
+        SGShapeGlass(_clearPromptGlass, 32.0, NO);
+        [_clearPromptCard addSubview:_clearPromptGlass];
 
         UILabel *promptLabel = [[UILabel alloc] initWithFrame:CGRectMake(30.0, 21.0, cardW - 60.0, 48.0)];
         promptLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
@@ -4036,37 +4047,57 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         [_clearPromptCard addSubview:promptLabel];
 
         CGFloat btnW = (cardW - 32.0 - 8.0) * 0.5;
-        UIButton *cancelBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-        cancelBtn.frame = CGRectMake(16.0, 84.33, btnW, 48.0);
-        cancelBtn.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleRightMargin;
-        cancelBtn.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.15];
-        cancelBtn.layer.cornerRadius = 24.0;
-        cancelBtn.layer.cornerCurve = kCACornerCurveContinuous;
-        NSAttributedString *cancelAttr = [[NSAttributedString alloc] initWithString:@"Cancel" attributes:@{
+
+        // Cancel button: Liquid Glass capsule button (white text)
+        UIButtonConfiguration *cancelConfig;
+        UIButtonConfiguration *clearConfig;
+        BOOL hasGlassButton = NO;
+        if (@available(iOS 26.0, *)) {
+            hasGlassButton = [UIButtonConfiguration respondsToSelector:@selector(glassButtonConfiguration)];
+        }
+        if (hasGlassButton) {
+            cancelConfig = [UIButtonConfiguration glassButtonConfiguration];
+            clearConfig = [UIButtonConfiguration glassButtonConfiguration];
+        } else {
+            cancelConfig = [UIButtonConfiguration grayButtonConfiguration];
+            clearConfig = [UIButtonConfiguration grayButtonConfiguration];
+        }
+        cancelConfig.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
+        clearConfig.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
+
+        cancelConfig.baseForegroundColor = UIColor.whiteColor;
+        cancelConfig.attributedTitle = [[NSAttributedString alloc] initWithString:@"Cancel" attributes:@{
             NSFontAttributeName: [UIFont systemFontOfSize:17.0 weight:UIFontWeightSemibold],
             NSForegroundColorAttributeName: UIColor.whiteColor,
             NSKernAttributeName: @(-0.35),
         }];
-        [cancelBtn setAttributedTitle:cancelAttr forState:UIControlStateNormal];
-        [cancelBtn addTarget:self action:@selector(dismissClearQueuePrompt) forControlEvents:UIControlEventTouchUpInside];
-        [_clearPromptCard addSubview:cancelBtn];
+        _clearPromptCancelButton = [UIButton buttonWithConfiguration:cancelConfig primaryAction:nil];
+        _clearPromptCancelButton.frame = CGRectMake(16.0, 84.33, btnW, 48.0);
+        _clearPromptCancelButton.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleRightMargin;
+        _clearPromptCancelButton.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+        [_clearPromptCancelButton addTarget:self action:@selector(dismissClearQueuePrompt) forControlEvents:UIControlEventTouchUpInside];
+        [_clearPromptCard addSubview:_clearPromptCancelButton];
 
-        UIButton *clearBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-        clearBtn.frame = CGRectMake(16.0 + btnW + 8.0, 84.33, btnW, 48.0);
-        clearBtn.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleLeftMargin;
-        clearBtn.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.15];
-        clearBtn.layer.cornerRadius = 24.0;
-        clearBtn.layer.cornerCurve = kCACornerCurveContinuous;
-        // Exact Apple Music coral/salmon destructive tint: rgb(238, 120, 121)
+        // Clear Queue button: Liquid Glass capsule button (coral/salmon destructive tint: rgb(238, 120, 121))
         UIColor *coralColor = [UIColor colorWithRed:238.0/255.0 green:120.0/255.0 blue:121.0/255.0 alpha:1.0];
-        NSAttributedString *clearAttr = [[NSAttributedString alloc] initWithString:@"Clear Queue" attributes:@{
+        clearConfig.baseForegroundColor = coralColor;
+        clearConfig.attributedTitle = [[NSAttributedString alloc] initWithString:@"Clear Queue" attributes:@{
             NSFontAttributeName: [UIFont systemFontOfSize:17.0 weight:UIFontWeightSemibold],
             NSForegroundColorAttributeName: coralColor,
             NSKernAttributeName: @(-0.35),
         }];
-        [clearBtn setAttributedTitle:clearAttr forState:UIControlStateNormal];
-        [clearBtn addTarget:self action:@selector(confirmClearUserQueue) forControlEvents:UIControlEventTouchUpInside];
-        [_clearPromptCard addSubview:clearBtn];
+        _clearPromptClearButton = [UIButton buttonWithConfiguration:clearConfig primaryAction:nil];
+        _clearPromptClearButton.frame = CGRectMake(16.0 + btnW + 8.0, 84.33, btnW, 48.0);
+        _clearPromptClearButton.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleLeftMargin;
+        _clearPromptClearButton.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+        [_clearPromptClearButton addTarget:self action:@selector(confirmClearUserQueue) forControlEvents:UIControlEventTouchUpInside];
+        [_clearPromptCard addSubview:_clearPromptClearButton];
+
+        if (!hasGlassButton) {
+            static char kCancelFallbackGlassKey, kClearFallbackGlassKey;
+            SGRGlassCapsuleInside(_clearPromptCancelButton, &kCancelFallbackGlassKey, CGSizeMake(btnW, 48.0), NO);
+            SGRGlassCapsuleInside(_clearPromptClearButton, &kClearFallbackGlassKey, CGSizeMake(btnW, 48.0), NO);
+        }
 
         [_clearPromptOverlay addSubview:_clearPromptCard];
     }
