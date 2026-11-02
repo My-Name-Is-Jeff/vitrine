@@ -1016,8 +1016,12 @@ static void openAnchorMenu(SGRMenuAnchor *anchor, BOOL (^up)(void)) {
 
 - (BOOL)takePage:(UIViewController *)page presented:(BOOL)presented {
     if (self.revealed || _page) return NO;
-    // A sheet of the row's own that is no menu (song credits) is shown as it is.
-    if (presented && !sheetIn(page)) return NO;
+    // A sheet of the row's own that is no menu (song credits) is shown as it is. Spotify's sheet container
+    // (NavigationUI_SheetImpl.ContainerViewController, Sleep timer's on the phone) puts its menu in only as it appears, so
+    // one that holds nothing yet is taken, and let go as soon as it has appeared without a menu (readPage's poll).
+    if (presented && !sheetIn(page)) {
+        if (page.childViewControllers.count || [page isKindOfClass:UIAlertController.class] || [page isKindOfClass:UIActivityViewController.class]) return NO;
+    }
     if (!_pageRow) {
         // A row picked as an ordinary one: its page opens as a menu of its own from the ⋯, the first time.
         if (!_firedRow.path) return NO;
@@ -1050,12 +1054,21 @@ static void openAnchorMenu(SGRMenuAnchor *anchor, BOOL (^up)(void)) {
         if ([session readPage]) {
             [timer invalidate];
             [session pageRead];
+        } else if ([session pageIsNoMenu]) {
+            [timer invalidate];
+            [session pageUnread];
         } else if (CACurrentMediaTime() - started >= kPageWait) {
             [timer invalidate];
             [session pageUnread];
         }
     }];
     [NSRunLoop.mainRunLoop addTimer:_pagePoll forMode:NSRunLoopCommonModes];
+}
+
+// A sheet taken while it held nothing yet that has appeared with no menu in it: a page of another kind (song credits).
+- (BOOL)pageIsNoMenu {
+    UIViewController *page = _page;
+    return _pagePresented && page.viewIfLoaded.window && !page.isBeingPresented && page.childViewControllers.count && !sheetIn(page);
 }
 
 // The page's rows: a table's (Sleep timer's sheet), else Encore's list rows (Voice language's page).
@@ -1110,7 +1123,8 @@ static void openAnchorMenu(SGRMenuAnchor *anchor, BOOL (^up)(void)) {
 
 - (void)pageUnread {
     if (sg_firing == self) sg_firing = nil;
-    SGLog(@"system menu: the page %@ opened showed no rows in %.0f s%@", _pageRow.title, kPageWait, _pagePopup ? @", so it is shown" : @"");
+    SGLog(@"system menu: the page %@ opened %@%@", _pageRow.title, [self pageIsNoMenu] ? @"is no menu" : [NSString stringWithFormat:@"showed no rows in %.0f s", kPageWait],
+          _pagePopup ? @", so it is shown" : @"");
     if (_menuGone) [self dismissAll];
     else if (_pagePopup) [self revealPage];
     else [self finishPage:[self unavailable]];

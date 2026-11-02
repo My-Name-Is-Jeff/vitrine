@@ -309,7 +309,7 @@ static SGHarnessPlayer *sg_player;
         [navigation pushViewController:page animated:YES];
         return;
     }
-    if ([row.title isEqualToString:@"Voice language"] || ([row.title isEqualToString:@"Sleep timer"] && !is(@"sleeppresent"))) {
+    if ([row.title isEqualToString:@"Voice language"] || ([row.title isEqualToString:@"Sleep timer"] && !is(@"sleeppresent") && !is(@"sleepwrapped"))) {
         BOOL sleep = [row.title isEqualToString:@"Sleep timer"];
         after(0.3, ^{
             SGHarnessOptionsPage *page = [SGHarnessOptionsPage new];
@@ -486,9 +486,16 @@ static void pick(NSString *title) {
     _TtC24ContextMenu_InternalImpl25ContextMenuViewController *options = [_TtC24ContextMenu_InternalImpl25ContextMenuViewController new];
     options.sleepOptions = YES;
     UINavigationController *navigation = [[UINavigationController alloc] initWithRootViewController:options];
-    self.sleepSheet = navigation;
+    UIViewController *sheet = navigation;
+    // As on the phone: Spotify's sheet container, which puts the menu in only as it appears.
+    if (is(@"sleepwrapped")) {
+        SGHarnessWrapper *wrapper = [SGHarnessWrapper new];
+        wrapper.inner = navigation;
+        sheet = wrapper;
+    }
+    self.sleepSheet = sheet;
     NSLog(@"[harness] Spotify presents the sleep timer's own sheet");
-    [self presentViewController:navigation animated:YES completion:nil];
+    [self presentViewController:sheet animated:YES completion:nil];
 }
 
 - (UIButton *)front {
@@ -779,8 +786,8 @@ static NSArray<NSString *> *quickTitles(void) {
         });
         return;
     }
-    if ([run isEqualToString:@"sleep"] || [run isEqualToString:@"sleeppresent"]) {
-        BOOL presents = [run isEqualToString:@"sleeppresent"];
+    if ([run isEqualToString:@"sleep"] || [run isEqualToString:@"sleeppresent"] || [run isEqualToString:@"sleepwrapped"]) {
+        BOOL presents = ![run isEqualToString:@"sleep"];
         after(0.3, ^{
             pick(@"More");
             waitFor(^BOOL { return menuShows(@"Sleep timer"); }, 3, ^{
