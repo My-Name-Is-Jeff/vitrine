@@ -15,16 +15,6 @@
 }
 %end
 
-static NSString *dialogTitle(UIView *root) {
-    __block NSString *title;
-    SGForEachView(root, ^(UIView *view) {
-        if (!title && [view isKindOfClass:UILabel.class] && [view.accessibilityIdentifier isEqualToString:@"PopUp.Dialog.Title-internal"]) {
-            title = ((UILabel *)view).text;
-        }
-    });
-    return title;
-}
-
 // The dialog comes in a window of its own, with no SPTEncorePopUpPresenter call to catch, and its title is set only
 // by its first layout.
 %hook PopUpContainer
@@ -32,12 +22,14 @@ static NSString *dialogTitle(UIView *root) {
     %orig;
     UIViewController *container = (UIViewController *)self;
     if (container.view.window.hidden) return;
+    static char kTitleKey;
+    NSString *title = ((UILabel *)SGFindIdentifier(container.view, @"PopUp.Dialog.Title-internal", &kTitleKey)).text;
     // shortcut: the title is localized, and "DJ" is the one word every language keeps.
-    if (![dialogTitle(container.view) containsString:@"DJ"]) return;
+    if (![title containsString:@"DJ"]) return;
     container.view.window.hidden = YES;
     id presenter = [(id)%c(SPTEncorePopUpPresenter) valueForKey:@"shared"];
     [presenter dismissPopupWithAnimate:NO clearQueue:NO completion:nil];
-    SGLog(@"DJ: closed \"%@\"", dialogTitle(container.view));
+    SGLog(@"DJ: closed \"%@\"", title);
 }
 %end
 
