@@ -125,7 +125,7 @@ static SGLyricsResult *resultFrom(NSDictionary *record, NSArray<SGKaraokeLine *>
 // answers no doubleValue.
 static NSInteger lengthOf(NSDictionary *record) {
     id duration = record[@"duration"];
-    return [duration isKindOfClass:NSNumber.class] ? (NSInteger)[duration doubleValue] : 0;
+    return [duration respondsToSelector:@selector(doubleValue)] ? (NSInteger)[duration doubleValue] : 0;
 }
 
 // How good a recording is for the track: words timed beat lines timed, which beat untimed, then the
