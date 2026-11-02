@@ -81,6 +81,11 @@ BOOL SGLyricsEnabled(void) { return NO; }
 NSArray<NSString *> *SGLyricsOrder(void) { return @[]; }
 SGLyricsProvider *SGLyricsProviderFor(NSString *key) { return nil; }
 NSString *SGLyricsCreditFor(NSString *trackID) { return nil; }
+// The lyrics source picker's offers and timing (PlayerMenu.m's Lyrics Source row), and its panel: none here.
+SGKaraokeTiming SGKaraokeLinesTiming(NSArray<SGKaraokeLine *> *lines) { return SGKaraokeTimingNone; }
+void SGLyricsAskOffers(NSString *trackID) {}
+NSNotificationName const SGLyricsOffersDidChangeNotification = @"SGLyricsOffersDidChangeNotification";
+void SGPresentPopover(UIViewController *panel, UIView *from) { NSLog(@"[harness] popover %@", NSStringFromClass(panel.class)); }
 NSString *SGLyricsChosenSource(NSString *trackID) { return nil; }
 NSDictionary<NSString *, SGLyricsResult *> *SGLyricsOffersSoFar(NSString *trackID, NSArray<NSString *> **asking) { return @{}; }
 void SGLyricsChooseSource(NSString *trackID, NSString *key) {}
