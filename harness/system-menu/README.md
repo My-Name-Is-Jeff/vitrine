@@ -57,9 +57,12 @@ sheet is the player's, and that the sheet is in the mod's window under the app's
 - `sleepwrapped`: the same, with the sleep timer's sheet inside a container that puts it in only as it appears
   (NavigationUI_SheetImpl.ContainerViewController on the phone), and Spotify's card taken down before it, as on
   the phone: it is still kept hidden and fills the menu, which opens though the card is gone.
+- `sleepback`: as `sleepwrapped`, then Back: the menu opens again though Spotify's card is gone, from a fresh session
+  that asks for a card of its own, and the timer's sheet goes.
 - `pagepopup`: Voice language (item 0), a row the mod does not know, pushes a page: its rows open as a menu of their
   own, under its heading, with Back and the picked row checked, and the row is kept as one that opens a page; Back pops
-  the page and opens the menu again, and Voice language picked again opens its page's menu again.
+  the page and opens the menu again; Voice language is then a submenu of the page's stored rows, opened at once, and
+  German picked from it fires Voice language on the hidden sheet and German on the page it opens.
 - `sort`: a row of the mod's own in the sheet's header (as the playlist's Sort) is in More and fires.
 - `animated`: Show Animated Artwork switches it on and the sheet goes.
 - `wrapped`: Spotify presents a controller of its own that puts the sheet in only as it appears

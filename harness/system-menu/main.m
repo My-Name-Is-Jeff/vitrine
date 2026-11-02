@@ -309,7 +309,7 @@ static SGHarnessPlayer *sg_player;
         [navigation pushViewController:page animated:YES];
         return;
     }
-    if ([row.title isEqualToString:@"Voice language"] || ([row.title isEqualToString:@"Sleep timer"] && !is(@"sleeppresent") && !is(@"sleepwrapped"))) {
+    if ([row.title isEqualToString:@"Voice language"] || ([row.title isEqualToString:@"Sleep timer"] && !is(@"sleeppresent") && !(is(@"sleepwrapped") || is(@"sleepback")))) {
         BOOL sleep = [row.title isEqualToString:@"Sleep timer"];
         after(0.3, ^{
             SGHarnessOptionsPage *page = [SGHarnessOptionsPage new];
@@ -322,7 +322,7 @@ static SGHarnessPlayer *sg_player;
     if ([row.title isEqualToString:@"Sleep timer"]) {
         // The card stays while Spotify presents the timer's own sheet from the player (`sleeppresent`), or, as on the
         // phone in 2026-11, Spotify takes the card down first (`sleepwrapped`).
-        if (is(@"sleepwrapped")) {
+        if ((is(@"sleepwrapped") || is(@"sleepback"))) {
             [navigation.presentingViewController dismissViewControllerAnimated:NO completion:^{ after(0.3, ^{ [sg_player presentSleepOptions]; }); }];
         } else {
             after(0.3, ^{ [sg_player presentSleepOptions]; });
@@ -493,7 +493,7 @@ static void pick(NSString *title) {
     UINavigationController *navigation = [[UINavigationController alloc] initWithRootViewController:options];
     UIViewController *sheet = navigation;
     // As on the phone: Spotify's sheet container, which puts the menu in only as it appears.
-    if (is(@"sleepwrapped")) {
+    if ((is(@"sleepwrapped") || is(@"sleepback"))) {
         SGHarnessWrapper *wrapper = [SGHarnessWrapper new];
         wrapper.inner = navigation;
         sheet = wrapper;
@@ -808,7 +808,7 @@ static NSArray<NSString *> *quickTitles(void) {
                         UIViewController *sleepSheet = self.sleepSheet;
                         UIView *container = sleepSheet.presentationController.containerView;
                         // With the card gone (sleepwrapped) there is no hidden sheet to go up from: it stays in the app's window.
-                        check(sleepSheet.viewIfLoaded.window != nil && (is(@"sleepwrapped") || sleepSheet.viewIfLoaded.window != self.view.window),
+                        check(sleepSheet.viewIfLoaded.window != nil && ((is(@"sleepwrapped") || is(@"sleepback")) || sleepSheet.viewIfLoaded.window != self.view.window),
                               @"the sleep timer's own sheet is up (in the mod's window while the card is there)");
                         check(container.alpha == 0 && !container.userInteractionEnabled, @"and hidden, taking no touches");
                     } else {
@@ -822,6 +822,27 @@ static NSArray<NSString *> *quickTitles(void) {
                         check(self.sheetGone && !self.sleepSheet.viewIfLoaded.window, [NSString stringWithFormat:@"the page and the sheet went, unseen, %.2f s later", CACurrentMediaTime() - picked]);
                         check(self.front.userInteractionEnabled, @"the mod's ⋯ still takes touches");
                         finish();
+                    });
+                });
+            });
+        });
+        return;
+    }
+    if ([run isEqualToString:@"sleepback"]) {
+        after(0.3, ^{
+            pick(@"More");
+            waitFor(^BOOL { return menuShows(@"Sleep timer"); }, 3, ^{
+                pick(@"Sleep timer");
+                waitFor(^BOOL { return menuShows(@"5 minutes"); }, 6, ^{
+                    check(self.sheetGone, @"Spotify took its card down for the timer's sheet");
+                    pick(@"Back");
+                    waitFor(^BOOL { return menuShows(@"More") && !menuShows(@"5 minutes"); }, 5, ^{
+                        check(menuShows(@"More"), @"Back opens the menu again though the card is gone");
+                        check(!self.sleepSheet.viewIfLoaded.window, @"and the timer's sheet went");
+                        waitFor(^BOOL { return sg_spotifyTaps == 2; }, 4, ^{
+                            check(sg_spotifyTaps == 2, [NSString stringWithFormat:@"a fresh card was asked for (%lu taps)", (unsigned long)sg_spotifyTaps]);
+                            finish();
+                        });
                     });
                 });
             });
@@ -849,7 +870,7 @@ static NSArray<NSString *> *quickTitles(void) {
                         waitFor(^BOOL { return menuShows(@"Voice language"); }, 3, ^{
                             pick(@"Voice language");
                             waitFor(^BOOL { return menuShows(@"German"); }, 6, ^{
-                                check(menuShowsAll(@[@"Back", @"English", @"German"]), @"picked again, the page opens as its menu again");
+                                check(menuShowsAll(@[@"English", @"German"]) && !menuShows(@"Back"), @"picked again, its page's stored rows open at once as a submenu of More");
                                 pick(@"German");
                                 CFTimeInterval picked = CACurrentMediaTime();
                                 waitFor(^BOOL { return !openMenu() && self.sheetGone; }, 6, ^{
@@ -901,7 +922,7 @@ __attribute__((constructor(101))) static void sgr_harnessDefaults(void) {
     [defaults setBool:YES forKey:@"spotifyglass.redesign.untested"];
     [defaults removeObjectForKey:@"spotifyglass.redesign.untested.starting"];
     for (NSString *key in defaults.dictionaryRepresentation.allKeys) {
-        if ([key hasPrefix:@"spotifyglass.redesign.player.menuRows"] || [key hasPrefix:@"spotifyglass.redesign.player.menuPageRows"]) {
+        if ([key hasPrefix:@"spotifyglass.redesign.player.menu"]) {
             [defaults removeObjectForKey:key];
         }
     }
