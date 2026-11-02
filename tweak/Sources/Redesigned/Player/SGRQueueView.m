@@ -2529,7 +2529,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     NSMutableDictionary<NSString *, SGRQueueRowView *> *_userQueueRowsByKey;
 
     // Clear Queue Confirmation Prompt Overlay ("Are you sure you want to clear your queue?")
-    UIView *_clearPromptOverlay;
+    UIControl *_clearPromptOverlay;
     UIView *_clearPromptCard;
 
     // Section 2B: Continue Playing Sticky Header & Rows
