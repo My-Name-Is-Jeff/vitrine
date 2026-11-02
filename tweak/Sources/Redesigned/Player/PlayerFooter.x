@@ -140,7 +140,7 @@ static UIImage *SGRQueueActiveKnockoutIconImage(CGSize size) {
 
         // Knockout SF Symbol list.bullet using kCGBlendModeDestinationOut + template alpha mask
         // (kCGBlendModeClear in Quartz clears the entire rectangular bounding box instead of masking by alpha)
-        UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:19.8 weight:UIImageSymbolWeightSemibold];
+        UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:19.8 weight:UIImageSymbolWeightMedium];
         UIImage *sym = [[UIImage systemImageNamed:kQueueSymbol withConfiguration:cfg] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
         if (sym) {
             CGRect symRect = CGRectMake((size.width - sym.size.width) * 0.5,

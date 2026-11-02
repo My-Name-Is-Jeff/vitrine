@@ -322,8 +322,8 @@ static void updateTransportPositionsForQueue(UIView *host) {
     if (queueOpen) {
         CGFloat w = host.bounds.size.width > 100.0 ? host.bounds.size.width : 390.0;
         // Center Rewind at x = 88.0 pt and Fast-Forward at x = 301.7 pt on 390pt screen
-        CGFloat prevTargetX = round(w * (88.0 / 390.0));
-        CGFloat nextTargetX = round(w * (301.7 / 390.0));
+        CGFloat prevTargetX = round(w * (90.5 / 390.0));
+        CGFloat nextTargetX = round(w * (300.5 / 390.0));
         CGFloat prevCurX = [prev convertPoint:CGPointMake(CGRectGetMidX(prev.bounds), CGRectGetMidY(prev.bounds)) toView:host].x - prev.transform.tx;
         CGFloat nextCurX = [next convertPoint:CGPointMake(CGRectGetMidX(next.bounds), CGRectGetMidY(next.bounds)) toView:host].x - next.transform.tx;
         CGFloat prevDx = round(prevTargetX - prevCurX);
@@ -601,18 +601,18 @@ static void updateDurationForQueue(void) {
             if (!CGAffineTransformEqualToTransform(slider.transform, scaleT)) slider.transform = scaleT;
 
             // Places elapsed & remaining time labels at y = 566.3..575.0 pt matching Apple Music
-            CGAffineTransform takenT = CGAffineTransformMakeTranslation(7.0, 5.1);
+            CGAffineTransform takenT = CGAffineTransformMakeTranslation(8.0, 5.1);
             if (taken && !CGAffineTransformEqualToTransform(taken.transform, takenT)) taken.transform = takenT;
 
-            CGAffineTransform remT = CGAffineTransformMakeTranslation(-7.0, 5.1);
+            CGAffineTransform remT = CGAffineTransformMakeTranslation(-8.0, 5.1);
             if (remaining && !CGAffineTransformEqualToTransform(remaining.transform, remT)) remaining.transform = remT;
         } else {
             if (!CGAffineTransformIsIdentity(slider.transform)) slider.transform = CGAffineTransformIdentity;
             if (taken && !CGAffineTransformIsIdentity(taken.transform)) taken.transform = CGAffineTransformIdentity;
             if (remaining && !CGAffineTransformIsIdentity(remaining.transform)) remaining.transform = CGAffineTransformIdentity;
         }
-        slider.minimumTrackTintColor = [UIColor colorWithWhite:1.0 alpha:0.55];
-        slider.maximumTrackTintColor = [UIColor colorWithWhite:1.0 alpha:0.16];
+        slider.minimumTrackTintColor = [UIColor colorWithWhite:1.0 alpha:0.58];
+        slider.maximumTrackTintColor = [UIColor colorWithWhite:1.0 alpha:0.22];
 
         // Hide extra labels inside DurationElementUnit (such as Podcast chapter title) while Queue is open
         SGForEachView(host, ^(UIView *v) {
