@@ -3988,6 +3988,17 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     UIView *glass = SGRGlassCapsuleInside(ctrl, &kPromptBtnGlassKey, frame.size, isProminent);
     glass.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
 
+    UIView *highlightView = [[UIView alloc] initWithFrame:ctrl.bounds];
+    highlightView.tag = 8881;
+    highlightView.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.0];
+    highlightView.layer.compositingFilter = @"plusL";
+    highlightView.layer.cornerRadius = frame.size.height * 0.5;
+    highlightView.layer.cornerCurve = kCACornerCurveContinuous;
+    highlightView.clipsToBounds = YES;
+    highlightView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    highlightView.userInteractionEnabled = NO;
+    [ctrl addSubview:highlightView];
+
     UILabel *lbl = [[UILabel alloc] initWithFrame:ctrl.bounds];
     lbl.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     lbl.textAlignment = NSTextAlignmentCenter;
@@ -4003,16 +4014,18 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
 }
 
 - (void)handlePromptCapsuleTouchDown:(UIControl *)sender {
+    UIView *hl = [sender viewWithTag:8881];
     [UIView animateWithDuration:0.08 delay:0 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState animations:^{
-        sender.transform = CGAffineTransformMakeScale(0.96, 0.96);
-        sender.alpha = 0.82;
+        sender.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.25];
+        if (hl) hl.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.16];
     } completion:nil];
 }
 
 - (void)handlePromptCapsuleTouchUp:(UIControl *)sender {
-    [UIView animateWithDuration:0.18 delay:0 usingSpringWithDamping:0.75 initialSpringVelocity:0 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState animations:^{
-        sender.transform = CGAffineTransformIdentity;
-        sender.alpha = 1.0;
+    UIView *hl = [sender viewWithTag:8881];
+    [UIView animateWithDuration:0.18 delay:0 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState animations:^{
+        sender.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.10];
+        if (hl) hl.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.0];
     } completion:nil];
 }
 
@@ -4174,6 +4187,12 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     _clearPromptConfirmControl.transform = CGAffineTransformIdentity;
     _clearPromptCancelControl.alpha = 1.0;
     _clearPromptConfirmControl.alpha = 1.0;
+    _clearPromptCancelControl.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.10];
+    _clearPromptConfirmControl.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.10];
+    UIView *hlCancel = [_clearPromptCancelControl viewWithTag:8881];
+    if (hlCancel) hlCancel.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.0];
+    UIView *hlConfirm = [_clearPromptConfirmControl viewWithTag:8881];
+    if (hlConfirm) hlConfirm.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.0];
 
     if (_clearPromptOverlay.superview != hostView) {
         [_clearPromptOverlay removeFromSuperview];
