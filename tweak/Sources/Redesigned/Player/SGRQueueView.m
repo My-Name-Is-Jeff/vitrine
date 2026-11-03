@@ -3124,16 +3124,26 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     pStyle.allowsDefaultTighteningForTruncation = YES;
     CGFloat titleFontSize = _landscapeMode ? 18.5 : 17.0;
     UIFontWeight titleWeight = _landscapeMode ? UIFontWeightBold : UIFontWeightSemibold;
-    _npTitleLabel.attributedText = [[NSAttributedString alloc] initWithString:titleText attributes:@{
+    NSMutableAttributedString *titleAttr = [[NSMutableAttributedString alloc] initWithString:titleText attributes:@{
         NSFontAttributeName: [UIFont systemFontOfSize:titleFontSize weight:titleWeight],
         NSForegroundColorAttributeName: UIColor.whiteColor,
         NSKernAttributeName: @(-0.40),
         NSParagraphStyleAttributeName: pStyle
     }];
-    _npArtistLabel.font = [UIFont systemFontOfSize:(_landscapeMode ? 17.0 : 15.0) weight:UIFontWeightRegular];
-    _npArtistLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.62];
-    _npArtistLabel.text = item.artist ?: @"";
-    _npExplicitView.hidden = !item.isExplicit;
+    if (item.isExplicit) {
+        UIImage *expImg = SGRExplicitBadgeImageNP();
+        if (expImg) {
+            NSTextAttachment *att = [[NSTextAttachment alloc] init];
+            att.image = expImg;
+            CGFloat capH = [UIFont systemFontOfSize:titleFontSize weight:titleWeight].capHeight;
+            CGFloat badgeY = round((capH - 12.5) * 0.5);
+            att.bounds = CGRectMake(5.0, badgeY, 12.5, 12.5);
+            [titleAttr appendAttributedString:[[NSAttributedString alloc] initWithString:@" " attributes:@{NSFontAttributeName: [UIFont systemFontOfSize:4.0 weight:titleWeight]}]];
+            [titleAttr appendAttributedString:[NSAttributedString attributedStringWithAttachment:att]];
+        }
+    }
+    _npTitleLabel.attributedText = titleAttr;
+    _npExplicitView.hidden = YES;
     _continueSubtitleLabel.text = subtitle ?: @"";
     [self applyNowPlayingSaveStateForURI:item.uri];
 
@@ -3374,16 +3384,10 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     CGFloat npTextLeft = _landscapeMode ? kSideMargin : (kSideMargin + 72.0 + 12.0);
     CGFloat npMaxRight = (starCenterX - starW * 0.5) - 5.0;
     CGFloat npAvailW = MAX(40.0, npMaxRight - npTextLeft);
-    BOOL npHasExp = !_npExplicitView.hidden;
-    CGFloat npBadgeW = npHasExp ? (12.5 + 5.0) : 0.0;
-    CGSize npTitleNat = [_npTitleLabel sizeThatFits:CGSizeMake(CGFLOAT_MAX, 24.0)];
-    CGFloat npTitleW = MIN(npAvailW - npBadgeW, ceil(npTitleNat.width));
     CGFloat titleY = _landscapeMode ? 0.5 : 17.2;
     CGFloat titleH = _landscapeMode ? 23.0 : 21.0;
-    _npTitleLabel.frame = CGRectMake(npTextLeft, titleY, npTitleW, titleH);
-    if (npHasExp) {
-        _npExplicitView.frame = CGRectMake(npTextLeft + npTitleW + 5.0, titleY + (_landscapeMode ? 4.8 : 3.8), 12.5, 12.5);
-    }
+    _npTitleLabel.frame = CGRectMake(npTextLeft, titleY, npAvailW, titleH);
+    _npExplicitView.hidden = YES;
     _npArtistLabel.frame = CGRectMake(npTextLeft, _landscapeMode ? 24.5 : 36.3, npAvailW, _landscapeMode ? 21.0 : 19.0);
 
     // Section 2 Header subviews: configurable pills (height = 38, cornerRadius = 19, x = 32 .. w - 32) + Continue Playing title & subtitle
