@@ -39,6 +39,7 @@
 #define SGRKeyQueueAutoplay @"spotifyglass.redesign.queue.autoplay"
 #define SGRKeyQueueTransitions @"spotifyglass.redesign.queue.transitions"
 
+static char kPromptBtnGlassKey;
 static NSNotificationName const SGRQueueSessionDidUpdateNotification = @"SGRQueueSessionDidUpdateNotification";
 static NSNotificationName const SGRQueuePillsDidChangeNotification = @"SGRQueuePillsDidChangeNotification";
 
@@ -2233,12 +2234,12 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     CGSize naturalTitle = [_titleLabel sizeThatFits:CGSizeMake(availW - badgeW, 22.0)];
     CGFloat titleW = MIN(availW - badgeW, ceil(naturalTitle.width));
 
-    CGFloat rowTitleY = hasSub ? 4.5 : 13.0;
+    CGFloat rowTitleY = hasSub ? (_isHistory ? 4.5 : 5.5) : 13.0;
     _titleLabel.frame = CGRectMake(textLeft, rowTitleY, titleW, 22.0);
     if (hasExp) {
         _explicitView.frame = CGRectMake(textLeft + titleW + badgeGap, rowTitleY + 4.8, 12.0, 12.0);
     }
-    _subtitleLabel.frame = CGRectMake(textLeft, 26.8, availW, 18.0);
+    _subtitleLabel.frame = CGRectMake(textLeft, (_isHistory ? 26.8 : 27.8), availW, 18.0);
 
     [self layoutDeleteCapsule];
 }
@@ -2505,6 +2506,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     // Unified Clear Confirmation Prompt Overlay ("Are you sure you want to clear your queue/history?")
     UIControl *_clearPromptOverlay;
     UIView *_clearPromptCard;
+    UIVisualEffectView *_clearPromptGlass;
     UILabel *_clearPromptTitleLabel;
     UIControl *_clearPromptCancelControl;
     UIControl *_clearPromptConfirmControl;
@@ -3092,12 +3094,13 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
 static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     BOOL plain = SGRPlainCheckOn();
     if (plain) {
-        UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:19.0 weight:UIImageSymbolWeightBold];
+        UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:21.0 weight:UIImageSymbolWeightBold];
         NSString *sym = isSaved ? @"checkmark" : @"plus";
         UIColor *tint = isSaved ? SGRPlayerCurrentAccent() : UIColor.whiteColor;
         return [[UIImage systemImageNamed:sym withConfiguration:cfg] imageWithTintColor:tint renderingMode:UIImageRenderingModeAlwaysOriginal];
     } else {
-        UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:21.0 weight:UIImageSymbolWeightRegular];
+        // Point size 22.5 produces exact 52x50px bounds at 2.37 scale matching Apple Music's star
+        UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:22.5 weight:UIImageSymbolWeightRegular];
         NSString *sym = isSaved ? @"checkmark.circle.fill" : @"plus.circle";
         UIColor *tint = isSaved ? SGRPlayerCurrentAccent() : UIColor.whiteColor;
         return [[UIImage systemImageNamed:sym withConfiguration:cfg] imageWithTintColor:tint renderingMode:UIImageRenderingModeAlwaysOriginal];
@@ -3361,10 +3364,10 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     _npDetailsView.bounds = CGRectMake(0.0, 0.0, w, 72.0);
     _npDetailsView.center = CGPointMake(w * 0.5, 36.0);
     CGFloat moreW = 28.0;
-    CGFloat starW = 24.0;
+    CGFloat starW = 26.0;
     CGFloat moreCenterX = _landscapeMode ? (w - kSideMargin - 16.5) : round(w * (341.5 / 390.0));
     CGFloat starCenterX = _landscapeMode ? (w - kSideMargin - 64.5) : round(w * (293.3 / 390.0));
-    CGFloat npBtnCenterY = _landscapeMode ? 23.0 : 36.0;
+    CGFloat npBtnCenterY = _landscapeMode ? 24.5 : 36.0;
     _npMoreButton.bounds = CGRectMake(0.0, 0.0, moreW, moreW);
     _npMoreButton.center = CGPointMake(moreCenterX, npBtnCenterY);
     _npStarButton.bounds = CGRectMake(0.0, 0.0, starW, starW);
@@ -3483,9 +3486,17 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     [self updateStickyHeadersAndClipping];
 }
 
+- (CGFloat)pillsBarTopDocY {
+    return _landscapeMode ? 91.0 : kContinueHeaderDocY;
+}
+
+- (CGFloat)firstSectionHeaderOffset {
+    return _landscapeMode ? 58.67 : kFirstSectionHeaderOffset;
+}
+
 - (CGFloat)firstSectionHeaderNaturalDocY {
     BOOL hasPills = ([self activePillSlots].count > 0);
-    return kContinueHeaderDocY + (hasPills ? kFirstSectionHeaderOffset : 0.0);
+    return [self pillsBarTopDocY] + (hasPills ? [self firstSectionHeaderOffset] : 0.0);
 }
 
 - (CGFloat)userQueueRowsStartDocY {
@@ -3535,13 +3546,13 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     BOOL hasContinue  = (_futureItems.count > 0);
     CGFloat pinOffset = [self continueHeaderPinOffset];
 
-    // 1. 4-Pill Bar pins at docY = MAX(87.0, scrollY + pinOffset)
-    CGFloat pillsPinDocY = MAX(kContinueHeaderDocY, scrollY + pinOffset);
+    // 1. 4-Pill Bar pins at docY = MAX(pillsBarTopDocY, scrollY + pinOffset)
+    CGFloat pillsPinDocY = MAX([self pillsBarTopDocY], scrollY + pinOffset);
     _pillsBarView.hidden = !hasPills;
     _pillsBarView.bounds = CGRectMake(0.0, 0.0, w, kPillsBarHeight);
     _pillsBarView.center = CGPointMake(w * 0.5, pillsPinDocY + kPillsBarHeight * 0.5);
 
-    CGFloat subHeaderPinTop = pillsPinDocY + (hasPills ? kFirstSectionHeaderOffset : 0.0);
+    CGFloat subHeaderPinTop = pillsPinDocY + (hasPills ? [self firstSectionHeaderOffset] : 0.0);
     CGFloat continueNatDocY = [self continueHeaderNaturalDocY];
     CGFloat continueHdrH    = hasUserQueue ? kContinueAfterQueueHeaderHeight : [self continueSectionHeaderHeight];
 
@@ -3963,16 +3974,21 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
                                            title:(NSString *)title
                                            color:(UIColor *)color
                                           action:(SEL)action
+                                     isProminent:(BOOL)isProminent
                                         outLabel:(UILabel * __strong *)outLabel {
-    // Built as a plain UIControl + UILabel (never a UIButton) so global UIButton hooks never re-tint "Cancel"
+    // Built as a custom UIControl + UILabel with Liquid Glass (SGRGlassCapsuleInside) so global UIButton hooks never re-tint "Cancel"
     UIControl *ctrl = [[UIControl alloc] initWithFrame:frame];
-    ctrl.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.11];
+    ctrl.backgroundColor = UIColor.clearColor;
     ctrl.layer.cornerRadius = frame.size.height * 0.5;
     ctrl.layer.cornerCurve = kCACornerCurveContinuous;
     ctrl.clipsToBounds = YES;
+    ctrl.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
     [ctrl addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
     [ctrl addTarget:self action:@selector(handlePromptCapsuleTouchDown:) forControlEvents:UIControlEventTouchDown | UIControlEventTouchDragEnter];
     [ctrl addTarget:self action:@selector(handlePromptCapsuleTouchUp:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel | UIControlEventTouchDragExit];
+
+    UIView *glass = SGRGlassCapsuleInside(ctrl, &kPromptBtnGlassKey, frame.size, isProminent);
+    glass.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
 
     UILabel *lbl = [[UILabel alloc] initWithFrame:ctrl.bounds];
     lbl.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
@@ -3990,13 +4006,15 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
 
 - (void)handlePromptCapsuleTouchDown:(UIControl *)sender {
     [UIView animateWithDuration:0.08 delay:0 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState animations:^{
-        sender.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.20];
+        sender.transform = CGAffineTransformMakeScale(0.96, 0.96);
+        sender.alpha = 0.82;
     } completion:nil];
 }
 
 - (void)handlePromptCapsuleTouchUp:(UIControl *)sender {
-    [UIView animateWithDuration:0.16 delay:0 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState animations:^{
-        sender.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.11];
+    [UIView animateWithDuration:0.18 delay:0 usingSpringWithDamping:0.75 initialSpringVelocity:0 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState animations:^{
+        sender.transform = CGAffineTransformIdentity;
+        sender.alpha = 1.0;
     } completion:nil];
 }
 
@@ -4026,6 +4044,18 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     CGAffineTransform savedTx = _clearPromptCard.transform;
     _clearPromptCard.transform = CGAffineTransformIdentity;
     _clearPromptCard.frame = cardRect;
+    _clearPromptCard.layer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:_clearPromptCard.bounds cornerRadius:32.0].CGPath;
+    if (_clearPromptGlass) {
+        _clearPromptGlass.frame = _clearPromptCard.bounds;
+        SGShapeGlass(_clearPromptGlass, 32.0, NO);
+    }
+    if (_clearPromptCancelControl && _clearPromptConfirmControl) {
+        CGFloat btnW = (cardW - 32.0 - 8.0) * 0.5;
+        _clearPromptCancelControl.frame = CGRectMake(16.0, 84.33, btnW, 48.0);
+        _clearPromptConfirmControl.frame = CGRectMake(16.0 + btnW + 8.0, 84.33, btnW, 48.0);
+        SGRGlassCapsuleInside(_clearPromptCancelControl, &kPromptBtnGlassKey, CGSizeMake(btnW, 48.0), YES);
+        SGRGlassCapsuleInside(_clearPromptConfirmControl, &kPromptBtnGlassKey, CGSizeMake(btnW, 48.0), NO);
+    }
     _clearPromptCard.transform = savedTx;
 }
 
@@ -4045,24 +4075,36 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         [_clearPromptOverlay addTarget:self action:@selector(handleCancelClearPromptTap) forControlEvents:UIControlEventTouchUpInside];
 
         _clearPromptCard = [[UIView alloc] initWithFrame:CGRectMake(0.0, 0.0, cardW, cardH)];
-        _clearPromptCard.layer.cornerRadius = 32.0;
-        _clearPromptCard.layer.cornerCurve = kCACornerCurveContinuous;
-        _clearPromptCard.layer.borderWidth = 0.67;
-        _clearPromptCard.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.26].CGColor;
-        _clearPromptCard.clipsToBounds = YES;
+        _clearPromptCard.backgroundColor = UIColor.clearColor;
+        _clearPromptCard.clipsToBounds = NO;
+        _clearPromptCard.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+        _clearPromptCard.layer.shadowColor = UIColor.blackColor.CGColor;
+        _clearPromptCard.layer.shadowOpacity = 0.35;
+        _clearPromptCard.layer.shadowRadius = 24.0;
+        _clearPromptCard.layer.shadowOffset = CGSizeMake(0.0, 10.0);
+        _clearPromptCard.layer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:_clearPromptCard.bounds cornerRadius:32.0].CGPath;
 
-        UIVisualEffectView *blurView = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterialDark]];
-        blurView.frame = _clearPromptCard.bounds;
-        blurView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        blurView.userInteractionEnabled = NO;
-        [_clearPromptCard addSubview:blurView];
+        _clearPromptGlass = [[UIVisualEffectView alloc] initWithEffect:SGGlassEffect()];
+        _clearPromptGlass.frame = _clearPromptCard.bounds;
+        _clearPromptGlass.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        _clearPromptGlass.layer.cornerRadius = 32.0;
+        _clearPromptGlass.layer.cornerCurve = kCACornerCurveContinuous;
+        _clearPromptGlass.layer.borderWidth = 0.67;
+        _clearPromptGlass.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.28].CGColor;
+        _clearPromptGlass.clipsToBounds = YES;
+        _clearPromptGlass.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+        SGShapeGlass(_clearPromptGlass, 32.0, NO);
+        [_clearPromptCard addSubview:_clearPromptGlass];
 
         UIView *glassLiftOverlay = [[UIView alloc] initWithFrame:_clearPromptCard.bounds];
-        glassLiftOverlay.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.04];
+        glassLiftOverlay.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.06];
         glassLiftOverlay.layer.compositingFilter = @"plusL";
+        glassLiftOverlay.layer.cornerRadius = 32.0;
+        glassLiftOverlay.layer.cornerCurve = kCACornerCurveContinuous;
+        glassLiftOverlay.clipsToBounds = YES;
         glassLiftOverlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         glassLiftOverlay.userInteractionEnabled = NO;
-        [_clearPromptCard addSubview:glassLiftOverlay];
+        [_clearPromptGlass.contentView addSubview:glassLiftOverlay];
 
         _clearPromptTitleLabel = [[UILabel alloc] initWithFrame:CGRectMake(30.0, 19.33, cardW - 60.0, 48.0)];
         _clearPromptTitleLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
@@ -4075,6 +4117,7 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
                                                                       title:@"Cancel"
                                                                       color:UIColor.whiteColor
                                                                      action:@selector(handleCancelClearPromptTap)
+                                                                isProminent:YES
                                                                    outLabel:NULL];
         _clearPromptCancelControl.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleRightMargin;
         [_clearPromptCard addSubview:_clearPromptCancelControl];
@@ -4085,6 +4128,7 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
                                                                        title:@"Clear Queue"
                                                                        color:coralColor
                                                                       action:@selector(confirmClearPromptAction)
+                                                                 isProminent:NO
                                                                     outLabel:&confirmLbl];
         _clearPromptConfirmControl.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleLeftMargin;
         _clearPromptConfirmLabel = confirmLbl;
@@ -4112,8 +4156,10 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         NSForegroundColorAttributeName: coralColor,
         NSKernAttributeName: @(-0.35),
     }];
-    _clearPromptCancelControl.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.11];
-    _clearPromptConfirmControl.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.11];
+    _clearPromptCancelControl.transform = CGAffineTransformIdentity;
+    _clearPromptConfirmControl.transform = CGAffineTransformIdentity;
+    _clearPromptCancelControl.alpha = 1.0;
+    _clearPromptConfirmControl.alpha = 1.0;
 
     if (_clearPromptOverlay.superview != hostView) {
         [_clearPromptOverlay removeFromSuperview];
