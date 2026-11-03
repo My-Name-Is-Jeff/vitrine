@@ -150,13 +150,13 @@ static const CGFloat kAddSongsRowHeight = 48.0;             // "+ Add Songs to Q
 static const CGFloat kUserQueueToContinueGap = 26.0;        // Gap between "+ Add Songs to Queue" bottom and "Continue Playing" header
 static const CGFloat kContinueSectionHeaderHeight = 52.0;   // Continue Playing header height when Queue is empty (Row 0 at screenY = 274.0)
 static const CGFloat kContinueAfterQueueHeaderHeight = 52.33; // Continue Playing header height below Queue (Row 0 at screenY = 447.67)
-static const CGFloat kQueueRowPitch = 56.0;                 // 48pt art + 8pt vertical gap (Row 5 art starts at 498.0 pt, ends at 546.0 pt)
-static const CGFloat kHistoryHeaderHeight = 46.0;
-static const CGFloat kHistoryHeaderClipOffset = 31.0; // Clips scrolling History rows at screenY = 79.0 + 31.0 = 110.0 pt
-static const CGFloat kHistoryRowPitch = 58.0;
-static const CGFloat kHistoryBottomGap = 22.0;
-static const CGFloat kHistoryHeaderPinOffset = 7.0;   // Pins at viewportY = 7.0 (screenY = 79.0)
-static const CGFloat kHistoryHeaderPushOffDocY = -43.7; // Rises off-screen as scrollY travels from -50.7 pt to 0 pt
+static const CGFloat kQueueRowPitch = 56.0;                 // 48pt art + 8pt vertical gap (shared across History, Queue, and Continue Playing)
+static const CGFloat kHistoryHeaderHeight = 43.33;          // Matches kUserQueueHeaderHeight (43.33 pt from header top to first row)
+static const CGFloat kHistoryHeaderClipOffset = 38.0;       // Clips scrolling History rows cleanly below "History / Clear"
+static const CGFloat kHistoryRowPitch = 56.0;               // 48pt art + 8pt vertical gap matching Apple Music History rows
+static const CGFloat kHistoryBottomGap = 26.0;              // 26.0 pt gap below last History row to Now Playing card
+static const CGFloat kHistoryHeaderPinOffset = 26.0;        // Pins at viewportY = 26.0 (screenY = 106.0 pt, cap-top = 109.0 pt)
+static const CGFloat kHistoryHeaderPushOffDocY = -43.33;    // Rises off-screen as scrollY travels back to 0 pt
 
 static const CGFloat kSwipeParkOffset = -80.0;
 static const CGFloat kSwipeCommitRatio = 0.58;
@@ -1804,67 +1804,37 @@ static NSString *SGRNormalizedContextURIForResolve(NSString *contextURI) {
 // Explicit "E" Badge & Apple Music Overlapping Two-Circles AutoMix/Transitions Icon
 // ============================================================================
 
+static UIImage *SGRRenderExplicitBadgeImage(CGFloat side, CGFloat cornerRadius, CGFloat fontSize, CGFloat fillAlpha) {
+    CGSize size = CGSizeMake(side, side);
+    UIGraphicsImageRendererFormat *fmt = [UIGraphicsImageRendererFormat preferredFormat];
+    fmt.opaque = NO;
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:size format:fmt];
+    return [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
+        UIBezierPath *bg = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, side, side) cornerRadius:cornerRadius];
+        [[UIColor colorWithWhite:1.0 alpha:fillAlpha] setFill];
+        [bg fill];
+        CGContextSetBlendMode(ctx.CGContext, kCGBlendModeClear);
+        NSDictionary *attrs = @{
+            NSFontAttributeName: [UIFont systemFontOfSize:fontSize weight:UIFontWeightHeavy],
+            NSForegroundColorAttributeName: UIColor.blackColor,
+        };
+        NSString *e = @"E";
+        CGSize textSize = [e sizeWithAttributes:attrs];
+        [e drawInRect:CGRectMake((side - textSize.width) * 0.5, (side - textSize.height) * 0.5, textSize.width, textSize.height) withAttributes:attrs];
+    }];
+}
+
 static UIImage *SGRExplicitBadgeImageNP(void) {
     static UIImage *badge = nil;
     static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        CGSize size = CGSizeMake(12.5, 12.5);
-        UIGraphicsImageRendererFormat *fmt = [UIGraphicsImageRendererFormat preferredFormat];
-        fmt.opaque = NO;
-        UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:size format:fmt];
-        badge = [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
-            CGContextRef cg = ctx.CGContext;
-            UIBezierPath *bg = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, size.width, size.height) cornerRadius:2.3];
-            [[UIColor colorWithWhite:1.0 alpha:0.58] setFill];
-            [bg fill];
-
-            CGContextSetBlendMode(cg, kCGBlendModeClear);
-            UIFont *font = [UIFont systemFontOfSize:8.4 weight:UIFontWeightHeavy];
-            NSDictionary *attrs = @{
-                NSFontAttributeName: font,
-                NSForegroundColorAttributeName: UIColor.blackColor,
-            };
-            NSString *e = @"E";
-            CGSize textSize = [e sizeWithAttributes:attrs];
-            CGRect textRect = CGRectMake((size.width - textSize.width) * 0.5,
-                                         (size.height - textSize.height) * 0.5,
-                                         textSize.width,
-                                         textSize.height);
-            [e drawInRect:textRect withAttributes:attrs];
-        }];
-    });
+    dispatch_once(&onceToken, ^{ badge = SGRRenderExplicitBadgeImage(12.5, 2.3, 8.4, 0.58); });
     return badge;
 }
 
 static UIImage *SGRExplicitBadgeImageRow(void) {
     static UIImage *badge = nil;
     static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        CGSize size = CGSizeMake(12.0, 12.0);
-        UIGraphicsImageRendererFormat *fmt = [UIGraphicsImageRendererFormat preferredFormat];
-        fmt.opaque = NO;
-        UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:size format:fmt];
-        badge = [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
-            CGContextRef cg = ctx.CGContext;
-            UIBezierPath *bg = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, size.width, size.height) cornerRadius:2.2];
-            [[UIColor colorWithWhite:1.0 alpha:0.56] setFill];
-            [bg fill];
-
-            CGContextSetBlendMode(cg, kCGBlendModeClear);
-            UIFont *font = [UIFont systemFontOfSize:8.2 weight:UIFontWeightHeavy];
-            NSDictionary *attrs = @{
-                NSFontAttributeName: font,
-                NSForegroundColorAttributeName: UIColor.blackColor,
-            };
-            NSString *e = @"E";
-            CGSize textSize = [e sizeWithAttributes:attrs];
-            CGRect textRect = CGRectMake((size.width - textSize.width) * 0.5,
-                                         (size.height - textSize.height) * 0.5,
-                                         textSize.width,
-                                         textSize.height);
-            [e drawInRect:textRect withAttributes:attrs];
-        }];
-    });
+    dispatch_once(&onceToken, ^{ badge = SGRRenderExplicitBadgeImage(12.0, 2.2, 8.2, 0.56); });
     return badge;
 }
 
@@ -2529,12 +2499,14 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     NSMutableArray<SGRQueueRowView *> *_userQueueRowViews;
     NSMutableDictionary<NSString *, SGRQueueRowView *> *_userQueueRowsByKey;
 
-    // Clear Queue Confirmation Prompt Overlay ("Are you sure you want to clear your queue?")
+    // Unified Clear Confirmation Prompt Overlay ("Are you sure you want to clear your queue/history?")
     UIControl *_clearPromptOverlay;
-    UIControl *_clearPromptCard;
-    UIVisualEffectView *_clearPromptGlass;
-    UIButton *_clearPromptCancelButton;
-    UIButton *_clearPromptClearButton;
+    UIView *_clearPromptCard;
+    UILabel *_clearPromptTitleLabel;
+    UIControl *_clearPromptCancelControl;
+    UIControl *_clearPromptConfirmControl;
+    UILabel *_clearPromptConfirmLabel;
+    BOOL _clearPromptIsForHistory;
 
     // Section 2B: Continue Playing Sticky Header & Rows
     UIView *_continueHeaderView;
@@ -2727,17 +2699,10 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     _historyHeaderView.backgroundColor = UIColor.clearColor;
     [_scrollView addSubview:_historyHeaderView];
 
-    _historyTitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _historyTitleLabel.text = @"History";
-    _historyTitleLabel.font = [UIFont systemFontOfSize:19.5 weight:UIFontWeightBold];
-    _historyTitleLabel.textColor = UIColor.whiteColor;
+    _historyTitleLabel = [self createSectionTitleLabelWithText:@"History"];
     [_historyHeaderView addSubview:_historyTitleLabel];
 
-    _historyClearButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    [_historyClearButton setTitle:@"Clear" forState:UIControlStateNormal];
-    _historyClearButton.titleLabel.font = [UIFont systemFontOfSize:15.5 weight:UIFontWeightSemibold];
-    [_historyClearButton setTitleColor:[UIColor colorWithWhite:1.0 alpha:0.75] forState:UIControlStateNormal];
-    [_historyClearButton addTarget:self action:@selector(handleClearHistoryTap) forControlEvents:UIControlEventTouchUpInside];
+    _historyClearButton = [self createSectionClearButtonWithAction:@selector(handleClearHistoryTap)];
     [_historyHeaderView addSubview:_historyClearButton];
 
     // 4. Section 1: Now Playing Card inside top-clipped plane (never peeks above pinned bar)
@@ -2843,20 +2808,10 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     _userQueueHeaderView.hidden = YES;
     [_scrollView addSubview:_userQueueHeaderView];
 
-    _userQueueTitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _userQueueTitleLabel.attributedText = [[NSAttributedString alloc] initWithString:@"Queue" attributes:@{
-        NSFontAttributeName: [UIFont systemFontOfSize:17.0 weight:UIFontWeightBold],
-        NSForegroundColorAttributeName: UIColor.whiteColor,
-        NSKernAttributeName: @(-0.40),
-    }];
+    _userQueueTitleLabel = [self createSectionTitleLabelWithText:@"Queue"];
     [_userQueueHeaderView addSubview:_userQueueTitleLabel];
 
-    _userQueueClearButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    [_userQueueClearButton setTitle:@"Clear" forState:UIControlStateNormal];
-    _userQueueClearButton.titleLabel.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightRegular];
-    [_userQueueClearButton setTitleColor:[UIColor colorWithWhite:1.0 alpha:0.65] forState:UIControlStateNormal];
-    _userQueueClearButton.layer.compositingFilter = @"plusL";
-    [_userQueueClearButton addTarget:self action:@selector(handleClearUserQueueTap) forControlEvents:UIControlEventTouchUpInside];
+    _userQueueClearButton = [self createSectionClearButtonWithAction:@selector(handleClearUserQueueTap)];
     [_userQueueHeaderView addSubview:_userQueueClearButton];
 
     // 6. Section 2B: Continue Playing Track Rows Clipping Plane & Sticky Continue Playing Header
@@ -2882,12 +2837,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
         [_pillsBarView addSubview:_pillButtons[i]];
     }
 
-    _continueTitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _continueTitleLabel.attributedText = [[NSAttributedString alloc] initWithString:@"Continue Playing" attributes:@{
-        NSFontAttributeName: [UIFont systemFontOfSize:17.0 weight:UIFontWeightBold],
-        NSForegroundColorAttributeName: UIColor.whiteColor,
-        NSKernAttributeName: @(-0.40),
-    }];
+    _continueTitleLabel = [self createSectionTitleLabelWithText:@"Continue Playing"];
     [_continueHeaderView addSubview:_continueTitleLabel];
 
     _continueSubtitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
@@ -2921,6 +2871,28 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     [_scrollView addSubview:_emptyQueuePromptLabel];
 
     [self updatePlaybackPillsWithState:SGPlayerState()];
+}
+
+- (UILabel *)createSectionTitleLabelWithText:(NSString *)text {
+    UILabel *label = [[UILabel alloc] initWithFrame:CGRectZero];
+    label.attributedText = [[NSAttributedString alloc] initWithString:text attributes:@{
+        NSFontAttributeName: [UIFont systemFontOfSize:17.0 weight:UIFontWeightBold],
+        NSForegroundColorAttributeName: UIColor.whiteColor,
+        NSKernAttributeName: @(-0.40),
+    }];
+    return label;
+}
+
+- (UIButton *)createSectionClearButtonWithAction:(SEL)action {
+    UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
+    [btn setTitle:@"Clear" forState:UIControlStateNormal];
+    btn.titleLabel.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightRegular];
+    [btn setTitleColor:[UIColor colorWithWhite:1.0 alpha:0.65] forState:UIControlStateNormal];
+    [btn setTitleColor:[UIColor colorWithWhite:1.0 alpha:0.35] forState:UIControlStateHighlighted];
+    btn.contentHorizontalAlignment = UIControlContentHorizontalAlignmentRight;
+    btn.layer.compositingFilter = @"plusL";
+    [btn addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
+    return btn;
 }
 
 - (UIButton *)createPlaybackPillWithSlot:(NSUInteger)slot {
@@ -3117,14 +3089,16 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     }
 }
 
-- (void)updateNowPlayingSaveStateOnly {
-    SGRQueueSession *session = [SGRQueueSession shared];
-    SGRQueueItem *np = session.nowPlayingItem;
-    NSString *trackURI = np.uri ?: @"";
-    BOOL isSaved = [session isTrackSaved:trackURI];
+- (void)applyNowPlayingSaveStateForURI:(NSString *)trackURI {
+    NSString *uri = trackURI ?: @"";
+    BOOL isSaved = [[SGRQueueSession shared] isTrackSaved:uri];
     [_npStarButton setImage:SGRNowPlayingSaveImage(isSaved) forState:UIControlStateNormal];
-    _npStarButton.hidden = (trackURI.length == 0);
+    _npStarButton.hidden = (uri.length == 0);
     _npStarButton.accessibilityLabel = isSaved ? @"Remove from Your Library" : @"Add to Your Library";
+}
+
+- (void)updateNowPlayingSaveStateOnly {
+    [self applyNowPlayingSaveStateForURI:[SGRQueueSession shared].nowPlayingItem.uri];
 }
 
 - (void)updateNowPlayingCardWithItem:(SGRQueueItem *)item subtitle:(NSString *)subtitle {
@@ -3143,12 +3117,7 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     _npArtistLabel.text = item.artist ?: @"";
     _npExplicitView.hidden = !item.isExplicit;
     _continueSubtitleLabel.text = subtitle ?: @"";
-
-    NSString *trackURI = item.uri ?: @"";
-    BOOL isSaved = [[SGRQueueSession shared] isTrackSaved:trackURI];
-    [_npStarButton setImage:SGRNowPlayingSaveImage(isSaved) forState:UIControlStateNormal];
-    _npStarButton.hidden = (item.uri.length == 0);
-    _npStarButton.accessibilityLabel = isSaved ? @"Remove from Your Library" : @"Add to Your Library";
+    [self applyNowPlayingSaveStateForURI:item.uri];
 
     UIImage *liveArt = SGRNowPlayingArtwork(NULL, NULL);
     if (liveArt) {
@@ -3171,60 +3140,61 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     _npArtView.alpha = _transitionArtHidden ? 0.0 : 1.0;
 }
 
-- (void)reconcileTrackRowsAnimated:(BOOL)animateReorder {
-    CGFloat w = MAX(320.0, self.bounds.size.width);
+- (void)reconcileStaticSectionItems:(NSArray<SGRQueueItem *> *)items
+                          rowsByKey:(NSMutableDictionary<NSString *, SGRQueueRowView *> * __strong *)rowsByKeyPtr
+                           rowViews:(NSMutableArray<SGRQueueRowView *> *)rowViews
+                          container:(UIView *)container
+                          isHistory:(BOOL)isHistory
+                        isUserQueue:(BOOL)isUserQueue
+                              width:(CGFloat)w {
+    NSMutableDictionary<NSString *, SGRQueueRowView *> *oldMap = *rowsByKeyPtr;
+    NSMutableDictionary<NSString *, SGRQueueRowView *> *nextMap = [NSMutableDictionary dictionaryWithCapacity:items.count];
+    NSMutableArray<SGRQueueRowView *> *nextViews = [NSMutableArray arrayWithCapacity:items.count];
+    CGFloat pitch = isHistory ? kHistoryRowPitch : kQueueRowPitch;
 
-    // 1. Reconcile History Rows by key (reusing views & cached artwork)
-    NSMutableDictionary<NSString *, SGRQueueRowView *> *nextHistMap = [NSMutableDictionary dictionaryWithCapacity:_historyItems.count];
-    NSMutableArray<SGRQueueRowView *> *nextHistViews = [NSMutableArray arrayWithCapacity:_historyItems.count];
-
-    for (NSUInteger i = 0; i < _historyItems.count; i++) {
-        SGRQueueItem *it = _historyItems[i];
-        SGRQueueRowView *row = _historyRowsByKey[it.key];
+    for (NSUInteger i = 0; i < items.count; i++) {
+        SGRQueueItem *it = items[i];
+        SGRQueueRowView *row = oldMap[it.key];
+        CGRect targetFrame = CGRectMake(0.0, i * pitch, w, pitch);
         if (row) {
-            [_historyRowsByKey removeObjectForKey:it.key];
-        } else {
-            row = [[SGRQueueRowView alloc] initWithFrame:CGRectMake(0, i * kHistoryRowPitch, w, kHistoryRowPitch)];
-            row.delegate = self;
-            [_historyRowsContainerView addSubview:row];
-        }
-        [row configureWithItem:it isHistory:YES rowIndex:(NSInteger)i];
-        row.frame = CGRectMake(0.0, i * kHistoryRowPitch, w, kHistoryRowPitch);
-        nextHistMap[it.key] = row;
-        [nextHistViews addObject:row];
-    }
-    for (SGRQueueRowView *obsolete in _historyRowsByKey.allValues) {
-        [obsolete removeFromSuperview];
-    }
-    _historyRowsByKey = nextHistMap;
-    [_historyRowViews setArray:nextHistViews];
-
-    // 2A. Reconcile User Queue ("Queue") Rows by key
-    NSMutableDictionary<NSString *, SGRQueueRowView *> *nextUQMap = [NSMutableDictionary dictionaryWithCapacity:_userQueueItems.count];
-    NSMutableArray<SGRQueueRowView *> *nextUQViews = [NSMutableArray arrayWithCapacity:_userQueueItems.count];
-    for (NSUInteger i = 0; i < _userQueueItems.count; i++) {
-        SGRQueueItem *it = _userQueueItems[i];
-        SGRQueueRowView *row = _userQueueRowsByKey[it.key];
-        CGRect targetFrame = CGRectMake(0.0, i * kQueueRowPitch, w, kQueueRowPitch);
-        if (row) {
-            [_userQueueRowsByKey removeObjectForKey:it.key];
+            [oldMap removeObjectForKey:it.key];
         } else {
             row = [[SGRQueueRowView alloc] initWithFrame:targetFrame];
             row.delegate = self;
-            [_userQueueRowsContainerView addSubview:row];
+            [container addSubview:row];
         }
-        row.isUserQueue = YES;
-        [row configureWithItem:it isHistory:NO rowIndex:(NSInteger)i];
+        row.isUserQueue = isUserQueue;
+        [row configureWithItem:it isHistory:isHistory rowIndex:(NSInteger)i];
         row.frame = targetFrame;
         row.alpha = 1.0;
-        nextUQMap[it.key] = row;
-        [nextUQViews addObject:row];
+        nextMap[it.key] = row;
+        [nextViews addObject:row];
     }
-    for (SGRQueueRowView *obsoleteUQ in _userQueueRowsByKey.allValues) {
-        [obsoleteUQ removeFromSuperview];
+    for (SGRQueueRowView *obsolete in oldMap.allValues) {
+        [obsolete removeFromSuperview];
     }
-    _userQueueRowsByKey = nextUQMap;
-    [_userQueueRowViews setArray:nextUQViews];
+    *rowsByKeyPtr = nextMap;
+    [rowViews setArray:nextViews];
+}
+
+- (void)reconcileTrackRowsAnimated:(BOOL)animateReorder {
+    CGFloat w = MAX(320.0, self.bounds.size.width);
+
+    // 1 & 2A. Reconcile History and User Queue ("Queue") rows via shared helper
+    [self reconcileStaticSectionItems:_historyItems
+                            rowsByKey:&_historyRowsByKey
+                             rowViews:_historyRowViews
+                            container:_historyRowsContainerView
+                            isHistory:YES
+                          isUserQueue:NO
+                                width:w];
+    [self reconcileStaticSectionItems:_userQueueItems
+                            rowsByKey:&_userQueueRowsByKey
+                             rowViews:_userQueueRowViews
+                            container:_userQueueRowsContainerView
+                            isHistory:NO
+                          isUserQueue:YES
+                                width:w];
 
     // 2B. Reconcile Continue Playing Rows by key (smooth ~0.35s spring reorder on Shuffle toggle, zero artwork flash)
     NSMutableDictionary<NSString *, SGRQueueRowView *> *nextQueueMap = [NSMutableDictionary dictionaryWithCapacity:_futureItems.count];
@@ -3292,7 +3262,7 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
 
 - (CGFloat)historyTotalHeight {
     if (_historyItems.count == 0) return 0.0;
-    return kHistoryHeaderHeight + _historyItems.count * kHistoryRowPitch + kHistoryBottomGap;
+    return kHistoryHeaderPinOffset + kHistoryHeaderHeight + _historyItems.count * kHistoryRowPitch + kHistoryBottomGap;
 }
 
 - (void)applyHistoryInsetPreservingOffset {
@@ -3432,10 +3402,9 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     _continueTitleLabel.frame = CGRectMake(kSideMargin, 0.0, w - kSideMargin * 2.0, 21.0);
     _continueSubtitleLabel.frame = CGRectMake(kSideMargin, 20.5, w - kSideMargin * 2.0, 17.0);
 
-    // Section 0 Header subviews: "History" + "Clear" aligned at x = 32 .. w - 32
-    _historyTitleLabel.frame = CGRectMake(kSideMargin, 6.0, 160.0, 24.0);
-    _historyClearButton.frame = CGRectMake(w - kSideMargin - 52.0, 2.0, 52.0, 32.0);
-    _historyClearButton.contentHorizontalAlignment = UIControlContentHorizontalAlignmentRight;
+    // Section 0 Header subviews: "History" + "Clear" matching "Queue" + "Clear" (x = 32 .. w - 32)
+    _historyTitleLabel.frame = CGRectMake(kSideMargin, 3.0, 140.0, 22.0);
+    _historyClearButton.frame = CGRectMake(w - kSideMargin - 52.0, -1.33, 52.0, 30.0);
 
     for (NSUInteger i = 0; i < _historyRowViews.count; i++) {
         SGRQueueRowView *row = _historyRowViews[i];
@@ -3592,7 +3561,7 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     _nowPlayingClipView.hidden = (npClipH <= 0.5);
     _nowPlayingCard.frame = CGRectMake(0.0, kNowPlayingDocY - npClipTopDocY, w, kNowPlayingHeight);
 
-    // 3. Section 0: History Sticky Header (pins at screenY = 79.0 pt, pushes off from -50.7..0 pt) & Sharp Row Clip at screenY = 110.0 pt
+    // 4. Section 0: History Sticky Header (pins at screenY = 106.0 pt, cap-top = 109.0 pt) & Sharp Row Clip
     if (histH > 0.0 && scrollY < -0.5) {
         _historyHeaderView.hidden = NO;
         _historyRowsClipView.hidden = NO;
@@ -3600,13 +3569,12 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         CGFloat histHeaderDocY = MIN(MAX(-histH + kHistoryHeaderPinOffset, scrollY + kHistoryHeaderPinOffset), kHistoryHeaderPushOffDocY);
         _historyHeaderView.frame = CGRectMake(0.0, histHeaderDocY, w, kHistoryHeaderHeight);
 
-        // Clip scrolling History rows sharply along y = 110 pt (histHeaderDocY + 31.0) so rows never bleed behind "History / Clear"
         CGFloat histClipTopDocY = histHeaderDocY + kHistoryHeaderClipOffset;
         CGFloat histClipBottomDocY = MIN(kNowPlayingDocY - 4.0, topPinnedBoundary);
         CGFloat clipH = MAX(0.0, histClipBottomDocY - histClipTopDocY);
         _historyRowsClipView.frame = CGRectMake(0.0, histClipTopDocY, w, clipH);
 
-        CGFloat histFirstRowDocY = -histH + kHistoryHeaderHeight + 4.0;
+        CGFloat histFirstRowDocY = -histH + kHistoryHeaderPinOffset + kHistoryHeaderHeight;
         _historyRowsContainerView.frame = CGRectMake(0.0, histFirstRowDocY - histClipTopDocY, w, _historyRowViews.count * kHistoryRowPitch);
     } else {
         _historyHeaderView.hidden = YES;
@@ -3932,21 +3900,61 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     }];
 }
 
-- (void)handleClearHistoryTap {
-    if (_historyItems.count == 0) return;
-    _clampAtZeroOnDragOrDecel = NO;
-    [[SGRQueueSession shared] clearHistory];
-    [UIView animateWithDuration:0.28 delay:0 options:UIViewAnimationOptionCurveEaseOut animations:^{
-        self->_scrollView.contentInset = UIEdgeInsetsMake(0.0, 0.0, 36.0, 0.0);
-        self->_scrollView.contentOffset = CGPointZero;
-        [self updateStickyHeadersAndClipping];
-    } completion:nil];
-}
-
 - (void)handleAddSongsToQueueTap {
     UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
     [gen impactOccurred];
     SGRPlayerMinimizeIfOpen();
+}
+
+- (void)handleClearHistoryTap {
+    if (_historyItems.count == 0) return;
+    [self presentClearPromptForHistory:YES];
+}
+
+- (void)handleClearUserQueueTap {
+    if (_userQueueItems.count == 0) return;
+    [self presentClearPromptForHistory:NO];
+}
+
+- (UIControl *)createClearPromptCapsuleWithFrame:(CGRect)frame
+                                           title:(NSString *)title
+                                           color:(UIColor *)color
+                                          action:(SEL)action
+                                        outLabel:(UILabel * __strong *)outLabel {
+    // Built as a plain UIControl + UILabel (never a UIButton) so global UIButton hooks never re-tint "Cancel"
+    UIControl *ctrl = [[UIControl alloc] initWithFrame:frame];
+    ctrl.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.15];
+    ctrl.layer.cornerRadius = frame.size.height * 0.5;
+    ctrl.layer.cornerCurve = kCACornerCurveContinuous;
+    ctrl.clipsToBounds = YES;
+    [ctrl addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
+    [ctrl addTarget:self action:@selector(handlePromptCapsuleTouchDown:) forControlEvents:UIControlEventTouchDown | UIControlEventTouchDragEnter];
+    [ctrl addTarget:self action:@selector(handlePromptCapsuleTouchUp:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel | UIControlEventTouchDragExit];
+
+    UILabel *lbl = [[UILabel alloc] initWithFrame:ctrl.bounds];
+    lbl.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    lbl.textAlignment = NSTextAlignmentCenter;
+    lbl.userInteractionEnabled = NO;
+    lbl.attributedText = [[NSAttributedString alloc] initWithString:title attributes:@{
+        NSFontAttributeName: [UIFont systemFontOfSize:17.0 weight:UIFontWeightSemibold],
+        NSForegroundColorAttributeName: color,
+        NSKernAttributeName: @(-0.35),
+    }];
+    [ctrl addSubview:lbl];
+    if (outLabel) *outLabel = lbl;
+    return ctrl;
+}
+
+- (void)handlePromptCapsuleTouchDown:(UIControl *)sender {
+    [UIView animateWithDuration:0.08 delay:0 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState animations:^{
+        sender.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.25];
+    } completion:nil];
+}
+
+- (void)handlePromptCapsuleTouchUp:(UIControl *)sender {
+    [UIView animateWithDuration:0.16 delay:0 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState animations:^{
+        sender.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.15];
+    } completion:nil];
 }
 
 - (void)layoutClearPromptOverlay {
@@ -3968,26 +3976,11 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     _clearPromptCard.transform = CGAffineTransformIdentity;
     _clearPromptCard.frame = cardRect;
     _clearPromptCard.transform = savedTx;
-
-    if (_clearPromptGlass) {
-        _clearPromptGlass.frame = _clearPromptCard.bounds;
-        SGShapeGlass(_clearPromptGlass, 32.0, NO);
-    }
-
-    _clearPromptCard.layer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:_clearPromptCard.bounds cornerRadius:32.0].CGPath;
-
-    CGFloat btnW = (cardW - 32.0 - 8.0) * 0.5;
-    if (_clearPromptCancelButton) {
-        _clearPromptCancelButton.frame = CGRectMake(16.0, 84.33, btnW, 48.0);
-    }
-    if (_clearPromptClearButton) {
-        _clearPromptClearButton.frame = CGRectMake(16.0 + btnW + 8.0, 84.33, btnW, 48.0);
-    }
 }
 
-- (void)handleClearUserQueueTap {
-    if (_userQueueItems.count == 0) return;
+- (void)presentClearPromptForHistory:(BOOL)isHistory {
     [self closeParkedSwipeRowsExcept:nil animated:YES];
+    _clearPromptIsForHistory = isHistory;
 
     UIView *hostView = self.window ?: (self.superview ?: self);
     CGFloat w = hostView.bounds.size.width;
@@ -3998,92 +3991,78 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         _clearPromptOverlay = [[UIControl alloc] initWithFrame:hostView.bounds];
         _clearPromptOverlay.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.46];
         _clearPromptOverlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        [_clearPromptOverlay addTarget:self action:@selector(dismissClearQueuePrompt) forControlEvents:UIControlEventTouchUpInside];
+        [_clearPromptOverlay addTarget:self action:@selector(handleCancelClearPromptTap) forControlEvents:UIControlEventTouchUpInside];
 
-        // Liquid Glass Dialog Card (iOS 26+ UIGlassEffect with continuous 32pt corner configuration)
-        _clearPromptCard = [[UIControl alloc] initWithFrame:CGRectMake(0.0, 0.0, cardW, cardH)];
-        _clearPromptCard.backgroundColor = UIColor.clearColor;
-        _clearPromptCard.clipsToBounds = NO;
-        _clearPromptCard.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
-        _clearPromptCard.layer.shadowColor = UIColor.blackColor.CGColor;
-        _clearPromptCard.layer.shadowOpacity = 0.35;
-        _clearPromptCard.layer.shadowRadius = 24.0;
-        _clearPromptCard.layer.shadowOffset = CGSizeMake(0.0, 10.0);
-        _clearPromptCard.layer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:_clearPromptCard.bounds cornerRadius:32.0].CGPath;
+        _clearPromptCard = [[UIView alloc] initWithFrame:CGRectMake(0.0, 0.0, cardW, cardH)];
+        _clearPromptCard.layer.cornerRadius = 32.0;
+        _clearPromptCard.layer.cornerCurve = kCACornerCurveContinuous;
+        _clearPromptCard.layer.borderWidth = 0.67;
+        _clearPromptCard.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.28].CGColor;
+        _clearPromptCard.clipsToBounds = YES;
 
-        _clearPromptGlass = [[UIVisualEffectView alloc] initWithEffect:SGGlassEffect()];
-        _clearPromptGlass.frame = _clearPromptCard.bounds;
-        _clearPromptGlass.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        _clearPromptGlass.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
-        _clearPromptGlass.userInteractionEnabled = NO;
-        SGShapeGlass(_clearPromptGlass, 32.0, NO);
-        [_clearPromptCard addSubview:_clearPromptGlass];
+        UIVisualEffectView *blurView = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterialDark]];
+        blurView.frame = _clearPromptCard.bounds;
+        blurView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        blurView.userInteractionEnabled = NO;
+        [_clearPromptCard addSubview:blurView];
 
-        UILabel *promptLabel = [[UILabel alloc] initWithFrame:CGRectMake(30.0, 21.0, cardW - 60.0, 48.0)];
-        promptLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-        promptLabel.numberOfLines = 2;
-        NSMutableParagraphStyle *pStyle = [[NSMutableParagraphStyle alloc] init];
-        pStyle.lineSpacing = 1.67;
-        pStyle.alignment = NSTextAlignmentLeft;
-        promptLabel.attributedText = [[NSAttributedString alloc] initWithString:@"Are you sure you want to clear\nyour queue?" attributes:@{
-            NSFontAttributeName: [UIFont systemFontOfSize:17.0 weight:UIFontWeightSemibold],
-            NSForegroundColorAttributeName: UIColor.whiteColor,
-            NSKernAttributeName: @(-0.43),
-            NSParagraphStyleAttributeName: pStyle,
-        }];
-        [_clearPromptCard addSubview:promptLabel];
+        UIView *glassLiftOverlay = [[UIView alloc] initWithFrame:_clearPromptCard.bounds];
+        glassLiftOverlay.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.12];
+        glassLiftOverlay.layer.compositingFilter = @"plusL";
+        glassLiftOverlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        glassLiftOverlay.userInteractionEnabled = NO;
+        [_clearPromptCard addSubview:glassLiftOverlay];
+
+        _clearPromptTitleLabel = [[UILabel alloc] initWithFrame:CGRectMake(30.0, 21.0, cardW - 60.0, 48.0)];
+        _clearPromptTitleLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+        _clearPromptTitleLabel.numberOfLines = 2;
+        _clearPromptTitleLabel.userInteractionEnabled = NO;
+        [_clearPromptCard addSubview:_clearPromptTitleLabel];
 
         CGFloat btnW = (cardW - 32.0 - 8.0) * 0.5;
+        _clearPromptCancelControl = [self createClearPromptCapsuleWithFrame:CGRectMake(16.0, 84.33, btnW, 48.0)
+                                                                      title:@"Cancel"
+                                                                      color:UIColor.whiteColor
+                                                                     action:@selector(handleCancelClearPromptTap)
+                                                                   outLabel:NULL];
+        _clearPromptCancelControl.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleRightMargin;
+        [_clearPromptCard addSubview:_clearPromptCancelControl];
 
-        // Cancel button: Prominent Liquid Glass capsule button (white text, matching Apple Music)
-        UIButtonConfiguration *cancelConfig;
-        UIButtonConfiguration *clearConfig;
-        if (@available(iOS 26.0, *)) {
-            cancelConfig = [UIButtonConfiguration prominentGlassButtonConfiguration];
-            clearConfig = [UIButtonConfiguration glassButtonConfiguration];
-        } else {
-            cancelConfig = [UIButtonConfiguration filledButtonConfiguration];
-            clearConfig = [UIButtonConfiguration grayButtonConfiguration];
-        }
-        cancelConfig.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
-        clearConfig.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
-
-        cancelConfig.baseForegroundColor = UIColor.whiteColor;
-        cancelConfig.attributedTitle = [[NSAttributedString alloc] initWithString:@"Cancel" attributes:@{
-            NSFontAttributeName: [UIFont systemFontOfSize:17.0 weight:UIFontWeightSemibold],
-            NSForegroundColorAttributeName: UIColor.whiteColor,
-            NSKernAttributeName: @(-0.35),
-        }];
-        _clearPromptCancelButton = [UIButton buttonWithConfiguration:cancelConfig primaryAction:nil];
-        _clearPromptCancelButton.frame = CGRectMake(16.0, 84.33, btnW, 48.0);
-        _clearPromptCancelButton.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleRightMargin;
-        _clearPromptCancelButton.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
-        [_clearPromptCancelButton addTarget:self action:@selector(dismissClearQueuePrompt) forControlEvents:UIControlEventTouchUpInside];
-        [_clearPromptCard addSubview:_clearPromptCancelButton];
-
-        // Clear Queue button: Liquid Glass capsule button (coral/salmon destructive tint: rgb(238, 120, 121))
         UIColor *coralColor = [UIColor colorWithRed:238.0/255.0 green:120.0/255.0 blue:121.0/255.0 alpha:1.0];
-        clearConfig.baseForegroundColor = coralColor;
-        clearConfig.attributedTitle = [[NSAttributedString alloc] initWithString:@"Clear Queue" attributes:@{
-            NSFontAttributeName: [UIFont systemFontOfSize:17.0 weight:UIFontWeightSemibold],
-            NSForegroundColorAttributeName: coralColor,
-            NSKernAttributeName: @(-0.35),
-        }];
-        _clearPromptClearButton = [UIButton buttonWithConfiguration:clearConfig primaryAction:nil];
-        _clearPromptClearButton.frame = CGRectMake(16.0 + btnW + 8.0, 84.33, btnW, 48.0);
-        _clearPromptClearButton.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleLeftMargin;
-        _clearPromptClearButton.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
-        [_clearPromptClearButton addTarget:self action:@selector(confirmClearUserQueue) forControlEvents:UIControlEventTouchUpInside];
-        [_clearPromptCard addSubview:_clearPromptClearButton];
-
-        if (!@available(iOS 26.0, *)) {
-            static char kCancelFallbackGlassKey, kClearFallbackGlassKey;
-            SGRGlassCapsuleInside(_clearPromptCancelButton, &kCancelFallbackGlassKey, CGSizeMake(btnW, 48.0), YES);
-            SGRGlassCapsuleInside(_clearPromptClearButton, &kClearFallbackGlassKey, CGSizeMake(btnW, 48.0), NO);
-        }
+        UILabel *confirmLbl = nil;
+        _clearPromptConfirmControl = [self createClearPromptCapsuleWithFrame:CGRectMake(16.0 + btnW + 8.0, 84.33, btnW, 48.0)
+                                                                       title:@"Clear Queue"
+                                                                       color:coralColor
+                                                                      action:@selector(confirmClearPromptAction)
+                                                                    outLabel:&confirmLbl];
+        _clearPromptConfirmControl.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleLeftMargin;
+        _clearPromptConfirmLabel = confirmLbl;
+        [_clearPromptCard addSubview:_clearPromptConfirmControl];
 
         [_clearPromptOverlay addSubview:_clearPromptCard];
     }
+
+    NSString *promptText = isHistory ? @"Are you sure you want to clear\nyour history?"
+                                     : @"Are you sure you want to clear\nyour queue?";
+    NSMutableParagraphStyle *pStyle = [[NSMutableParagraphStyle alloc] init];
+    pStyle.lineSpacing = 1.67;
+    pStyle.alignment = NSTextAlignmentLeft;
+    _clearPromptTitleLabel.attributedText = [[NSAttributedString alloc] initWithString:promptText attributes:@{
+        NSFontAttributeName: [UIFont systemFontOfSize:17.0 weight:UIFontWeightSemibold],
+        NSForegroundColorAttributeName: UIColor.whiteColor,
+        NSKernAttributeName: @(-0.43),
+        NSParagraphStyleAttributeName: pStyle,
+    }];
+
+    NSString *confirmTitle = isHistory ? @"Clear" : @"Clear Queue";
+    UIColor *coralColor = [UIColor colorWithRed:238.0/255.0 green:120.0/255.0 blue:121.0/255.0 alpha:1.0];
+    _clearPromptConfirmLabel.attributedText = [[NSAttributedString alloc] initWithString:confirmTitle attributes:@{
+        NSFontAttributeName: [UIFont systemFontOfSize:17.0 weight:UIFontWeightSemibold],
+        NSForegroundColorAttributeName: coralColor,
+        NSKernAttributeName: @(-0.35),
+    }];
+    _clearPromptCancelControl.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.15];
+    _clearPromptConfirmControl.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.15];
 
     if (_clearPromptOverlay.superview != hostView) {
         [_clearPromptOverlay removeFromSuperview];
@@ -4093,33 +4072,87 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     [self layoutClearPromptOverlay];
     _clearPromptOverlay.hidden = NO;
     _clearPromptOverlay.alpha = 0.0;
-    _clearPromptCard.transform = CGAffineTransformMakeScale(0.92, 0.92);
+    // Matches Apple Music's exact 1.09x -> 1.00x alert entrance scale
+    _clearPromptCard.transform = CGAffineTransformMakeScale(1.09, 1.09);
     [hostView bringSubviewToFront:_clearPromptOverlay];
 
     UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
     [gen impactOccurred];
 
-    [UIView animateWithDuration:0.24 delay:0 usingSpringWithDamping:0.84 initialSpringVelocity:0.0 options:UIViewAnimationOptionBeginFromCurrentState animations:^{
+    [UIView animateWithDuration:0.24 delay:0 usingSpringWithDamping:1.0 initialSpringVelocity:0.0 options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionCurveEaseOut animations:^{
         self->_clearPromptOverlay.alpha = 1.0;
         self->_clearPromptCard.transform = CGAffineTransformIdentity;
     } completion:nil];
 }
 
+- (void)handleCancelClearPromptTap {
+    [self dismissClearQueuePromptWithCompletion:nil];
+}
+
 - (void)dismissClearQueuePrompt {
-    if (!_clearPromptOverlay || _clearPromptOverlay.hidden) return;
-    [UIView animateWithDuration:0.18 delay:0 options:UIViewAnimationOptionCurveEaseOut animations:^{
+    [self dismissClearQueuePromptWithCompletion:nil];
+}
+
+- (void)dismissClearQueuePromptWithCompletion:(void (^)(void))completion {
+    if (!_clearPromptOverlay || _clearPromptOverlay.hidden) {
+        if (completion) completion();
+        return;
+    }
+    // Matches Apple Music's exact 1.00x pure fade-out dismissal over 0.20s (no scale shrinking)
+    [UIView animateWithDuration:0.20 delay:0 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState animations:^{
         self->_clearPromptOverlay.alpha = 0.0;
-        self->_clearPromptCard.transform = CGAffineTransformMakeScale(0.94, 0.94);
     } completion:^(__unused BOOL finished) {
         self->_clearPromptOverlay.hidden = YES;
         self->_clearPromptCard.transform = CGAffineTransformIdentity;
         [self->_clearPromptOverlay removeFromSuperview];
+        if (completion) completion();
     }];
 }
 
-- (void)confirmClearUserQueue {
-    [self dismissClearQueuePrompt];
-    [[SGRQueueSession shared] clearUserQueue];
+- (void)confirmClearPromptAction {
+    BOOL clearingHistory = _clearPromptIsForHistory;
+    __weak typeof(self) weakSelf = self;
+    // First fade out the confirmation prompt cleanly (0.20s), then animate clearing the section matching Apple Music
+    [self dismissClearQueuePromptWithCompletion:^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        if (clearingHistory) {
+            strongSelf->_clampAtZeroOnDragOrDecel = NO;
+            [[SGRQueueSession shared] clearHistory];
+            [UIView animateWithDuration:0.28 delay:0 options:UIViewAnimationOptionCurveEaseOut animations:^{
+                strongSelf->_scrollView.contentInset = UIEdgeInsetsMake(0.0, 0.0, 36.0, 0.0);
+                strongSelf->_scrollView.contentOffset = CGPointZero;
+                [strongSelf updateStickyHeadersAndClipping];
+            } completion:nil];
+        } else {
+            CGFloat w = strongSelf.bounds.size.width;
+            BOOL hasContinue = (strongSelf->_futureItems.count > 0);
+            BOOL showEmptyPrompt = (!hasContinue && !SGFlag(SGRKeyQueueAutoplay, YES));
+            if (showEmptyPrompt) {
+                strongSelf->_emptyQueuePromptLabel.bounds = CGRectMake(0.0, 0.0, 280.0, 50.0);
+                strongSelf->_emptyQueuePromptLabel.center = CGPointMake(w * 0.5, 230.5);
+                strongSelf->_emptyQueuePromptLabel.alpha = 0.0;
+                strongSelf->_emptyQueuePromptLabel.hidden = NO;
+            }
+            CGFloat targetHdrTop = [strongSelf firstSectionHeaderNaturalDocY];
+            CGFloat targetRowsTop = targetHdrTop + kContinueSectionHeaderHeight;
+            [UIView animateWithDuration:0.24 delay:0 options:UIViewAnimationOptionCurveEaseOut animations:^{
+                strongSelf->_userQueueHeaderView.alpha = 0.0;
+                strongSelf->_userQueueRowsClipView.alpha = 0.0;
+                if (showEmptyPrompt) {
+                    strongSelf->_emptyQueuePromptLabel.alpha = 1.0;
+                } else if (hasContinue) {
+                    strongSelf->_continueHeaderView.center = CGPointMake(w * 0.5, targetHdrTop + kContinueSectionHeaderHeight * 0.5);
+                    CGFloat contClipH = strongSelf->_queueRowsClipView.bounds.size.height;
+                    strongSelf->_queueRowsClipView.center = CGPointMake(w * 0.5, targetRowsTop + contClipH * 0.5);
+                }
+            } completion:^(__unused BOOL finished) {
+                strongSelf->_userQueueHeaderView.alpha = 1.0;
+                strongSelf->_userQueueRowsClipView.alpha = 1.0;
+                [[SGRQueueSession shared] clearUserQueue];
+            }];
+        }
+    }];
 }
 
 #pragma mark - SGRQueueRowViewDelegate (Tap, Swipe-to-Delete Collapse, Drag-to-Reorder)
@@ -4180,15 +4213,22 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     SGOpenSpotifyURI([NSURL URLWithString:item.uri]);
 }
 
+- (void)attachQueueAndSkipFallbackToTask:(id)task forItem:(SGRQueueItem *)item {
+    if ([task respondsToSelector:@selector(addErrorCallback:on:)]) {
+        __weak typeof(self) weakSelf = self;
+        [(SGRQueueSPTask *)task addErrorCallback:^(__unused NSError *err) {
+            [weakSelf playQueueItemViaQueueAndSkip:item];
+        } on:dispatch_get_main_queue()];
+    }
+}
+
 - (void)queueRowDidTap:(SGRQueueRowView *)row {
     SGRQueueItem *item = row.item;
     if (!item.uri.length) return;
     id<SPTPlayer> player = (id<SPTPlayer>)SGPlayer();
     SPTPlayerState *state = SGPlayerState();
-    __weak typeof(self) weakSelf = self;
 
     if (!row.isHistory) {
-        // 1. Prefer direct item.playerTrack or live future track with matching user-queued vs context classification
         SPTPlayerTrack *liveFutureTrack = item.playerTrack;
         if (!liveFutureTrack) {
             NSArray *future = ([state respondsToSelector:@selector(future)] && [state.future isKindOfClass:NSArray.class]) ? state.future : @[];
@@ -4213,11 +4253,7 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         @try {
             if (liveFutureTrack && [player respondsToSelector:@selector(skipToNextTrackWithOptions:track:)]) {
                 id res = [player skipToNextTrackWithOptions:nil track:liveFutureTrack];
-                if ([res respondsToSelector:@selector(addErrorCallback:on:)]) {
-                    [(SGRQueueSPTask *)res addErrorCallback:^(__unused NSError *err) {
-                        [weakSelf playQueueItemViaQueueAndSkip:item];
-                    } on:dispatch_get_main_queue()];
-                }
+                [self attachQueueAndSkipFallbackToTask:res forItem:item];
                 return;
             }
             BOOL isVeryNextTrack = (row.rowIndex == 0 && (row.isUserQueue || _userQueueItems.count == 0));
@@ -4225,22 +4261,17 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
                 [player skipToNextTrackWithOptions:nil];
                 return;
             }
-            // 2. Track is beyond state.future lookahead: try UID-backed skip first if UID is known,
-            // falling back automatically to SPTPlayerQueueWrapperImpl + skipToNextTrack so playback starts in-place!
             SPTPlayerTrack *constructed = item.uid.length ? [item resolvedPlayerTrack] : nil;
             if (constructed && [player respondsToSelector:@selector(skipToNextTrackWithOptions:track:)]) {
                 id res = [player skipToNextTrackWithOptions:nil track:constructed];
                 if ([res respondsToSelector:@selector(addErrorCallback:on:)]) {
-                    [(SGRQueueSPTask *)res addErrorCallback:^(__unused NSError *err) {
-                        [weakSelf playQueueItemViaQueueAndSkip:item];
-                    } on:dispatch_get_main_queue()];
+                    [self attachQueueAndSkipFallbackToTask:res forItem:item];
                     return;
                 }
             }
         } @catch (__unused NSException *e) {}
 
         [self playQueueItemViaQueueAndSkip:item];
-        return;
     } else {
         SPTPlayerTrack *liveReverseTrack = item.playerTrack;
         if (!liveReverseTrack) {
@@ -4256,11 +4287,7 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         @try {
             if (liveReverseTrack && [player respondsToSelector:@selector(skipToPreviousTrackWithOptions:track:)]) {
                 id res = [player skipToPreviousTrackWithOptions:nil track:liveReverseTrack];
-                if ([res respondsToSelector:@selector(addErrorCallback:on:)]) {
-                    [(SGRQueueSPTask *)res addErrorCallback:^(__unused NSError *err) {
-                        [weakSelf playQueueItemViaQueueAndSkip:item];
-                    } on:dispatch_get_main_queue()];
-                }
+                [self attachQueueAndSkipFallbackToTask:res forItem:item];
                 return;
             }
         } @catch (__unused NSException *e) {}
@@ -4471,6 +4498,25 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     return vc;
 }
 
+- (void)enqueueMenuItem:(SGRQueueItem *)item resolvedTrack:(SPTPlayerTrack *)resolvedTrack playNext:(BOOL)playNext {
+    [[SGRQueueSession shared] optimisticallyInsertUserQueuedItem:item playNext:playNext];
+    if (!resolvedTrack) return;
+    id<SPTPlayer> player = (id<SPTPlayer>)SGPlayer();
+    Class wrapperCls = NSClassFromString(@"SPTPlayerQueueWrapperImpl");
+    SEL queueSel = playNext ? @selector(queueTrackPlayNext:) : @selector(queueTrack:);
+    if (player && [wrapperCls instancesRespondToSelector:@selector(initWithPlayer:)] && [wrapperCls instancesRespondToSelector:queueSel]) {
+        SGRQueueWrapper *wrapper = [[wrapperCls alloc] initWithPlayer:player];
+        if (playNext) {
+            [wrapper queueTrackPlayNext:resolvedTrack];
+        } else {
+            [wrapper queueTrack:resolvedTrack];
+        }
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [[SGRQueueSession shared] invalidateUncappedStateAndRefetch];
+        });
+    }
+}
+
 - (UIMenu *)buildAppleMusicMenuForItem:(SGRQueueItem *)item row:(SGRQueueRowView *)row {
     if (!item) return nil;
     NSString *albumTitle = item.albumTitle ?: @"";
@@ -4494,19 +4540,7 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
                                                 image:[UIImage systemImageNamed:@"text.line.first.and.arrowtriangle.forward"]
                                            identifier:nil
                                               handler:^(__unused __kindof UIAction *action) {
-        [[SGRQueueSession shared] optimisticallyInsertUserQueuedItem:item playNext:YES];
-        id<SPTPlayer> player = (id<SPTPlayer>)SGPlayer();
-        Class wrapperCls = NSClassFromString(@"SPTPlayerQueueWrapperImpl");
-        if (player && [wrapperCls instancesRespondToSelector:@selector(initWithPlayer:)] &&
-            [wrapperCls instancesRespondToSelector:@selector(queueTrackPlayNext:)]) {
-            if (resolvedTrack) {
-                SGRQueueWrapper *wrapper = [[wrapperCls alloc] initWithPlayer:player];
-                [wrapper queueTrackPlayNext:resolvedTrack];
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                    [[SGRQueueSession shared] invalidateUncappedStateAndRefetch];
-                });
-            }
-        }
+        [weakSelf enqueueMenuItem:item resolvedTrack:resolvedTrack playNext:YES];
     }];
 
     UIAction *shareAct = [UIAction actionWithTitle:@"Share"
@@ -4539,19 +4573,7 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
                                                   image:[UIImage systemImageNamed:@"text.line.last.and.arrowtriangle.forward"]
                                              identifier:nil
                                                 handler:^(__unused __kindof UIAction *action) {
-        [[SGRQueueSession shared] optimisticallyInsertUserQueuedItem:item playNext:NO];
-        id<SPTPlayer> player = (id<SPTPlayer>)SGPlayer();
-        Class wrapperCls = NSClassFromString(@"SPTPlayerQueueWrapperImpl");
-        if (player && [wrapperCls instancesRespondToSelector:@selector(initWithPlayer:)] &&
-            [wrapperCls instancesRespondToSelector:@selector(queueTrack:)]) {
-            if (resolvedTrack) {
-                SGRQueueWrapper *wrapper = [[wrapperCls alloc] initWithPlayer:player];
-                [wrapper queueTrack:resolvedTrack];
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                    [[SGRQueueSession shared] invalidateUncappedStateAndRefetch];
-                });
-            }
-        }
+        [weakSelf enqueueMenuItem:item resolvedTrack:resolvedTrack playNext:NO];
     }];
     [mainActions addObject:addToQueueAct];
 
