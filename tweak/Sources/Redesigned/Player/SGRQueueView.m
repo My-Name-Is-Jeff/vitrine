@@ -3978,7 +3978,7 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
                                         outLabel:(UILabel * __strong *)outLabel {
     // Built as a custom UIControl + UILabel with Liquid Glass (SGRGlassCapsuleInside) so global UIButton hooks never re-tint "Cancel"
     UIControl *ctrl = [[UIControl alloc] initWithFrame:frame];
-    ctrl.backgroundColor = UIColor.clearColor;
+    ctrl.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.10];
     ctrl.layer.cornerRadius = frame.size.height * 0.5;
     ctrl.layer.cornerCurve = kCACornerCurveContinuous;
     ctrl.clipsToBounds = YES;
@@ -4025,8 +4025,8 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     _clearPromptOverlay.frame = hostBounds;
 
     CGFloat w = hostBounds.size.width;
-    CGFloat cardW = MIN(320.67, w - 69.33);
-    CGFloat cardH = 148.0;
+    CGFloat cardW = MIN(320.0, w - 70.0);
+    CGFloat cardH = 158.0;
     CGFloat cardX, cardY;
     if (_landscapeMode || hostBounds.size.width > hostBounds.size.height) {
         CGPoint queueCenterInHost = [self convertPoint:CGPointMake(self.bounds.size.width * 0.5, self.bounds.size.height * 0.5) toView:hostView];
@@ -4034,10 +4034,9 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         cardX = MAX(16.0, MIN(hostBounds.size.width - cardW - 16.0, cardX));
         cardY = round(((hostBounds.size.height - cardH) * 0.5) * 3.0) / 3.0;
     } else {
-        cardX = round((w - cardW) * 1.5) / 3.0;
-        // In Apple Music @ 390x844, card top is at screenY = 354.33 pt (or 300.33 pt relative to SGRQueueView top = 54.0 pt)
-        CGPoint originInHost = [self convertPoint:CGPointMake(0.0, 300.33) toView:hostView];
-        cardY = round(originInHost.y * 3.0) / 3.0;
+        cardX = round((w - cardW) * 0.5 * 3.0) / 3.0;
+        // In Apple Music @ 390x844, card top is at screenY = 344.0 pt
+        cardY = round(344.0 * 3.0) / 3.0;
     }
     CGRect cardRect = CGRectMake(cardX, cardY, cardW, cardH);
 
@@ -4049,12 +4048,17 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         _clearPromptGlass.frame = _clearPromptCard.bounds;
         SGShapeGlass(_clearPromptGlass, 32.0, NO);
     }
+    _clearPromptTitleLabel.frame = CGRectMake(28.0, 27.0, cardW - 56.0, 44.0);
     if (_clearPromptCancelControl && _clearPromptConfirmControl) {
-        CGFloat btnW = (cardW - 32.0 - 8.0) * 0.5;
-        _clearPromptCancelControl.frame = CGRectMake(16.0, 84.33, btnW, 48.0);
-        _clearPromptConfirmControl.frame = CGRectMake(16.0 + btnW + 8.0, 84.33, btnW, 48.0);
-        SGRGlassCapsuleInside(_clearPromptCancelControl, &kPromptBtnGlassKey, CGSizeMake(btnW, 48.0), YES);
-        SGRGlassCapsuleInside(_clearPromptConfirmControl, &kPromptBtnGlassKey, CGSizeMake(btnW, 48.0), NO);
+        CGFloat sideMargin = 21.5;
+        CGFloat gap = 19.0;
+        CGFloat btnW = (cardW - (sideMargin * 2.0) - gap) * 0.5;
+        CGFloat btnH = 48.0;
+        CGFloat btnY = 94.0;
+        _clearPromptCancelControl.frame = CGRectMake(sideMargin, btnY, btnW, btnH);
+        _clearPromptConfirmControl.frame = CGRectMake(sideMargin + btnW + gap, btnY, btnW, btnH);
+        SGRGlassCapsuleInside(_clearPromptCancelControl, &kPromptBtnGlassKey, CGSizeMake(btnW, btnH), NO);
+        SGRGlassCapsuleInside(_clearPromptConfirmControl, &kPromptBtnGlassKey, CGSizeMake(btnW, btnH), NO);
     }
     _clearPromptCard.transform = savedTx;
 }
@@ -4065,8 +4069,8 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
 
     UIView *hostView = self.window ?: (self.superview ?: self);
     CGFloat w = hostView.bounds.size.width;
-    CGFloat cardW = MIN(320.67, w - 69.33);
-    CGFloat cardH = 148.0;
+    CGFloat cardW = MIN(320.0, w - 70.0);
+    CGFloat cardH = 158.0;
 
     if (!_clearPromptOverlay) {
         _clearPromptOverlay = [[UIControl alloc] initWithFrame:hostView.bounds];
@@ -4084,20 +4088,28 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         _clearPromptCard.layer.shadowOffset = CGSizeMake(0.0, 10.0);
         _clearPromptCard.layer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:_clearPromptCard.bounds cornerRadius:32.0].CGPath;
 
-        _clearPromptGlass = [[UIVisualEffectView alloc] initWithEffect:SGGlassEffect()];
+        UIVisualEffect *cardEffect = nil;
+        Class glassClass = NSClassFromString(@"UIGlassEffect");
+        if ([glassClass respondsToSelector:@selector(effectWithStyle:)]) {
+            cardEffect = [glassClass effectWithStyle:0];
+        } else {
+            cardEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemMaterialDark];
+        }
+
+        _clearPromptGlass = [[UIVisualEffectView alloc] initWithEffect:cardEffect];
         _clearPromptGlass.frame = _clearPromptCard.bounds;
         _clearPromptGlass.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         _clearPromptGlass.layer.cornerRadius = 32.0;
         _clearPromptGlass.layer.cornerCurve = kCACornerCurveContinuous;
-        _clearPromptGlass.layer.borderWidth = 0.67;
-        _clearPromptGlass.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.28].CGColor;
+        _clearPromptGlass.layer.borderWidth = 0.33;
+        _clearPromptGlass.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.14].CGColor;
         _clearPromptGlass.clipsToBounds = YES;
         _clearPromptGlass.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
         SGShapeGlass(_clearPromptGlass, 32.0, NO);
         [_clearPromptCard addSubview:_clearPromptGlass];
 
         UIView *glassLiftOverlay = [[UIView alloc] initWithFrame:_clearPromptCard.bounds];
-        glassLiftOverlay.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.06];
+        glassLiftOverlay.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.04];
         glassLiftOverlay.layer.compositingFilter = @"plusL";
         glassLiftOverlay.layer.cornerRadius = 32.0;
         glassLiftOverlay.layer.cornerCurve = kCACornerCurveContinuous;
@@ -4106,26 +4118,30 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         glassLiftOverlay.userInteractionEnabled = NO;
         [_clearPromptGlass.contentView addSubview:glassLiftOverlay];
 
-        _clearPromptTitleLabel = [[UILabel alloc] initWithFrame:CGRectMake(30.0, 19.33, cardW - 60.0, 48.0)];
+        _clearPromptTitleLabel = [[UILabel alloc] initWithFrame:CGRectMake(28.0, 27.0, cardW - 56.0, 44.0)];
         _clearPromptTitleLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
         _clearPromptTitleLabel.numberOfLines = 2;
         _clearPromptTitleLabel.userInteractionEnabled = NO;
         [_clearPromptCard addSubview:_clearPromptTitleLabel];
 
-        CGFloat btnW = (cardW - 32.0 - 8.0) * 0.5;
-        _clearPromptCancelControl = [self createClearPromptCapsuleWithFrame:CGRectMake(16.0, 84.33, btnW, 48.0)
+        CGFloat sideMargin = 21.5;
+        CGFloat gap = 19.0;
+        CGFloat btnW = (cardW - (sideMargin * 2.0) - gap) * 0.5;
+        CGFloat btnH = 48.0;
+        CGFloat btnY = 94.0;
+        _clearPromptCancelControl = [self createClearPromptCapsuleWithFrame:CGRectMake(sideMargin, btnY, btnW, btnH)
                                                                       title:@"Cancel"
                                                                       color:UIColor.whiteColor
                                                                      action:@selector(handleCancelClearPromptTap)
-                                                                isProminent:YES
+                                                                isProminent:NO
                                                                    outLabel:NULL];
         _clearPromptCancelControl.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleRightMargin;
         [_clearPromptCard addSubview:_clearPromptCancelControl];
 
         UIColor *coralColor = [UIColor colorWithRed:238.0/255.0 green:120.0/255.0 blue:121.0/255.0 alpha:1.0];
         UILabel *confirmLbl = nil;
-        _clearPromptConfirmControl = [self createClearPromptCapsuleWithFrame:CGRectMake(16.0 + btnW + 8.0, 84.33, btnW, 48.0)
-                                                                       title:@"Clear Queue"
+        _clearPromptConfirmControl = [self createClearPromptCapsuleWithFrame:CGRectMake(sideMargin + btnW + gap, btnY, btnW, btnH)
+                                                                       title:@"Clear"
                                                                        color:coralColor
                                                                       action:@selector(confirmClearPromptAction)
                                                                  isProminent:NO
@@ -4140,7 +4156,7 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     NSString *promptText = isHistory ? @"Are you sure you want to clear\nyour history?"
                                      : @"Are you sure you want to clear\nyour queue?";
     NSMutableParagraphStyle *pStyle = [[NSMutableParagraphStyle alloc] init];
-    pStyle.lineSpacing = 1.67;
+    pStyle.lineSpacing = 2.0;
     pStyle.alignment = NSTextAlignmentLeft;
     _clearPromptTitleLabel.attributedText = [[NSAttributedString alloc] initWithString:promptText attributes:@{
         NSFontAttributeName: [UIFont systemFontOfSize:17.0 weight:UIFontWeightRegular],
@@ -4149,7 +4165,7 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         NSParagraphStyleAttributeName: pStyle,
     }];
 
-    NSString *confirmTitle = isHistory ? @"Clear" : @"Clear Queue";
+    NSString *confirmTitle = @"Clear";
     UIColor *coralColor = [UIColor colorWithRed:238.0/255.0 green:120.0/255.0 blue:121.0/255.0 alpha:1.0];
     _clearPromptConfirmLabel.attributedText = [[NSAttributedString alloc] initWithString:confirmTitle attributes:@{
         NSFontAttributeName: [UIFont systemFontOfSize:17.0 weight:UIFontWeightSemibold],
