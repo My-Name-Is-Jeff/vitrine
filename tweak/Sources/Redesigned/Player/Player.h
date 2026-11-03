@@ -114,6 +114,10 @@ void SGRPlayerLayoutFooterForQueue(void);
 
 // The queue glyph of the footer, made on first ask in `host`.
 SGRGlyphButton *SGRPlayerQueueGlyphIn(UIView *host);
+// Renders the 38x38 active knockout circle icon for the queue glyph.
+UIImage *SGRPlayerQueueActiveIcon(CGSize size);
+// Triggers Spotify's Connect output switcher sheet from custom surfaces (such as the landscape queue footer).
+void SGRPlayerTriggerConnect(void);
 
 // Live context title displayed at the top of Now Playing (HeaderElementsUnit), nil/empty when unavailable.
 NSString *SGRPlayerHeaderContextTitle(void);
@@ -182,12 +186,15 @@ void SGRPlayerPaintCover(UIView *stack);
 #define SGRKeyPlayerHideShuffle @"spotifyglass.redesign.player.hideShuffle"
 #define SGRKeyPlayerHideRepeat @"spotifyglass.redesign.player.hideRepeat"
 
-// The lyrics turn sideways with the phone onto a landscape screen of their own (PlayerLandscape.x). On
+// The lyrics or the queue turn sideways with the phone onto a landscape screen of their own (PlayerLandscape.x). On
 // until switched off. Shown or put away by hand for the harness.
 #define SGRKeyLyricsLandscape @"spotifyglass.redesign.lyrics.landscape"
+#define SGRKeyQueueLandscape @"spotifyglass.redesign.queue.landscape"
 void SGRPlayerShowLandscape(BOOL show);
 // The playing track's lines came in, or turned out to be none: the landscape screen lays out for it.
 void SGRPlayerLandscapeLinesChanged(void);
+// Notifies the landscape screen when inline Lyrics or Queue mode changes.
+void SGRPlayerLandscapeModeChanged(void);
 
 // The animated artwork follows the lyrics: blurred behind them (PlayerMotion.x).
 void SGRPlayerMotionLyricsChanged(void);

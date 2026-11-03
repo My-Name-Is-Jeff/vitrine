@@ -157,6 +157,17 @@ static UIImage *SGRQueueActiveKnockoutIconImage(CGSize size) {
     return cached;
 }
 
+UIImage *SGRPlayerQueueActiveIcon(CGSize size) {
+    return SGRQueueActiveKnockoutIconImage(size);
+}
+
+void SGRPlayerTriggerConnect(void) {
+    UIView *row = sg_footerRow;
+    if (!row) return;
+    UIView *connect = SGRFindByIdentifier(row, @"Components.ConnectButtonOutputSwitcher", &kConnectKey);
+    if (connect) SGRActivate(connect);
+}
+
 static char kQueueWasOpenKey;
 
 void SGRPlayerQueueChanged(void) {

@@ -152,7 +152,7 @@ static const CGFloat kContinueSectionHeaderHeight = 52.0;   // Continue Playing 
 static const CGFloat kContinueAfterQueueHeaderHeight = 52.33; // Continue Playing header height below Queue (Row 0 at screenY = 447.67)
 static const CGFloat kQueueRowPitch = 56.0;                 // 48pt art + 8pt vertical gap (shared across History, Queue, and Continue Playing)
 static const CGFloat kHistoryHeaderHeight = 43.33;          // Matches kUserQueueHeaderHeight (43.33 pt from header top to first row)
-static const CGFloat kHistoryHeaderClipOffset = 38.0;       // Clips scrolling History rows cleanly below "History / Clear"
+static const CGFloat kHistoryHeaderClipOffset = 43.33;      // Clips scrolling History rows cleanly at the top edge of Row 0 below "History / Clear"
 static const CGFloat kHistoryRowPitch = 56.0;               // 48pt art + 8pt vertical gap matching Apple Music History rows
 static const CGFloat kHistoryBottomGap = 26.0;              // 26.0 pt gap below last History row to Now Playing card
 static const CGFloat kHistoryHeaderPinOffset = 26.0;        // Pins at viewportY = 26.0 (screenY = 106.0 pt, cap-top = 109.0 pt)
@@ -795,6 +795,7 @@ static NSDictionary<NSString *, SGRResolvedTrackMeta *> *SGRParseBatchedTrackMet
     SGRRemoveItemWithKeyFromArray(_userQueuedItems, key);
     SGRRemoveItemWithKeyFromArray(_optimisticUserQueuedItems, key);
     [self syncMutationsToSpotifyQueue];
+    [self notifyObservers];
 }
 
 - (void)moveUserQueuedItemFromIndex:(NSUInteger)fromIdx toIndex:(NSUInteger)toIdx {
@@ -880,6 +881,7 @@ static void SGRApplyCustomKeyOrder(NSMutableArray<SGRQueueItem *> *items, NSArra
     SGRRemoveItemWithKeyFromArray(_continuePlayingItems, key);
     SGRRemoveItemWithKeyFromArray(_unshuffledContinueItems, key);
     [self syncMutationsToSpotifyQueue];
+    [self notifyObservers];
 }
 
 - (void)moveContinuePlayingItemFromIndex:(NSUInteger)fromIdx toIndex:(NSUInteger)toIdx {
@@ -899,6 +901,7 @@ static void SGRApplyCustomKeyOrder(NSMutableArray<SGRQueueItem *> *items, NSArra
 
 - (void)commitContinuePlayingReorder {
     [self syncMutationsToSpotifyQueue];
+    [self notifyObservers];
 }
 
 - (void)syncMutationsToSpotifyQueue {
@@ -2538,15 +2541,27 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     BOOL _clampAtZeroOnDragOrDecel;
     BOOL _didSetInitialOffset;
 
-    // Drag-to-Reorder State
+    // Drag-to-Reorder & Row Delete State
     SGRQueueRowView *_draggingRow;
     UIView *_dragSnapshotView;
     NSInteger _dragCurrentIndex;
     CGFloat _dragGrabOffsetY;
+    BOOL _isAnimatingRowDelete;
+    BOOL _landscapeMode;
 }
+
+@synthesize landscapeMode = _landscapeMode;
 
 + (void)startSessionIfNeeded {
     [SGRQueueSession shared];
+}
+
+- (void)setLandscapeMode:(BOOL)landscapeMode {
+    if (_landscapeMode == landscapeMode) return;
+    _landscapeMode = landscapeMode;
+    _lastPillRenderSize = CGSizeZero;
+    [self updateNowPlayingCardWithItem:_currentItem subtitle:[SGRQueueSession shared].contextSubtitle];
+    [self setNeedsLayout];
 }
 
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -3029,7 +3044,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     SPTPlayerState *state = SGPlayerState();
     [self updatePlaybackPillsWithState:state];
 
-    if (!forceRebuild && _draggingRow) return;
+    if (!forceRebuild && (_draggingRow || _isAnimatingRowDelete)) return;
     for (SGRQueueRowView *row in _userQueueRowViews) {
         if (!forceRebuild && row.isSwipeParked) return;
     }
@@ -3106,13 +3121,15 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     NSMutableParagraphStyle *pStyle = [[NSMutableParagraphStyle alloc] init];
     pStyle.lineBreakMode = NSLineBreakByTruncatingTail;
     pStyle.allowsDefaultTighteningForTruncation = YES;
+    CGFloat titleFontSize = _landscapeMode ? 18.5 : 17.0;
+    UIFontWeight titleWeight = _landscapeMode ? UIFontWeightBold : UIFontWeightSemibold;
     _npTitleLabel.attributedText = [[NSAttributedString alloc] initWithString:titleText attributes:@{
-        NSFontAttributeName: [UIFont systemFontOfSize:17.0 weight:UIFontWeightSemibold],
+        NSFontAttributeName: [UIFont systemFontOfSize:titleFontSize weight:titleWeight],
         NSForegroundColorAttributeName: UIColor.whiteColor,
         NSKernAttributeName: @(-0.40),
         NSParagraphStyleAttributeName: pStyle
     }];
-    _npArtistLabel.font = [UIFont systemFontOfSize:15.0 weight:UIFontWeightRegular];
+    _npArtistLabel.font = [UIFont systemFontOfSize:(_landscapeMode ? 17.0 : 15.0) weight:UIFontWeightRegular];
     _npArtistLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.62];
     _npArtistLabel.text = item.artist ?: @"";
     _npExplicitView.hidden = !item.isExplicit;
@@ -3260,9 +3277,21 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
 
 #pragma mark - Layout, Dual Sticky Headers & Sharp Clipping Planes
 
+- (CGFloat)historyHeaderPinOffset {
+    return _landscapeMode ? 14.0 : kHistoryHeaderPinOffset;
+}
+
+- (CGFloat)continueHeaderPinOffset {
+    return _landscapeMode ? 0.0 : kContinueHeaderPinOffset;
+}
+
+- (CGFloat)continueSectionHeaderHeight {
+    return _landscapeMode ? 49.0 : kContinueSectionHeaderHeight;
+}
+
 - (CGFloat)historyTotalHeight {
     if (_historyItems.count == 0) return 0.0;
-    return kHistoryHeaderPinOffset + kHistoryHeaderHeight + _historyItems.count * kHistoryRowPitch + kHistoryBottomGap;
+    return [self historyHeaderPinOffset] + kHistoryHeaderHeight + _historyItems.count * kHistoryRowPitch + kHistoryBottomGap;
 }
 
 - (void)applyHistoryInsetPreservingOffset {
@@ -3290,16 +3319,19 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     CGFloat h = self.bounds.size.height;
     if (w < 100.0 || h < 100.0) return;
 
+    _grabberPill.hidden = _landscapeMode;
     _grabberPill.bounds = CGRectMake(0.0, 0.0, kGrabberWidth, kGrabberHeight);
     _grabberPill.center = CGPointMake(w * 0.5, 2.0);
 
-    CGFloat viewportH = MAX(100.0, h - kViewportTopOffset);
-    _viewportClipView.frame = CGRectMake(0.0, kViewportTopOffset, w, viewportH);
+    CGFloat viewportTop = _landscapeMode ? 52.0 : kViewportTopOffset;
+    CGFloat viewportBottomInset = _landscapeMode ? 82.0 : 0.0;
+    CGFloat viewportH = MAX(100.0, h - viewportTop - viewportBottomInset);
+    _viewportClipView.frame = CGRectMake(0.0, viewportTop, w, viewportH);
 
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     _bottomFadeMask.frame = _viewportClipView.bounds;
-    // Linear ramp matching Apple Music's exact Row 5 alpha profile (0.67 at y=498, 0.35 at y=522, 0.0 at y=546)
+    // Linear ramp matching Apple Music's exact bottom row alpha profile
     CGFloat locStart   = MAX(0.0, MIN(1.0, (viewportH - 68.0) / viewportH));
     CGFloat locRow5Top = MAX(0.0, MIN(1.0, (viewportH - 48.0) / viewportH));
     CGFloat locRow5Mid = MAX(0.0, MIN(1.0, (viewportH - 24.0) / viewportH));
@@ -3323,32 +3355,35 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         [self applyHistoryInsetPreservingOffset];
     }
 
-    // Section 1: Now Playing Card subviews (72x72 art at x=32, screenY = 80.0 pt)
+    // Section 1: Now Playing Card subviews
+    _npArtView.hidden = _landscapeMode;
     _npArtView.frame = CGRectMake(kSideMargin, 0.0, 72.0, 72.0);
     _npDetailsView.bounds = CGRectMake(0.0, 0.0, w, 72.0);
     _npDetailsView.center = CGPointMake(w * 0.5, 36.0);
     CGFloat moreW = 28.0;
     CGFloat starW = 24.0;
-    CGFloat moreCenterX = round(w * (341.5 / 390.0));
-    CGFloat starCenterX = round(w * (293.3 / 390.0));
+    CGFloat moreCenterX = _landscapeMode ? (w - kSideMargin - 16.5) : round(w * (341.5 / 390.0));
+    CGFloat starCenterX = _landscapeMode ? (w - kSideMargin - 64.5) : round(w * (293.3 / 390.0));
+    CGFloat npBtnCenterY = _landscapeMode ? 23.0 : 36.0;
     _npMoreButton.bounds = CGRectMake(0.0, 0.0, moreW, moreW);
-    _npMoreButton.center = CGPointMake(moreCenterX, 36.0);
+    _npMoreButton.center = CGPointMake(moreCenterX, npBtnCenterY);
     _npStarButton.bounds = CGRectMake(0.0, 0.0, starW, starW);
-    _npStarButton.center = CGPointMake(starCenterX, 36.0);
+    _npStarButton.center = CGPointMake(starCenterX, npBtnCenterY);
 
-    CGFloat npTextLeft = kSideMargin + 72.0 + 12.0; // 116.0 pt (glyph leading at 116.7 pt)
+    CGFloat npTextLeft = _landscapeMode ? kSideMargin : (kSideMargin + 72.0 + 12.0);
     CGFloat npMaxRight = (starCenterX - starW * 0.5) - 5.0;
     CGFloat npAvailW = MAX(40.0, npMaxRight - npTextLeft);
     BOOL npHasExp = !_npExplicitView.hidden;
     CGFloat npBadgeW = npHasExp ? (12.5 + 5.0) : 0.0;
-    CGSize npTitleNat = [_npTitleLabel sizeThatFits:CGSizeMake(CGFLOAT_MAX, 22.0)];
+    CGSize npTitleNat = [_npTitleLabel sizeThatFits:CGSizeMake(CGFLOAT_MAX, 24.0)];
     CGFloat npTitleW = MIN(npAvailW - npBadgeW, ceil(npTitleNat.width));
-    CGFloat titleY = 17.2; // screenY = 97.2 -> cap_top = 100.67 pt matching Apple Music
-    _npTitleLabel.frame = CGRectMake(npTextLeft, titleY, npTitleW, 21.0);
+    CGFloat titleY = _landscapeMode ? 0.5 : 17.2;
+    CGFloat titleH = _landscapeMode ? 23.0 : 21.0;
+    _npTitleLabel.frame = CGRectMake(npTextLeft, titleY, npTitleW, titleH);
     if (npHasExp) {
-        _npExplicitView.frame = CGRectMake(npTextLeft + npTitleW + 5.0, titleY + 3.8, 12.5, 12.5);
+        _npExplicitView.frame = CGRectMake(npTextLeft + npTitleW + 5.0, titleY + (_landscapeMode ? 4.8 : 3.8), 12.5, 12.5);
     }
-    _npArtistLabel.frame = CGRectMake(npTextLeft, 36.3, npAvailW, 19.0);
+    _npArtistLabel.frame = CGRectMake(npTextLeft, _landscapeMode ? 24.5 : 36.3, npAvailW, _landscapeMode ? 21.0 : 19.0);
 
     // Section 2 Header subviews: configurable pills (height = 38, cornerRadius = 19, x = 32 .. w - 32) + Continue Playing title & subtitle
     NSArray<NSNumber *> *activeSlots = [self activePillSlots];
@@ -3356,10 +3391,10 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     for (NSUInteger i = 0; i < 4; i++) {
         _pillButtons[i].hidden = YES;
     }
-    CGFloat pillW = 72.5;
+    CGFloat pillW = _landscapeMode ? 82.25 : 72.5;
     if (numPills > 0) {
-        CGFloat pillGap = 12.0;
-        pillW = floor(((w - kSideMargin * 2.0 - pillGap * (numPills - 1)) / (CGFloat)numPills) * 2.0) * 0.5;
+        CGFloat pillGap = _landscapeMode ? 13.0 : 12.0;
+        pillW = floor(((w - kSideMargin * 2.0 - pillGap * (numPills - 1)) / (CGFloat)numPills) * 4.0) * 0.25;
         for (NSUInteger idx = 0; idx < numPills; idx++) {
             NSUInteger slot = [activeSlots[idx] unsignedIntegerValue];
             UIButton *p = _pillButtons[slot];
@@ -3389,22 +3424,23 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         CGFloat promptW = 280.0;
         CGFloat promptH = 50.0;
         _emptyQueuePromptLabel.bounds = CGRectMake(0.0, 0.0, promptW, promptH);
-        _emptyQueuePromptLabel.center = CGPointMake(w * 0.5, 230.5);
+        _emptyQueuePromptLabel.center = CGPointMake(w * 0.5, _landscapeMode ? 185.0 : 230.5);
     }
 
     // Section 2A ("Queue" + "Clear") header subviews:
-    // At rest (docY = 142.0 -> screenY = 222.0), "Queue" at y = 3.0 -> cap_top = 230.0 pt; "Clear" at y = -1.33 -> cap_top = 229.33 pt
     _userQueueTitleLabel.frame = CGRectMake(kSideMargin, 3.0, 140.0, 22.0);
     _userQueueClearButton.frame = CGRectMake(w - kSideMargin - 52.0, -1.33, 52.0, 30.0);
     _userQueueClearButton.contentHorizontalAlignment = UIControlContentHorizontalAlignmentRight;
 
-    // Section 2B ("Continue Playing" + "From ...") header subviews (relative to _continueHeaderView top at docY = 142.0 or 315.33):
-    _continueTitleLabel.frame = CGRectMake(kSideMargin, 0.0, w - kSideMargin * 2.0, 21.0);
-    _continueSubtitleLabel.frame = CGRectMake(kSideMargin, 20.5, w - kSideMargin * 2.0, 17.0);
+    // Section 2B ("Continue Playing" + "From ...") header subviews:
+    CGFloat contTitleY = _landscapeMode ? 1.0 : 0.0;
+    CGFloat contSubY   = _landscapeMode ? 21.5 : 20.5;
+    _continueTitleLabel.frame = CGRectMake(kSideMargin, contTitleY, w - kSideMargin * 2.0, 21.0);
+    _continueSubtitleLabel.frame = CGRectMake(kSideMargin, contSubY, w - kSideMargin * 2.0, 17.0);
 
     // Section 0 Header subviews: "History" + "Clear" matching "Queue" + "Clear" (x = 32 .. w - 32)
-    _historyTitleLabel.frame = CGRectMake(kSideMargin, 3.0, 140.0, 22.0);
-    _historyClearButton.frame = CGRectMake(w - kSideMargin - 52.0, -1.33, 52.0, 30.0);
+    _historyTitleLabel.frame = CGRectMake(kSideMargin, _landscapeMode ? 0.0 : 3.0, 140.0, 22.0);
+    _historyClearButton.frame = CGRectMake(w - kSideMargin - 52.0, _landscapeMode ? -4.33 : -1.33, 52.0, 30.0);
 
     for (NSUInteger i = 0; i < _historyRowViews.count; i++) {
         SGRQueueRowView *row = _historyRowViews[i];
@@ -3449,29 +3485,26 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
 
 - (CGFloat)firstSectionHeaderNaturalDocY {
     BOOL hasPills = ([self activePillSlots].count > 0);
-    return kContinueHeaderDocY + (hasPills ? kFirstSectionHeaderOffset : 0.0); // 142.0 pt at rest (screenY = 222.0 pt)
+    return kContinueHeaderDocY + (hasPills ? kFirstSectionHeaderOffset : 0.0);
 }
 
 - (CGFloat)userQueueRowsStartDocY {
-    // 142.0 + 43.33 = 185.33 pt (screenY = 265.33 pt matching Apple Music Queue Row 0)
     return [self firstSectionHeaderNaturalDocY] + kUserQueueHeaderHeight;
 }
 
 - (CGFloat)continueHeaderNaturalDocY {
     if (_userQueueItems.count > 0) {
-        // 26.0 pt below the bottom of "+ Add Songs to Queue" row (screenY = 395.33 pt when 1 item is in Queue)
         CGFloat uqBottom = [self userQueueRowsStartDocY] + _userQueueRowViews.count * kQueueRowPitch + kAddSongsRowHeight;
         return uqBottom + kUserQueueToContinueGap;
     }
-    return [self firstSectionHeaderNaturalDocY]; // 142.0 pt (screenY = 222.0 pt)
+    return [self firstSectionHeaderNaturalDocY];
 }
 
 - (CGFloat)continueRowsStartDocY {
     if (_userQueueItems.count > 0) {
-        // 52.33 pt below Continue Playing header top (screenY = 447.67 pt when 1 item is in Queue)
         return [self continueHeaderNaturalDocY] + kContinueAfterQueueHeaderHeight;
     }
-    return [self firstSectionHeaderNaturalDocY] + kContinueSectionHeaderHeight; // 194.0 pt (screenY = 274.0 pt)
+    return [self firstSectionHeaderNaturalDocY] + [self continueSectionHeaderHeight];
 }
 
 - (NSArray<NSNumber *> *)activePillSlots {
@@ -3500,16 +3533,17 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     BOOL hasPills = ([self activePillSlots].count > 0);
     BOOL hasUserQueue = (_userQueueItems.count > 0);
     BOOL hasContinue  = (_futureItems.count > 0);
+    CGFloat pinOffset = [self continueHeaderPinOffset];
 
-    // 1. 4-Pill Bar pins at docY = MAX(87.0, scrollY + 2.0) (screenY = 82.0..120.0 pt when scrolled)
-    CGFloat pillsPinDocY = MAX(kContinueHeaderDocY, scrollY + kContinueHeaderPinOffset);
+    // 1. 4-Pill Bar pins at docY = MAX(87.0, scrollY + pinOffset)
+    CGFloat pillsPinDocY = MAX(kContinueHeaderDocY, scrollY + pinOffset);
     _pillsBarView.hidden = !hasPills;
     _pillsBarView.bounds = CGRectMake(0.0, 0.0, w, kPillsBarHeight);
     _pillsBarView.center = CGPointMake(w * 0.5, pillsPinDocY + kPillsBarHeight * 0.5);
 
     CGFloat subHeaderPinTop = pillsPinDocY + (hasPills ? kFirstSectionHeaderOffset : 0.0);
     CGFloat continueNatDocY = [self continueHeaderNaturalDocY];
-    CGFloat continueHdrH    = hasUserQueue ? kContinueAfterQueueHeaderHeight : kContinueSectionHeaderHeight;
+    CGFloat continueHdrH    = hasUserQueue ? kContinueAfterQueueHeaderHeight : [self continueSectionHeaderHeight];
 
     // 2A. Section 2A: User Queue ("Queue" + "Clear" & "+ Add Songs to Queue")
     if (hasUserQueue) {
@@ -3523,7 +3557,9 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         CGFloat pushDist = MAX(0.0, subHeaderPinTop - uqHdrDocY);
         CGFloat uqAlpha  = MAX(0.0, 1.0 - (pushDist / 20.0));
         CGFloat clampedHdrDocY = MAX(subHeaderPinTop - 14.0, uqHdrDocY);
-        _userQueueHeaderView.alpha  = uqAlpha;
+        if (!_isAnimatingRowDelete) {
+            _userQueueHeaderView.alpha = uqAlpha;
+        }
         _userQueueHeaderView.bounds = CGRectMake(0.0, 0.0, w, uqHdrH);
         _userQueueHeaderView.center = CGPointMake(w * 0.5, clampedHdrDocY + uqHdrH * 0.5);
 
@@ -3554,19 +3590,20 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
 
     // 3. Section 1: Now Playing Card clipped strictly between top clip plane and rising 4-pill bar / header
     CGFloat topPinnedBoundary = hasPills ? pillsPinDocY : subHeaderPinTop;
-    CGFloat npClipTopDocY = (scrollY > 0.0) ? (scrollY + kContinueHeaderPinOffset) : 0.0;
+    CGFloat npClipTopDocY = (scrollY > 0.0) ? (scrollY + pinOffset) : 0.0;
     CGFloat npClipBottomDocY = MIN(kNowPlayingDocY + kNowPlayingHeight, topPinnedBoundary);
     CGFloat npClipH = MAX(0.0, npClipBottomDocY - npClipTopDocY);
     _nowPlayingClipView.frame = CGRectMake(0.0, npClipTopDocY, w, npClipH);
     _nowPlayingClipView.hidden = (npClipH <= 0.5);
     _nowPlayingCard.frame = CGRectMake(0.0, kNowPlayingDocY - npClipTopDocY, w, kNowPlayingHeight);
 
-    // 4. Section 0: History Sticky Header (pins at screenY = 106.0 pt, cap-top = 109.0 pt) & Sharp Row Clip
+    // 4. Section 0: History Sticky Header & Sharp Row Clip
     if (histH > 0.0 && scrollY < -0.5) {
         _historyHeaderView.hidden = NO;
         _historyRowsClipView.hidden = NO;
 
-        CGFloat histHeaderDocY = MIN(MAX(-histH + kHistoryHeaderPinOffset, scrollY + kHistoryHeaderPinOffset), kHistoryHeaderPushOffDocY);
+        CGFloat histPin = [self historyHeaderPinOffset];
+        CGFloat histHeaderDocY = MIN(MAX(-histH + histPin, scrollY + histPin), kHistoryHeaderPushOffDocY);
         _historyHeaderView.frame = CGRectMake(0.0, histHeaderDocY, w, kHistoryHeaderHeight);
 
         CGFloat histClipTopDocY = histHeaderDocY + kHistoryHeaderClipOffset;
@@ -3574,7 +3611,7 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         CGFloat clipH = MAX(0.0, histClipBottomDocY - histClipTopDocY);
         _historyRowsClipView.frame = CGRectMake(0.0, histClipTopDocY, w, clipH);
 
-        CGFloat histFirstRowDocY = -histH + kHistoryHeaderPinOffset + kHistoryHeaderHeight;
+        CGFloat histFirstRowDocY = -histH + histPin + kHistoryHeaderHeight;
         _historyRowsContainerView.frame = CGRectMake(0.0, histFirstRowDocY - histClipTopDocY, w, _historyRowViews.count * kHistoryRowPitch);
     } else {
         _historyHeaderView.hidden = YES;
@@ -3655,14 +3692,17 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         return;
     }
 
+    NSInteger maxTopRowIndex = MAX((NSInteger)0, (NSInteger)_historyItems.count - 2);
+    CGFloat maxHistoryStopY = -histH + maxTopRowIndex * kHistoryRowPitch;
+
     // Case 2: Dragging started at rest near 0 (_dragStartOffsetY >= -2.0) and pulled downward into History.
-    // Allow natural scrolling anywhere inside [-histH .. -54 pt], avoiding a half-clipped header seam in (-54 .. 0).
+    // Snap cleanly to a History row boundary inside [-histH .. maxHistoryStopY], avoiding any half-clipped row.
     if (_dragStartOffsetY >= -2.0) {
-        if (targetContentOffset->y < -54.0) {
-            targetContentOffset->y = MAX(-histH, targetContentOffset->y);
-            _clampAtZeroOnDragOrDecel = NO;
-        } else if ((currentY < -22.0 && velocity.y <= 0.08) || targetContentOffset->y < -22.0) {
-            targetContentOffset->y = MAX(-histH, -54.0);
+        if ((currentY < -22.0 && velocity.y <= 0.08) || targetContentOffset->y < -22.0) {
+            CGFloat rawY = MIN(maxHistoryStopY, MAX(-histH, targetContentOffset->y));
+            NSInteger rowIdx = (NSInteger)llround((rawY - (-histH)) / kHistoryRowPitch);
+            rowIdx = MAX((NSInteger)0, MIN(maxTopRowIndex, rowIdx));
+            targetContentOffset->y = -histH + rowIdx * kHistoryRowPitch;
             _clampAtZeroOnDragOrDecel = NO;
         } else if (targetContentOffset->y < 0.0) {
             targetContentOffset->y = 0.0;
@@ -3674,11 +3714,14 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     // Case 3: Swiping or scrolling inside History (_dragStartOffsetY < -2.0)
     // Any upward swipe/fling towards Now Playing snaps cleanly to scrollY = 0 pt, matching downward snap from Queue
     if (_dragStartOffsetY < -2.0) {
-        if (velocity.y > 0.05 || targetContentOffset->y >= -54.0 || targetContentOffset->y > 0.0) {
+        if (velocity.y > 0.05 || targetContentOffset->y > maxHistoryStopY + 18.0 || targetContentOffset->y > 0.0) {
             targetContentOffset->y = 0.0;
             _clampAtZeroOnDragOrDecel = YES;
         } else {
-            targetContentOffset->y = MAX(-histH, targetContentOffset->y);
+            CGFloat rawY = MIN(maxHistoryStopY, MAX(-histH, targetContentOffset->y));
+            NSInteger rowIdx = (NSInteger)llround((rawY - (-histH)) / kHistoryRowPitch);
+            rowIdx = MAX((NSInteger)0, MIN(maxTopRowIndex, rowIdx));
+            targetContentOffset->y = -histH + rowIdx * kHistoryRowPitch;
             _clampAtZeroOnDragOrDecel = NO;
         }
         return;
@@ -3923,7 +3966,7 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
                                         outLabel:(UILabel * __strong *)outLabel {
     // Built as a plain UIControl + UILabel (never a UIButton) so global UIButton hooks never re-tint "Cancel"
     UIControl *ctrl = [[UIControl alloc] initWithFrame:frame];
-    ctrl.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.15];
+    ctrl.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.11];
     ctrl.layer.cornerRadius = frame.size.height * 0.5;
     ctrl.layer.cornerCurve = kCACornerCurveContinuous;
     ctrl.clipsToBounds = YES;
@@ -3947,13 +3990,13 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
 
 - (void)handlePromptCapsuleTouchDown:(UIControl *)sender {
     [UIView animateWithDuration:0.08 delay:0 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState animations:^{
-        sender.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.25];
+        sender.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.20];
     } completion:nil];
 }
 
 - (void)handlePromptCapsuleTouchUp:(UIControl *)sender {
     [UIView animateWithDuration:0.16 delay:0 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState animations:^{
-        sender.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.15];
+        sender.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.11];
     } completion:nil];
 }
 
@@ -3966,10 +4009,18 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     CGFloat w = hostBounds.size.width;
     CGFloat cardW = MIN(320.67, w - 69.33);
     CGFloat cardH = 148.0;
-    CGFloat cardX = round((w - cardW) * 1.5) / 3.0;
-    // In Apple Music @ 390x844, card top is at screenY = 354.33 pt (or 300.33 pt relative to SGRQueueView top = 54.0 pt)
-    CGPoint originInHost = [self convertPoint:CGPointMake(0.0, 300.33) toView:hostView];
-    CGFloat cardY = round(originInHost.y * 3.0) / 3.0;
+    CGFloat cardX, cardY;
+    if (_landscapeMode || hostBounds.size.width > hostBounds.size.height) {
+        CGPoint queueCenterInHost = [self convertPoint:CGPointMake(self.bounds.size.width * 0.5, self.bounds.size.height * 0.5) toView:hostView];
+        cardX = round((queueCenterInHost.x - cardW * 0.5) * 3.0) / 3.0;
+        cardX = MAX(16.0, MIN(hostBounds.size.width - cardW - 16.0, cardX));
+        cardY = round(((hostBounds.size.height - cardH) * 0.5) * 3.0) / 3.0;
+    } else {
+        cardX = round((w - cardW) * 1.5) / 3.0;
+        // In Apple Music @ 390x844, card top is at screenY = 354.33 pt (or 300.33 pt relative to SGRQueueView top = 54.0 pt)
+        CGPoint originInHost = [self convertPoint:CGPointMake(0.0, 300.33) toView:hostView];
+        cardY = round(originInHost.y * 3.0) / 3.0;
+    }
     CGRect cardRect = CGRectMake(cardX, cardY, cardW, cardH);
 
     CGAffineTransform savedTx = _clearPromptCard.transform;
@@ -3997,7 +4048,7 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         _clearPromptCard.layer.cornerRadius = 32.0;
         _clearPromptCard.layer.cornerCurve = kCACornerCurveContinuous;
         _clearPromptCard.layer.borderWidth = 0.67;
-        _clearPromptCard.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.28].CGColor;
+        _clearPromptCard.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.26].CGColor;
         _clearPromptCard.clipsToBounds = YES;
 
         UIVisualEffectView *blurView = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterialDark]];
@@ -4007,13 +4058,13 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         [_clearPromptCard addSubview:blurView];
 
         UIView *glassLiftOverlay = [[UIView alloc] initWithFrame:_clearPromptCard.bounds];
-        glassLiftOverlay.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.12];
+        glassLiftOverlay.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.04];
         glassLiftOverlay.layer.compositingFilter = @"plusL";
         glassLiftOverlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         glassLiftOverlay.userInteractionEnabled = NO;
         [_clearPromptCard addSubview:glassLiftOverlay];
 
-        _clearPromptTitleLabel = [[UILabel alloc] initWithFrame:CGRectMake(30.0, 21.0, cardW - 60.0, 48.0)];
+        _clearPromptTitleLabel = [[UILabel alloc] initWithFrame:CGRectMake(30.0, 19.33, cardW - 60.0, 48.0)];
         _clearPromptTitleLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
         _clearPromptTitleLabel.numberOfLines = 2;
         _clearPromptTitleLabel.userInteractionEnabled = NO;
@@ -4048,9 +4099,9 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     pStyle.lineSpacing = 1.67;
     pStyle.alignment = NSTextAlignmentLeft;
     _clearPromptTitleLabel.attributedText = [[NSAttributedString alloc] initWithString:promptText attributes:@{
-        NSFontAttributeName: [UIFont systemFontOfSize:17.0 weight:UIFontWeightSemibold],
+        NSFontAttributeName: [UIFont systemFontOfSize:17.0 weight:UIFontWeightRegular],
         NSForegroundColorAttributeName: UIColor.whiteColor,
-        NSKernAttributeName: @(-0.43),
+        NSKernAttributeName: @(-0.41),
         NSParagraphStyleAttributeName: pStyle,
     }];
 
@@ -4061,8 +4112,8 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         NSForegroundColorAttributeName: coralColor,
         NSKernAttributeName: @(-0.35),
     }];
-    _clearPromptCancelControl.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.15];
-    _clearPromptConfirmControl.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.15];
+    _clearPromptCancelControl.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.11];
+    _clearPromptConfirmControl.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.11];
 
     if (_clearPromptOverlay.superview != hostView) {
         [_clearPromptOverlay removeFromSuperview];
@@ -4118,31 +4169,36 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         if (!strongSelf) return;
         if (clearingHistory) {
             strongSelf->_clampAtZeroOnDragOrDecel = NO;
-            [[SGRQueueSession shared] clearHistory];
-            [UIView animateWithDuration:0.28 delay:0 options:UIViewAnimationOptionCurveEaseOut animations:^{
-                strongSelf->_scrollView.contentInset = UIEdgeInsetsMake(0.0, 0.0, 36.0, 0.0);
+            [UIView animateWithDuration:0.28 delay:0 options:UIViewAnimationOptionCurveEaseInOut animations:^{
+                strongSelf->_historyHeaderView.alpha = 0.0;
+                strongSelf->_historyRowsClipView.alpha = 0.0;
                 strongSelf->_scrollView.contentOffset = CGPointZero;
                 [strongSelf updateStickyHeadersAndClipping];
-            } completion:nil];
+            } completion:^(__unused BOOL finished) {
+                strongSelf->_historyHeaderView.alpha = 1.0;
+                strongSelf->_historyRowsClipView.alpha = 1.0;
+                [[SGRQueueSession shared] clearHistory];
+            }];
         } else {
             CGFloat w = strongSelf.bounds.size.width;
             BOOL hasContinue = (strongSelf->_futureItems.count > 0);
             BOOL showEmptyPrompt = (!hasContinue && !SGFlag(SGRKeyQueueAutoplay, YES));
             if (showEmptyPrompt) {
                 strongSelf->_emptyQueuePromptLabel.bounds = CGRectMake(0.0, 0.0, 280.0, 50.0);
-                strongSelf->_emptyQueuePromptLabel.center = CGPointMake(w * 0.5, 230.5);
+                strongSelf->_emptyQueuePromptLabel.center = CGPointMake(w * 0.5, strongSelf->_landscapeMode ? 185.0 : 230.5);
                 strongSelf->_emptyQueuePromptLabel.alpha = 0.0;
                 strongSelf->_emptyQueuePromptLabel.hidden = NO;
             }
+            CGFloat contHdrH = [strongSelf continueSectionHeaderHeight];
             CGFloat targetHdrTop = [strongSelf firstSectionHeaderNaturalDocY];
-            CGFloat targetRowsTop = targetHdrTop + kContinueSectionHeaderHeight;
+            CGFloat targetRowsTop = targetHdrTop + contHdrH;
             [UIView animateWithDuration:0.24 delay:0 options:UIViewAnimationOptionCurveEaseOut animations:^{
                 strongSelf->_userQueueHeaderView.alpha = 0.0;
                 strongSelf->_userQueueRowsClipView.alpha = 0.0;
                 if (showEmptyPrompt) {
                     strongSelf->_emptyQueuePromptLabel.alpha = 1.0;
                 } else if (hasContinue) {
-                    strongSelf->_continueHeaderView.center = CGPointMake(w * 0.5, targetHdrTop + kContinueSectionHeaderHeight * 0.5);
+                    strongSelf->_continueHeaderView.center = CGPointMake(w * 0.5, targetHdrTop + contHdrH * 0.5);
                     CGFloat contClipH = strongSelf->_queueRowsClipView.bounds.size.height;
                     strongSelf->_queueRowsClipView.center = CGPointMake(w * 0.5, targetRowsTop + contClipH * 0.5);
                 }
@@ -4306,14 +4362,16 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     if (idx == NSNotFound || idx >= itemsList.count) return;
 
     SGRQueueItem *removedItem = itemsList[idx];
+    _isAnimatingRowDelete = YES;
+    [rowsByKey removeObjectForKey:removedItem.key];
+    [itemsList removeObjectAtIndex:idx];
+    [rowViews removeObjectAtIndex:idx];
+
     if (isUQ) {
         [[SGRQueueSession shared] deleteUserQueuedItemWithKey:removedItem.key];
     } else {
         [[SGRQueueSession shared] deleteContinuePlayingItemWithKey:removedItem.key];
     }
-    [rowsByKey removeObjectForKey:removedItem.key];
-    [itemsList removeObjectAtIndex:idx];
-    [rowViews removeObjectAtIndex:idx];
 
     for (NSUInteger i = 0; i < rowViews.count; i++) {
         rowViews[i].rowIndex = (NSInteger)i;
@@ -4328,6 +4386,16 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         [row removeFromSuperview];
     }];
 
+    BOOL uqBecameEmpty = (isUQ && _userQueueItems.count == 0);
+    BOOL cpBecameEmpty = (!isUQ && _futureItems.count == 0);
+    BOOL queueEmpty = (_userQueueItems.count == 0 && _futureItems.count == 0 && !SGFlag(SGRKeyQueueAutoplay, YES));
+    if (queueEmpty) {
+        _emptyQueuePromptLabel.bounds = CGRectMake(0.0, 0.0, 280.0, 50.0);
+        _emptyQueuePromptLabel.center = CGPointMake(w * 0.5, _landscapeMode ? 185.0 : 230.5);
+        _emptyQueuePromptLabel.alpha = 0.0;
+        _emptyQueuePromptLabel.hidden = NO;
+    }
+
     [UIView animateWithDuration:0.25 delay:0 options:UIViewAnimationOptionCurveEaseOut animations:^{
         for (NSUInteger i = idx; i < rowViews.count; i++) {
             SGRQueueRowView *below = rowViews[i];
@@ -4335,12 +4403,29 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
         }
         if (isUQ) {
             self->_addSongsRowControl.frame = CGRectMake(0.0, self->_userQueueRowViews.count * kQueueRowPitch, w, kAddSongsRowHeight);
-            BOOL hasUQ = (self->_userQueueItems.count > 0);
-            self->_userQueueHeaderView.hidden   = !hasUQ;
-            self->_userQueueRowsClipView.hidden = !hasUQ;
+        }
+        if (uqBecameEmpty) {
+            self->_userQueueHeaderView.alpha = 0.0;
+            self->_userQueueRowsClipView.alpha = 0.0;
+        }
+        if (cpBecameEmpty) {
+            self->_continueHeaderView.alpha = 0.0;
+            self->_queueRowsClipView.alpha = 0.0;
+        }
+        if (queueEmpty) {
+            self->_emptyQueuePromptLabel.alpha = 1.0;
         }
         [self updateStickyHeadersAndClipping];
-    } completion:nil];
+    } completion:^(__unused BOOL finished) {
+        self->_isAnimatingRowDelete = NO;
+        self->_userQueueHeaderView.alpha = 1.0;
+        self->_userQueueRowsClipView.alpha = 1.0;
+        self->_continueHeaderView.alpha = 1.0;
+        self->_queueRowsClipView.alpha = 1.0;
+        [self syncFromSessionAnimatedReorder:NO forceRebuild:NO];
+        [self setNeedsLayout];
+        [self layoutIfNeeded];
+    }];
 }
 
 - (void)queueRowHandlePan:(UIPanGestureRecognizer *)pan forRow:(SGRQueueRowView *)row {

@@ -370,6 +370,7 @@ NSString *SGRPlayerHeaderContextTitle(void) {
 }
 
 void SGRPlayerMinimizeIfOpen(void) {
+    SGRPlayerShowLandscape(NO);
     UIView *header = sg_header.viewIfLoaded;
     if (header) {
         static char kMin1Key, kMin2Key;
@@ -876,6 +877,7 @@ static void setMode(SGRPlayerInlineMode targetMode, BOOL animated) {
         sg_inlineMode = targetMode;
         sg_moving = YES;
         SGRPlayerLyricsChanged();
+        SGRPlayerLandscapeModeChanged();
 
         SGRLyricsLayout newL = layoutIn(host, targetMode);
         place(overlay, host, newL);
@@ -979,6 +981,7 @@ static void setMode(SGRPlayerInlineMode targetMode, BOOL animated) {
 
     if (!open) setAlone(NO, NO);
     sg_inlineMode = targetMode;
+    SGRPlayerLandscapeModeChanged();
 
     // Dedicated Apple Music 0.40s (damping 0.85) matched-geometry spring for Queue Open & Close
     if (isQueueTransition) {

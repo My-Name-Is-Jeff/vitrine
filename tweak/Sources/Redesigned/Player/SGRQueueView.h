@@ -41,4 +41,7 @@
 // falling back to `nowPlayingArtworkFrameInView:` when scrolled behind the sticky header.
 - (CGRect)visibleNowPlayingArtworkFrameInView:(UIView *)targetView;
 
+// Configures the queue view for the right-hand column of the full-screen Landscape Queue layout.
+@property (nonatomic, assign) BOOL landscapeMode;
+
 @end

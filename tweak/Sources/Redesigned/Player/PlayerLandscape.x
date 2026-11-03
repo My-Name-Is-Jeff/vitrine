@@ -1,11 +1,8 @@
-// Player redesign: the lyrics turn sideways with the phone onto a landscape screen of their own. The cover
-// is on the left with the title, the artist and the controls under it, and the lines are on the right.
-// A track without lines keeps the screen: the cover grows to the screen's height with the title and the
-// controls beside it, until a track with lines comes on.
-// The controls fade after a few seconds without a touch and come back at a tap, as in the player: the
-// tap that brings them back lands on a clear shield over the screen, so it never seeks. The button beside
-// the title turns the screen back to portrait, as VoiceOver's escape does, for a phone held flat or on its
-// side; the screen stays shut then until the phone has stood upright again.
+// Player redesign: the lyrics or the queue turn sideways with the phone onto a landscape screen of their own.
+// When Lyrics are open, the cover is on the left with the title, the artist and the controls under it, and the
+// lines are on the right. When the Queue is open, the 291x291 cover sits on the left with a top-center grabber
+// pill above, the full interactive SGRQueueView (History, Now Playing, 4-Pill Bar, Queue, Continue Playing) on
+// the right, and the 3-glyph footer row (Lyrics, AirPlay/Connect, Active Queue circle) at the bottom right.
 //
 // Spotify's iPhone Info.plist allows portrait only, and UIKit asks the app delegate's
 // -application:supportedInterfaceOrientationsForWindow: in its place where there is one. So the delegate
@@ -15,6 +12,7 @@
 #import "Core/SGCore.h"
 #import "Redesigned/Kit/SGRKit.h"
 #import "Redesigned/Lyrics/SGRKaraokeView.h"
+#import "Redesigned/Player/SGRQueueView.h"
 #import "Shared/Lyrics/Lyrics.h"
 #import "Shared/Player/PlayerState.h"
 #import "Player.h"
@@ -28,19 +26,37 @@ static UIWindow *sg_window;
 // Shut from the screen: turning the phone again does not reopen it until it has stood upright.
 static BOOL sg_shut;
 
+static BOOL shouldShowLandscapeForCurrentState(void) {
+    if (SGRPlayerQueueOpen() && SGEnabled(SGRKeyQueueLandscape)) return YES;
+    if (SGRPlayerLyricsOpen() && SGEnabled(SGRKeyLyricsLandscape)) return YES;
+    return NO;
+}
+
 #pragma mark - the screen
 
 @interface SGRLandscapeLyricsController : UIViewController <SGPlayerStateObserver>
+- (void)updateMode;
+- (void)updateBare:(BOOL)mayGoBare;
 @end
 
 @implementation SGRLandscapeLyricsController {
     SGRArtworkField *_field;
+    SGRShadowPlate *_coverShadow;
     UIImageView *_cover;
     SGMarqueeLabel *_title, *_artist;
     UIStackView *_controls;
     UIButton *_play, *_close;
     UIView *_stage;   // the lines' own view: the karaoke view dims every sibling it has
     SGRKaraokeView *_lyrics;
+
+    // Landscape Queue components (Apple Music 844x390 layout)
+    UIView *_queueGrabberPill;
+    SGRQueueView *_queueView;
+    SGRGlyphButton *_queueFooterLyricsButton;
+    SGRGlyphButton *_queueFooterConnectButton;
+    SGRGlyphButton *_queueFooterQueueButton;
+    BOOL _showingQueue;
+
     NSTimer *_rest;
     UITapGestureRecognizer *_hide;   // only while the controls are up
     UIView *_shield;                 // only while they are not: the touch that brings them back
@@ -88,6 +104,7 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = UIColor.blackColor;
+    _showingQueue = SGRPlayerQueueOpen() && SGEnabled(SGRKeyQueueLandscape);
 
     // The player's own field behind the screen, so the colors carry over from the portrait player.
     _field = [[SGRArtworkField alloc] initWithFrame:self.view.bounds];
@@ -99,10 +116,13 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
     if (art) [_field setArtwork:art identity:identity animated:NO];
     [self.view addSubview:_field];
 
+    _coverShadow = [[SGRShadowPlate alloc] initWithRadius:10.0];
+    [self.view addSubview:_coverShadow];
+
     _cover = [UIImageView new];
     _cover.contentMode = UIViewContentModeScaleAspectFill;
     _cover.clipsToBounds = YES;
-    _cover.layer.cornerRadius = SGRRadiusArtwork;
+    _cover.layer.cornerRadius = _showingQueue ? 10.0 : SGRRadiusArtwork;
     _cover.layer.cornerCurve = kCACornerCurveContinuous;
     _cover.image = art;
     [self.view addSubview:_cover];
@@ -136,6 +156,57 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
     __weak SGRLandscapeLyricsController *weakSelf = self;
     _lyrics.browsingBegan = ^(BOOL onward) { [weakSelf rest]; };
 
+    // Top-center 60x4pt grabber pill for Landscape Queue (x = 392..452pt, y = 15..19pt on 844x390pt)
+    _queueGrabberPill = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 60.0, 4.0)];
+    _queueGrabberPill.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.30];
+    _queueGrabberPill.layer.cornerRadius = 2.0;
+    _queueGrabberPill.layer.compositingFilter = @"plusL";
+    _queueGrabberPill.userInteractionEnabled = NO;
+    [self.view addSubview:_queueGrabberPill];
+
+    // Right-column Queue view in landscapeMode
+    _queueView = [[SGRQueueView alloc] initWithFrame:CGRectZero];
+    _queueView.landscapeMode = YES;
+    [_queueView prepareForOpenTransition];
+    [self.view addSubview:_queueView];
+
+    // Right-column 3-glyph footer row matching Apple Music Landscape Queue (Lyrics at x=433.5, AirPlay at x=599.0, Queue at x=764.0, y=328.83)
+    _queueFooterLyricsButton = [SGRGlyphButton buttonWithSymbol:@"quote.bubble" pointSize:20.0 title:@"Lyrics"];
+    _queueFooterLyricsButton.bounds = CGRectMake(0, 0, 44.0, 44.0);
+    _queueFooterLyricsButton.glyph.tintColor = [UIColor colorWithWhite:1.0 alpha:0.65];
+    _queueFooterLyricsButton.onTap = ^{
+        if (!SGRPlayerLyricsAvailable()) return;
+        SGRPlayerToggleLyrics();
+        [weakSelf updateMode];
+    };
+    [self.view addSubview:_queueFooterLyricsButton];
+
+    _queueFooterConnectButton = [SGRGlyphButton buttonWithSymbol:@"airplayaudio" pointSize:20.0 title:@"Connect"];
+    _queueFooterConnectButton.bounds = CGRectMake(0, 0, 44.0, 44.0);
+    _queueFooterConnectButton.glyph.tintColor = [UIColor colorWithWhite:1.0 alpha:0.65];
+    _queueFooterConnectButton.onTap = ^{
+        SGRPlayerTriggerConnect();
+    };
+    [self.view addSubview:_queueFooterConnectButton];
+
+    _queueFooterQueueButton = [SGRGlyphButton buttonWithSymbol:@"list.bullet" pointSize:20.0 title:@"Queue"];
+    _queueFooterQueueButton.bounds = CGRectMake(0, 0, 38.0, 38.0);
+    _queueFooterQueueButton.opaque = NO;
+    _queueFooterQueueButton.layer.opaque = NO;
+    _queueFooterQueueButton.glyph.opaque = NO;
+    _queueFooterQueueButton.glyph.layer.opaque = NO;
+    _queueFooterQueueButton.glyph.image = SGRPlayerQueueActiveIcon(CGSizeMake(38.0, 38.0));
+    _queueFooterQueueButton.glyph.tintColor = nil;
+    _queueFooterQueueButton.backgroundColor = UIColor.clearColor;
+    _queueFooterQueueButton.layer.cornerRadius = 19.0;
+    _queueFooterQueueButton.layer.cornerCurve = kCACornerCurveContinuous;
+    _queueFooterQueueButton.clipsToBounds = YES;
+    _queueFooterQueueButton.onTap = ^{
+        if (SGRPlayerQueueOpen()) SGRPlayerToggleQueue();
+        [weakSelf turnBack];
+    };
+    [self.view addSubview:_queueFooterQueueButton];
+
     _hide = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(rest)];
     [self.view addGestureRecognizer:_hide];
     _shield = [[UIView alloc] initWithFrame:self.view.bounds];
@@ -143,7 +214,9 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
     _shield.accessibilityElementsHidden = YES;
     [_shield addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(wake)]];
     [_shield addGestureRecognizer:[[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(wake)]];
-    [self updateBare:YES];
+
+    [self applyModeVisibility];
+    if (!_showingQueue) [self updateBare:YES];
     SGAddPlayerStateObserver(self);
     [self playerStateDidChange:SGPlayerState()];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(artworkChanged)
@@ -158,8 +231,87 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
     [_rest invalidate];
 }
 
+- (void)applyModeVisibility {
+    BOOL queueMode = _showingQueue;
+    _queueGrabberPill.hidden = !queueMode;
+    _queueView.hidden = !queueMode;
+    _queueFooterLyricsButton.hidden = !queueMode;
+    _queueFooterConnectButton.hidden = !queueMode;
+    _queueFooterQueueButton.hidden = !queueMode;
+    _queueFooterLyricsButton.enabled = SGRPlayerLyricsAvailable();
+    _queueFooterLyricsButton.alpha = SGRPlayerLyricsAvailable() ? 1.0 : 0.40;
+
+    _title.hidden = queueMode;
+    _artist.hidden = queueMode;
+    _close.hidden = queueMode;
+    _controls.hidden = queueMode;
+    _stage.hidden = queueMode || _bare;
+    _hide.enabled = !queueMode && !_shield.superview;
+    if (queueMode && _shield.superview) [_shield removeFromSuperview];
+    _cover.layer.cornerRadius = queueMode ? 10.0 : SGRRadiusArtwork;
+    _coverShadow.cornerRadius = _cover.layer.cornerRadius;
+}
+
+- (void)updateMode {
+    if (!shouldShowLandscapeForCurrentState()) {
+        [self turnBack];
+        return;
+    }
+    BOOL wantQueue = SGRPlayerQueueOpen() && SGEnabled(SGRKeyQueueLandscape);
+    if (wantQueue == _showingQueue) {
+        _queueFooterLyricsButton.enabled = SGRPlayerLyricsAvailable();
+        _queueFooterLyricsButton.alpha = SGRPlayerLyricsAvailable() ? 1.0 : 0.40;
+        return;
+    }
+    _showingQueue = wantQueue;
+    if (_showingQueue) {
+        [_rest invalidate];
+        _rest = nil;
+        [_queueView prepareForOpenTransition];
+    }
+    [self applyModeVisibility];
+    if (!_showingQueue) {
+        [self updateBare:YES];
+        [self restartRest];
+    }
+    [self.view setNeedsLayout];
+}
+
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
+    CGSize boundsSize = self.view.bounds.size;
+    CGFloat W = boundsSize.width;
+    CGFloat H = boundsSize.height;
+
+    if (_showingQueue) {
+        // Apple Music Landscape Queue layout (measured 1:1 on 844x390 pt):
+        // - Top grabber pill: 60x4 pt at cx = W * 0.5 (422.0 pt), y = 15..19 pt (center.y = 17.0 pt)
+        _queueGrabberPill.bounds = CGRectMake(0.0, 0.0, 60.0, 4.0);
+        _queueGrabberPill.center = CGPointMake(W * 0.5, 17.0);
+
+        // - Left artwork: 291x291 pt at x = 79.0 pt, y = 49.5 pt on 844x390 pt
+        CGFloat coverSide = round(H * (291.0 / 390.0));
+        CGFloat coverX = round(W * (79.0 / 844.0));
+        CGFloat coverY = round((H - coverSide) * 0.5);
+        _cover.frame = CGRectMake(coverX, coverY, coverSide, coverSide);
+        _coverShadow.frame = _cover.frame;
+
+        // - Right column SGRQueueView: content spans x = 415..783 pt (width 368 pt);
+        //   with kSideMargin = 32 pt inside SGRQueueView, frame is x = 383.0 pt, width = 432.0 pt
+        CGFloat innerLeft = round(W * (415.0 / 844.0));
+        CGFloat innerWidth = round(W * (368.0 / 844.0));
+        CGFloat queueX = innerLeft - 32.0;
+        CGFloat queueW = innerWidth + 64.0;
+        _queueView.frame = CGRectMake(queueX, 0.0, queueW, H);
+
+        // - Bottom-right 3-glyph footer row at y = H - 61.17 pt (328.83 pt on 390 pt height)
+        CGFloat footerCenterY = H - 61.17;
+        _queueFooterLyricsButton.center  = CGPointMake(innerLeft + 18.5, footerCenterY);
+        _queueFooterConnectButton.center = CGPointMake(innerLeft + innerWidth * 0.5, footerCenterY);
+        _queueFooterQueueButton.center   = CGPointMake(innerLeft + innerWidth - 19.0, footerCenterY);
+        return;
+    }
+
     CGRect safe = UIEdgeInsetsInsetRect(self.view.bounds, self.view.safeAreaInsets);
     CGFloat column = round(safe.size.width * kColumnShare);
     CGFloat left = CGRectGetMinX(safe) + kSide;
@@ -168,6 +320,7 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
     CGFloat side = MIN(column - kSide, safe.size.height - 2 * kSide - textHeight - controlsHeight - 2 * kCoverGap);
     CGFloat top = CGRectGetMidY(safe) - (side + kCoverGap + textHeight + kCoverGap + controlsHeight) / 2;
     _cover.frame = CGRectMake(left, top, side, side);
+    _coverShadow.frame = _cover.frame;
     // The close button at the text's trailing end, its glyph (about 20pt in the 44pt square) at the cover's edge.
     CGFloat textTop = CGRectGetMaxY(_cover.frame) + kCoverGap;
     _close.frame = CGRectMake(left + side - kControlSide + 12, textTop + (textHeight - kControlSide) / 2, kControlSide, kControlSide);
@@ -185,6 +338,7 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
     CGFloat info = MIN(kBareInfoWidth, safe.size.width - 3 * kSide - side);
     CGFloat x = CGRectGetMidX(safe) - (side + kSide + info) / 2;
     _cover.frame = CGRectMake(x, CGRectGetMidY(safe) - side / 2, side, side);
+    _coverShadow.frame = _cover.frame;
     CGFloat infoLeft = x + side + kSide;
     textTop = CGRectGetMidY(safe) - (textHeight + kCoverGap + controlsHeight) / 2;
     _close.frame = CGRectMake(infoLeft + info - kControlSide + 12, textTop + (textHeight - kControlSide) / 2, kControlSide, kControlSide);
@@ -195,7 +349,7 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
 
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
-    [self restartRest];
+    if (!_showingQueue) [self restartRest];
 }
 
 // The window comes up clear and fades in as the scene turns, so the screen is never seen laid out upright.
@@ -223,6 +377,7 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
 // Otherwise the layout stays, so a track change does not flash between the two. A track change alone never
 // takes the lines away: the player may not have heard of it yet, and would still count the last one's grace.
 - (void)updateBare:(BOOL)mayGoBare {
+    if (_showingQueue) return;
     BOOL bare = _bare;
     if (SGRPlayerLyricsAvailable()) bare = NO;
     else if (mayGoBare && SGRPlayerLyricsNone()) bare = YES;
@@ -252,7 +407,13 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
 
 - (void)playerStateDidChange:(SPTPlayerState *)state {
     if (!state) return;
-    [self updateBare:NO];
+    if (_showingQueue) {
+        [_queueView updateWithState:state];
+        _queueFooterLyricsButton.enabled = SGRPlayerLyricsAvailable();
+        _queueFooterLyricsButton.alpha = SGRPlayerLyricsAvailable() ? 1.0 : 0.40;
+    } else {
+        [self updateBare:NO];
+    }
     _title.text = state.track.trackTitle;
     _artist.text = state.track.artistName;
     [_play setImage:[UIImage systemImageNamed:state.isPaused ? @"play.fill" : @"pause.fill" withConfiguration:
@@ -261,8 +422,10 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
     _field.motionHeld = state.isPaused;
     // A pause brings the controls back and keeps them; playing again, from here or anywhere, starts the
     // clock. The tap on the play button cannot: the state saying so arrives a beat after it.
-    if (state.isPaused) [self setControlsShown:YES];
-    else if (!_rest && !_shield.superview) [self restartRest];
+    if (!_showingQueue) {
+        if (state.isPaused) [self setControlsShown:YES];
+        else if (!_rest && !_shield.superview) [self restartRest];
+    }
 }
 
 #pragma mark - controls
@@ -302,14 +465,16 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
 
 // The lines on their own, unless VoiceOver needs the controls to be there.
 - (void)rest {
-    if (!_bare && !UIAccessibilityIsVoiceOverRunning()) [self setControlsShown:NO];
+    if (!_showingQueue && !_bare && !UIAccessibilityIsVoiceOverRunning()) [self setControlsShown:NO];
 }
 
 - (void)wake {
+    if (_showingQueue) return;
     [self setControlsShown:YES];
 }
 
 - (void)setControlsShown:(BOOL)shown {
+    if (_showingQueue) return;
     [_rest invalidate];
     _rest = nil;
     _hide.enabled = shown;
@@ -333,7 +498,7 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
 - (void)restartRest {
     [_rest invalidate];
     _rest = nil;
-    if (_bare || SGRLyricsHideMode() == SGRLyricsHideOff || SGPlayerState().isPaused || UIAccessibilityIsVoiceOverRunning()) return;
+    if (_showingQueue || _bare || SGRLyricsHideMode() == SGRLyricsHideOff || SGPlayerState().isPaused || UIAccessibilityIsVoiceOverRunning()) return;
     __weak SGRLandscapeLyricsController *weakSelf = self;
     _rest = [NSTimer scheduledTimerWithTimeInterval:kLandscapeRest repeats:NO block:^(NSTimer *timer) {
         // A sheet over the lines (a line's meanings) keeps them up, and the clock runs again behind it.
@@ -365,7 +530,7 @@ static void answerForOrientations(void) {
     Method method = class_getInstanceMethod([delegate class], selector);
     if (method) sg_origOrientations = (void *)method_setImplementation(method, (IMP)orientationsFor);
     else class_addMethod([delegate class], selector, (IMP)orientationsFor, "Q@:@@");
-    SGLog(@"redesign player: landscape lyrics answer for %@ (%@)", NSStringFromClass([delegate class]), method ? @"its own answer kept" : @"portrait otherwise");
+    SGLog(@"redesign player: landscape answer for %@ (%@)", NSStringFromClass([delegate class]), method ? @"its own answer kept" : @"portrait otherwise");
 }
 
 // A landscape window still clear when no turn is coming to fade it in.
@@ -386,7 +551,19 @@ static void requestOrientations(UIWindowScene *scene, UIInterfaceOrientationMask
 
 void SGRPlayerLandscapeLinesChanged(void) {
     id screen = sg_window.rootViewController;
-    if ([screen isKindOfClass:SGRLandscapeLyricsController.class]) [screen updateBare:YES];
+    if ([screen isKindOfClass:SGRLandscapeLyricsController.class]) {
+        [(SGRLandscapeLyricsController *)screen updateBare:YES];
+        [(SGRLandscapeLyricsController *)screen updateMode];
+    }
+}
+
+void SGRPlayerLandscapeModeChanged(void) {
+    id screen = sg_window.rootViewController;
+    if ([screen isKindOfClass:SGRLandscapeLyricsController.class]) {
+        [(SGRLandscapeLyricsController *)screen updateMode];
+    } else if (UIDeviceOrientationIsLandscape(UIDevice.currentDevice.orientation) && !sg_shut && shouldShowLandscapeForCurrentState()) {
+        SGRPlayerShowLandscape(YES);
+    }
 }
 
 void SGRPlayerShowLandscape(BOOL show) {
@@ -403,7 +580,7 @@ void SGRPlayerShowLandscape(BOOL show) {
         [sg_window makeKeyAndVisible];
         requestOrientations(scene, UIInterfaceOrientationMaskLandscape);
         if (UIInterfaceOrientationIsLandscape(scene.interfaceOrientation)) reveal(sg_window);
-        SGLog(@"redesign player: the lyrics turn sideways");
+        SGLog(@"redesign player: turning sideways into landscape");
     } else if (!show && sg_window) {
         UIWindow *window = sg_window;
         sg_window = nil;
@@ -424,14 +601,14 @@ void SGRPlayerShowLandscape(BOOL show) {
                 }
             }
         });
-        SGLog(@"redesign player: the lyrics turn back");
+        SGLog(@"redesign player: turning back to portrait");
     }
 }
 
 static void orientationChanged(void) {
     UIDeviceOrientation orientation = UIDevice.currentDevice.orientation;
     if (UIDeviceOrientationIsLandscape(orientation)) {
-        if (!sg_shut && SGEnabled(SGRKeyLyricsLandscape) && SGRPlayerLyricsOpen()) SGRPlayerShowLandscape(YES);
+        if (!sg_shut && shouldShowLandscapeForCurrentState()) SGRPlayerShowLandscape(YES);
     } else if (orientation == UIDeviceOrientationPortrait) {
         sg_shut = NO;
         SGRPlayerShowLandscape(NO);

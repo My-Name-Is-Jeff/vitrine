@@ -370,7 +370,8 @@ UIViewController *SGRPlayerSettingsPage(NSArray *more) {
                                       SGOptionRow(@"Follow the cover", nil, SGRKeyPlayerFollowsCover)],
                        @"Volume puts a slider under the controls for this iPhone, or the speaker's while Spotify plays on another device. "
                        @"Follow the cover paints the like, shuffle, repeat, device and queue buttons, and the mini player's device and like, in the color of the song playing."),
-        SGNotedSection(@"Queue", @[queuePillRow(@"Button 1", 0),
+        SGNotedSection(@"Queue", @[SGSwitchRow(@"Landscape queue", @"Turn the phone with the queue open", SGRKeyQueueLandscape),
+                                   queuePillRow(@"Button 1", 0),
                                    queuePillRow(@"Button 2", 1),
                                    queuePillRow(@"Button 3", 2),
                                    queuePillRow(@"Button 4", 3)],
