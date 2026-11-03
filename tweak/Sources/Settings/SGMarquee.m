@@ -31,6 +31,7 @@ static NSString *const kScroll = @"sg.marquee";
 }
 
 - (NSString *)text { return _label.text; }
+- (NSAttributedString *)attributedText { return _label.attributedText; }
 - (UIFont *)font { return _label.font; }
 - (UIColor *)textColor { return _label.textColor; }
 
@@ -40,6 +41,17 @@ static NSString *const kScroll = @"sg.marquee";
     self.accessibilityLabel = text;
     _scrolled = -1;   // starts over from its start
     [self setNeedsLayout];
+}
+
+- (void)setAttributedText:(NSAttributedString *)attributedText {
+    _label.attributedText = attributedText;
+    self.accessibilityLabel = attributedText.string;
+    _scrolled = -1;
+    [self setNeedsLayout];
+}
+
+- (CGSize)sizeThatFits:(CGSize)size {
+    return [_label sizeThatFits:size];
 }
 
 - (void)setFont:(UIFont *)font {

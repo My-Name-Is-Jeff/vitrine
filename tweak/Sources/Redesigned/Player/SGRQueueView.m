@@ -2480,9 +2480,9 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     UIView *_nowPlayingCard;
     UIImageView *_npArtView;
     UIView *_npDetailsView;
-    UILabel *_npTitleLabel;
+    SGMarqueeLabel *_npTitleLabel;
     UIImageView *_npExplicitView;
-    UILabel *_npArtistLabel;
+    SGMarqueeLabel *_npArtistLabel;
     UIButton *_npStarButton;
     UIButton *_npMoreButton;
 
@@ -2748,10 +2748,9 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     _npDetailsView.backgroundColor = UIColor.clearColor;
     [_nowPlayingCard addSubview:_npDetailsView];
 
-    _npTitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    _npTitleLabel = [[SGMarqueeLabel alloc] initWithFrame:CGRectZero];
     _npTitleLabel.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightSemibold];
     _npTitleLabel.textColor = UIColor.whiteColor;
-    _npTitleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     [_npDetailsView addSubview:_npTitleLabel];
 
     _npExplicitView = [[UIImageView alloc] initWithImage:SGRExplicitBadgeImageNP()];
@@ -2760,11 +2759,10 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     _npExplicitView.layer.compositingFilter = @"plusL";
     [_npDetailsView addSubview:_npExplicitView];
 
-    _npArtistLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    _npArtistLabel = [[SGMarqueeLabel alloc] initWithFrame:CGRectZero];
     _npArtistLabel.font = [UIFont systemFontOfSize:15.0 weight:UIFontWeightRegular];
     _npArtistLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.62];
     _npArtistLabel.layer.compositingFilter = @"plusL";
-    _npArtistLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     [_npDetailsView addSubview:_npArtistLabel];
 
     // Star favorite button matching Apple Music's Now Playing mini-card (center x = 295 pt)

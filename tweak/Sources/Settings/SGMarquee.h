@@ -7,6 +7,7 @@
 
 @interface SGMarqueeLabel : UIView
 @property (nonatomic, copy) NSString *text;
+@property (nonatomic, copy) NSAttributedString *attributedText;
 @property (nonatomic, strong) UIFont *font;
 @property (nonatomic, strong) UIColor *textColor;
 @end
