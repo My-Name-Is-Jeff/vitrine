@@ -116,7 +116,8 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
     if (art) [_field setArtwork:art identity:identity animated:NO];
     [self.view addSubview:_field];
 
-    _coverShadow = [[SGRShadowPlate alloc] initWithRadius:10.0];
+    _coverShadow = [SGRShadowPlate new];
+    _coverShadow.cornerRadius = _showingQueue ? 10.0 : SGRRadiusArtwork;
     [self.view addSubview:_coverShadow];
 
     _cover = [UIImageView new];
