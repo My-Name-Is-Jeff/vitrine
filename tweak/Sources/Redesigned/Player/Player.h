@@ -208,6 +208,8 @@ void SGRPlayerLandscapeModeChanged(void);
 // Reads or restores the inline Queue's vertical scroll offset across Portrait <-> Landscape rotation.
 CGFloat SGRPlayerQueueScrollOffset(void);
 void SGRPlayerSetQueueScrollOffset(CGFloat offset);
+// Snapshots the portrait Queue bottom transport chrome (progress bar, playback controls, volume slider) for rotation.
+UIView *SGRPlayerSnapshotQueueTransport(void);
 
 // The animated artwork follows the lyrics: blurred behind them (PlayerMotion.x).
 void SGRPlayerMotionLyricsChanged(void);

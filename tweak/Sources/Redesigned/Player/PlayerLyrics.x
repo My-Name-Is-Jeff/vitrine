@@ -546,6 +546,49 @@ void SGRPlayerSetQueueScrollOffset(CGFloat offset) {
     if (overlay.existingQueue) overlay.existingQueue.currentScrollOffset = offset;
 }
 
+UIView *SGRPlayerSnapshotQueueTransport(void) {
+    UIView *host = sg_host;
+    if (!host || host.bounds.size.height < kLivingHeight) return nil;
+    UIView *container = [[UIView alloc] initWithFrame:host.bounds];
+    container.backgroundColor = UIColor.clearColor;
+    container.userInteractionEnabled = NO;
+
+    UIView *dur = sg_duration.viewIfLoaded;
+    UIView *info = sg_info.viewIfLoaded;
+    UIView *floating = sg_floating.viewIfLoaded;
+    UIView *stack = SGRFindByIdentifier(host, @"npv.bottomStackView", &kStackKey);
+    BOOL snappedDur = NO;
+
+    if (stack) {
+        for (UIView *sub in stack.subviews) {
+            if (!sub || sub.hidden || sub.alpha < 0.01) continue;
+            if (sub == info || sub == floating) continue;
+            if ([info isDescendantOfView:sub] || [floating isDescendantOfView:sub]) continue;
+            UIResponder *owner = sub.nextResponder;
+            if ([owner isKindOfClass:UIViewController.class] &&
+                [NSStringFromClass(owner.class) rangeOfString:@"Footer"].location != NSNotFound) {
+                continue;
+            }
+            CGRect frameInHost = [sub convertRect:sub.bounds toView:host];
+            if (CGRectGetMidY(frameInHost) > host.bounds.size.height - 96.0) continue;
+            UIView *snap = [sub snapshotViewAfterScreenUpdates:NO];
+            if (snap) {
+                snap.frame = frameInHost;
+                [container addSubview:snap];
+                if (sub == dur || (dur && [dur isDescendantOfView:sub])) snappedDur = YES;
+            }
+        }
+    }
+    if (!snappedDur && dur && !dur.hidden && dur.alpha > 0.01) {
+        UIView *snap = [dur snapshotViewAfterScreenUpdates:NO];
+        if (snap) {
+            snap.frame = [dur convertRect:dur.bounds toView:host];
+            [container addSubview:snap];
+        }
+    }
+    return container.subviews.count > 0 ? container : nil;
+}
+
 // Puts the overlay's own views where the measurements say, without animating. The thumbnail is laid out
 // at the size and place Spotify draws its cover at and moved by its transform alone, so a pass that
 // runs while it is up leaves it exactly where the eye has it: the two are worked out from one

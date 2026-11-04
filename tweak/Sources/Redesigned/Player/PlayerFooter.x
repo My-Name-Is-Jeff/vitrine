@@ -59,7 +59,7 @@ static const CGFloat kVolumeLift = 10;
 static NSString *const kConnectSymbol = @"airplayaudio", *const kQueueSymbol = @"list.bullet";
 
 static char kEncoreKey;
-static char kConnectKey, kShareKey, kTrimmerKey, kSharedByKey, kQueueKey, kQueueIconKey, kLyricsGlyphKey, kQueueGlyphKey, kReachKey, kRowKey;
+static char kConnectKey, kShareKey, kTrimmerKey, kSharedByKey, kQueueKey, kLyricsGlyphKey, kQueueGlyphKey, kReachKey, kRowKey;
 static __weak SGRGlyphButton *sg_lyricsGlyph;
 static __weak SGRGlyphButton *sg_queueGlyph;
 static __weak UIView *sg_footerRow;

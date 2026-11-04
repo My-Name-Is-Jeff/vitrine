@@ -22,6 +22,7 @@ static NSAttributedString *SGRStripTruncatingParagraphStyle(NSAttributedString *
 }
 
 @implementation SGMarqueeLabel {
+    UIView *_maskView;
     UIView *_contentView;
     UILabel *_label1;
     UILabel *_label2;
@@ -29,6 +30,7 @@ static NSAttributedString *SGRStripTruncatingParagraphStyle(NSAttributedString *
     UIImageView *_badge2;
     CAGradientLayer *_fade;
     CGFloat _scrolled;   // how far the running animation travels, 0 while still
+    CGFloat _lastWidth;  // last bounds width used to compute fade stop locations
 }
 
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -37,9 +39,14 @@ static NSAttributedString *SGRStripTruncatingParagraphStyle(NSAttributedString *
     self.isAccessibilityElement = YES;
     self.accessibilityTraits = UIAccessibilityTraitStaticText;
 
+    _maskView = [UIView new];
+    _maskView.userInteractionEnabled = NO;
+    _maskView.clipsToBounds = YES;
+    [self addSubview:_maskView];
+
     _contentView = [UIView new];
     _contentView.userInteractionEnabled = NO;
-    [self addSubview:_contentView];
+    [_maskView addSubview:_contentView];
 
     _label1 = [UILabel new];
     [_contentView addSubview:_label1];
@@ -80,6 +87,7 @@ static NSAttributedString *SGRStripTruncatingParagraphStyle(NSAttributedString *
 
 - (void)resetScrollAnimation {
     _scrolled = -1;
+    _lastWidth = -1;
     [_contentView.layer removeAnimationForKey:kScroll];
     [_fade removeAnimationForKey:@"mask.fade"];
     _contentView.transform = CGAffineTransformIdentity;
@@ -96,7 +104,10 @@ static NSAttributedString *SGRStripTruncatingParagraphStyle(NSAttributedString *
 
 - (void)setAttributedText:(NSAttributedString *)attributedText {
     NSAttributedString *clean = SGRStripTruncatingParagraphStyle(attributedText);
-    if ([clean isEqualToAttributedString:_label1.attributedText]) return;
+    if ((clean == nil && _label1.attributedText == nil) ||
+        (clean && _label1.attributedText && [clean isEqualToAttributedString:_label1.attributedText])) {
+        return;
+    }
     _label1.attributedText = clean;
     _label2.attributedText = clean;
     self.accessibilityLabel = clean.string;
@@ -126,6 +137,7 @@ static NSAttributedString *SGRStripTruncatingParagraphStyle(NSAttributedString *
 }
 
 - (void)setFont:(UIFont *)font {
+    if (_label1.font == font || [_label1.font isEqual:font]) return;
     _label1.font = font;
     _label2.font = font;
     [self resetScrollAnimation];
@@ -145,6 +157,7 @@ static NSAttributedString *SGRStripTruncatingParagraphStyle(NSAttributedString *
     [super layoutSubviews];
     CGSize size = self.bounds.size;
     if (size.width <= 0 || size.height <= 0) return;
+    _maskView.frame = self.bounds;
 
     CGFloat textWidth = ceil([_label1 sizeThatFits:CGSizeMake(CGFLOAT_MAX, size.height)].width);
     CGSize badgeSize = _trailingBadgeImage ? _trailingBadgeImage.size : CGSizeZero;
@@ -174,8 +187,9 @@ static NSAttributedString *SGRStripTruncatingParagraphStyle(NSAttributedString *
         _contentView.transform = CGAffineTransformIdentity;
         [_contentView.layer removeAnimationForKey:kScroll];
         [_fade removeAnimationForKey:@"mask.fade"];
-        self.layer.mask = nil;
+        _maskView.layer.mask = nil;
         _scrolled = 0;
+        _lastWidth = size.width;
         return;
     }
 
@@ -199,8 +213,10 @@ static NSAttributedString *SGRStripTruncatingParagraphStyle(NSAttributedString *
 
     CGFloat leftEdge = MIN(kFade / size.width, 0.15);
     CGFloat rightEdge = MIN(kFade / size.width, 0.15);
-    self.layer.mask = _fade;
-    _fade.frame = self.bounds;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    _maskView.layer.mask = _fade;
+    _fade.frame = _maskView.bounds;
     _fade.colors = @[
         (id)UIColor.clearColor.CGColor,
         (id)UIColor.blackColor.CGColor,
@@ -208,9 +224,14 @@ static NSAttributedString *SGRStripTruncatingParagraphStyle(NSAttributedString *
         (id)UIColor.clearColor.CGColor,
     ];
     _fade.locations = @[@0, @0, @(1.0 - rightEdge), @1.0];
+    [CATransaction commit];
 
-    if (fabs(travel - _scrolled) < 0.5 && [_contentView.layer animationForKey:kScroll]) return;
+    if (fabs(travel - _scrolled) < 0.5 && fabs(size.width - _lastWidth) < 0.5 &&
+        [_contentView.layer animationForKey:kScroll] && [_fade animationForKey:@"mask.fade"]) {
+        return;
+    }
     _scrolled = travel;
+    _lastWidth = size.width;
 
     [_contentView.layer removeAnimationForKey:kScroll];
     [_fade removeAnimationForKey:@"mask.fade"];

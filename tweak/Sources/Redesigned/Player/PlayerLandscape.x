@@ -54,6 +54,7 @@ static BOOL shouldShowLandscapeForCurrentState(void) {
     // Landscape Queue components (Apple Music 844x390 layout)
     UIView *_queueGrabberPill;
     SGRQueueView *_queueView;
+    UIView *_portraitTransportSnapshot;
     SGRGlyphButton *_queueFooterLyricsButton;
     SGRGlyphButton *_queueFooterConnectButton;
     SGRGlyphButton *_queueFooterQueueButton;
@@ -174,6 +175,11 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
     _queueView.currentScrollOffset = SGRPlayerQueueScrollOffset();
     [self.view addSubview:_queueView];
 
+    [self refreshPortraitTransportSnapshot];
+    [self.view bringSubviewToFront:_coverShadow];
+    [self.view bringSubviewToFront:_cover];
+    [self.view bringSubviewToFront:_queueGrabberPill];
+
     // Right-column 3-glyph footer row matching Apple Music Landscape Queue (Lyrics at x=433.5, AirPlay at x=599.0, Queue at x=764.0, y=328.83)
     _queueFooterLyricsButton = [SGRGlyphButton buttonWithSymbol:@"quote.bubble" pointSize:20.0 title:@"Lyrics"];
     _queueFooterLyricsButton.bounds = CGRectMake(0, 0, 44.0, 44.0);
@@ -241,10 +247,23 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
     _queueFooterLyricsButton.alpha = avail ? 1.0 : 0.40;
 }
 
+- (void)refreshPortraitTransportSnapshot {
+    [_portraitTransportSnapshot removeFromSuperview];
+    _portraitTransportSnapshot = nil;
+    if (!_showingQueue) return;
+    UIView *snap = SGRPlayerSnapshotQueueTransport();
+    if (snap) {
+        snap.userInteractionEnabled = NO;
+        _portraitTransportSnapshot = snap;
+        [self.view insertSubview:snap aboveSubview:_queueView];
+    }
+}
+
 - (void)applyModeVisibility {
     BOOL queueMode = _showingQueue;
     _queueGrabberPill.hidden = !queueMode;
     _queueView.hidden = !queueMode;
+    _portraitTransportSnapshot.hidden = !queueMode;
     _queueFooterLyricsButton.hidden = !queueMode;
     _queueFooterConnectButton.hidden = !queueMode;
     _queueFooterQueueButton.hidden = !queueMode;
@@ -298,26 +317,46 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
     if (_showingQueue) {
         if (W <= H) {
             // Portrait transitional geometry (when rotating into or out of Landscape):
-            // Matches the portrait Queue layout 1:1 so the window never scrambles into a 630x630 cover mid-turn.
+            // Matches the portrait Queue layout 1:1 (466pt stage above the transport controls, single morphing cover).
+            CGFloat safeBottom = self.view.safeAreaInsets.bottom > 0.0 ? self.view.safeAreaInsets.bottom : (H >= 800.0 ? 34.0 : 0.0);
+            CGFloat stageBottom = H - (264.0 + safeBottom) + 3.0; // 546.0 pt on 844 pt screen
             _queueView.landscapeMode = NO;
-            _queueGrabberPill.bounds = CGRectMake(0.0, 0.0, 44.0, 4.5);
+            _queueView.frame = CGRectMake(0.0, 54.0, W, MAX(200.0, stageBottom - 54.0));
+            [_queueView layoutIfNeeded];
+
+            CGFloat scrollY = [self currentQueueScrollOffset];
+            CGRect artFrame = CGRectMake(32.0, 80.0 - scrollY, 72.0, 72.0);
+            BOOL npVisible = (scrollY <= 4.0 && CGRectGetMinY(artFrame) >= 76.0 && CGRectGetMaxY(artFrame) <= stageBottom - 8.0);
+            [_queueView setTransitionArtworkHidden:npVisible];
+
+            _queueGrabberPill.bounds = CGRectMake(0.0, 0.0, 60.0, 4.0);
             _queueGrabberPill.center = CGPointMake(W * 0.5, 56.0);
-            _cover.frame = CGRectMake(32.0, 80.0, 72.0, 72.0);
+            _queueGrabberPill.alpha = 0.0;
+            _cover.frame = npVisible ? artFrame : CGRectMake(32.0, 80.0, 72.0, 72.0);
             _cover.layer.cornerRadius = 11.0;
             _coverShadow.frame = _cover.frame;
             _coverShadow.cornerRadius = 11.0;
-            _cover.alpha = 0.0;
+            _cover.alpha = npVisible ? 1.0 : 0.0;
             _coverShadow.alpha = 0.0;
-            _queueView.frame = CGRectMake(0.0, 54.0, W, MAX(200.0, H - 54.0 - 94.0));
-            CGFloat footerY = H - 63.0;
-            _queueFooterLyricsButton.center  = CGPointMake(round(W * (80.0 / 390.0)), footerY);
-            _queueFooterConnectButton.center = CGPointMake(W * 0.5, footerY);
-            _queueFooterQueueButton.center   = CGPointMake(round(W * (310.0 / 390.0)), footerY);
+
+            if (_portraitTransportSnapshot) {
+                _portraitTransportSnapshot.frame = CGRectMake(0.0, 0.0, W, H);
+                _portraitTransportSnapshot.alpha = 1.0;
+            }
+            CGFloat footerY = H - MAX(safeBottom + 32.0, 44.0); // 778.0 pt on 844 pt screen
+            _queueFooterLyricsButton.center  = CGPointMake(round(W * 0.207), footerY);
+            _queueFooterConnectButton.center = CGPointMake(round(W * 0.500), footerY);
+            _queueFooterQueueButton.center   = CGPointMake(round(W * 0.793), footerY);
             return;
         }
 
         // Apple Music Landscape Queue layout (measured 1:1 on 844x390 pt):
         _queueView.landscapeMode = YES;
+        [_queueView setTransitionArtworkHidden:NO];
+        if (_portraitTransportSnapshot) {
+            _portraitTransportSnapshot.alpha = 0.0;
+        }
+        _queueGrabberPill.alpha = 1.0;
         _cover.alpha = 1.0;
         _coverShadow.alpha = 1.0;
         _cover.layer.cornerRadius = 10.0;
@@ -341,6 +380,7 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
         CGFloat queueX = innerLeft - 32.0;
         CGFloat queueW = innerWidth + 64.0;
         _queueView.frame = CGRectMake(queueX, 0.0, queueW, H);
+        [_queueView layoutIfNeeded];
 
         // - Bottom-right 3-glyph footer row at y = H - 61.17 pt (328.83 pt on 390 pt height)
         CGFloat footerCenterY = H - 61.17;
@@ -635,6 +675,9 @@ void SGRPlayerShowLandscape(BOOL show) {
         sg_window.alpha = 1.0;
         sg_window.rootViewController = [SGRLandscapeLyricsController new];
         [sg_window makeKeyAndVisible];
+        [UIView performWithoutAnimation:^{
+            [sg_window layoutIfNeeded];
+        }];
         requestOrientations(scene, UIInterfaceOrientationMaskLandscape);
         if (UIInterfaceOrientationIsLandscape(scene.interfaceOrientation)) reveal(sg_window);
         SGLog(@"redesign player: turning sideways into landscape");
@@ -644,6 +687,7 @@ void SGRPlayerShowLandscape(BOOL show) {
             ? (SGRLandscapeLyricsController *)window.rootViewController : nil;
         if (ctrl && SGRPlayerQueueOpen()) {
             SGRPlayerSetQueueScrollOffset([ctrl currentQueueScrollOffset]);
+            [ctrl refreshPortraitTransportSnapshot];
         }
         if (ctrl) ctrl.closingToPortrait = YES;
         sg_window = nil;
