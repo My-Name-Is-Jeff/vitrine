@@ -1067,7 +1067,10 @@ static NSString *storedKey(NSString *kind) {
         // still on its way goes as it comes.
         if (self.direct && !presented) {
             if (pick) pick();
-            else self->_dropOnArrival = YES;
+            else {
+                self->_dropOnArrival = YES;
+                if (sg_requesting == self) sg_requesting = nil;
+            }
             return;
         }
         if (!presented.presentingViewController) return;
@@ -1318,7 +1321,7 @@ static void openWhenUp(SGRMenuSession *session, UIViewController *sheet, int tri
     UIWindow *in = self.viewIfLoaded.window;
     // The sheet the player's menu asked Spotify for: into the mod's window, unseen.
     SGRMenuSession *requesting = sg_requesting;
-    if (requesting && in != sg_host && CACurrentMediaTime() - sg_requestedAt <= kRequestWindow && ![presented isKindOfClass:UIAlertController.class]) {
+    if (requesting && in != sg_host && CACurrentMediaTime() - sg_requestedAt <= kRequestWindow && sheetIn(presented)) {
         sg_requesting = nil;
         [requesting adoptSheet:presented from:self completion:completion];
         return;

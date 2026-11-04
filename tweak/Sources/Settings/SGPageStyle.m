@@ -318,7 +318,11 @@ UIViewController *SGTopController(void) {
 @end
 
 void SGPresentPopover(UIViewController *panel, UIView *from) {
-    if (!from.window) return;
+    if (!from || !from.window) {
+        UIViewController *top = SGTopController();
+        from = top.view;
+    }
+    if (!from || !from.window) return;
     static SGPopoverStyle *style;
     if (!style) style = [SGPopoverStyle new];
     panel.modalPresentationStyle = UIModalPresentationPopover;
