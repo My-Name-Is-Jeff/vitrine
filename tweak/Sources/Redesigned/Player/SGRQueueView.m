@@ -2182,6 +2182,14 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     _subtitleLabel.text = item.artist ?: @"";
     _explicitView.hidden = !item.isExplicit;
 
+    self.isAccessibilityElement = YES;
+    NSString *trackTitle = item.title.length ? item.title : @"Unknown Track";
+    NSString *trackArtist = item.artist.length ? [NSString stringWithFormat:@", by %@", item.artist] : @"";
+    NSString *explicitTag = item.isExplicit ? @", Explicit" : @"";
+    self.accessibilityLabel = [NSString stringWithFormat:@"%@%@%@", trackTitle, trackArtist, explicitTag];
+    self.accessibilityHint = isHistory ? @"Plays track from history" : @"Plays track. Swipe left to delete or drag handle to reorder.";
+    self.accessibilityTraits = UIAccessibilityTraitButton;
+
     NSURL *artURL = item.artworkURL;
     NSString *urlKey = artURL.absoluteString ?: @"";
     if (urlKey.length) {
@@ -2733,6 +2741,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     [_historyHeaderView addSubview:_historyTitleLabel];
 
     _historyClearButton = [self createSectionClearButtonWithAction:@selector(handleClearHistoryTap)];
+    _historyClearButton.accessibilityLabel = @"Clear History";
     [_historyHeaderView addSubview:_historyClearButton];
 
     // 4. Section 1: Now Playing Card inside top-clipped plane (never peeks above pinned bar)
@@ -2781,6 +2790,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     // Bare white ellipsis button matching Apple Music's Now Playing mini-card; single-tap opens the full system menu
     _npMoreButton = [UIButton buttonWithType:UIButtonTypeCustom];
     _npMoreButton.backgroundColor = UIColor.clearColor;
+    _npMoreButton.accessibilityLabel = @"More options";
     UIImageSymbolConfiguration *moreCfg = [UIImageSymbolConfiguration configurationWithPointSize:18.0 weight:UIImageSymbolWeightBold];
     [_npMoreButton setImage:[[UIImage systemImageNamed:@"ellipsis" withConfiguration:moreCfg] imageWithTintColor:UIColor.whiteColor renderingMode:UIImageRenderingModeAlwaysOriginal] forState:UIControlStateNormal];
     [_npDetailsView addSubview:_npMoreButton];
@@ -2799,6 +2809,9 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
 
     _addSongsRowControl = [[UIControl alloc] initWithFrame:CGRectZero];
     _addSongsRowControl.backgroundColor = UIColor.clearColor;
+    _addSongsRowControl.isAccessibilityElement = YES;
+    _addSongsRowControl.accessibilityLabel = @"Add Songs to Queue";
+    _addSongsRowControl.accessibilityTraits = UIAccessibilityTraitButton;
     [_addSongsRowControl addTarget:self action:@selector(handleAddSongsToQueueTap) forControlEvents:UIControlEventTouchUpInside];
     [_userQueueRowsContainerView addSubview:_addSongsRowControl];
 
@@ -2834,6 +2847,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     [_userQueueHeaderView addSubview:_userQueueTitleLabel];
 
     _userQueueClearButton = [self createSectionClearButtonWithAction:@selector(handleClearUserQueueTap)];
+    _userQueueClearButton.accessibilityLabel = @"Clear Queue";
     [_userQueueHeaderView addSubview:_userQueueClearButton];
 
     // 6. Section 2B: Continue Playing Track Rows Clipping Plane & Sticky Continue Playing Header
@@ -3852,16 +3866,22 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
                 [self stylePill:pill active:shuffling symbol:@"shuffle" isTransitions:NO];
                 pill.showsMenuAsPrimaryAction = NO;
                 pill.menu = nil;
+                pill.accessibilityLabel = @"Shuffle";
+                pill.accessibilityValue = shuffling ? @"On" : @"Off";
                 break;
             case SGRQueuePillRepeat:
                 [self stylePill:pill active:(repeatTrack || repeatContext) symbol:(repeatTrack ? @"repeat.1" : @"repeat") isTransitions:NO];
                 pill.showsMenuAsPrimaryAction = NO;
                 pill.menu = nil;
+                pill.accessibilityLabel = @"Repeat";
+                pill.accessibilityValue = repeatTrack ? @"Repeat One" : (repeatContext ? @"Repeat All" : @"Off");
                 break;
             case SGRQueuePillAutoplay:
                 [self stylePill:pill active:SGFlag(SGRKeyQueueAutoplay, YES) symbol:@"infinity" isTransitions:NO];
                 pill.showsMenuAsPrimaryAction = NO;
                 pill.menu = nil;
+                pill.accessibilityLabel = @"Autoplay";
+                pill.accessibilityValue = SGFlag(SGRKeyQueueAutoplay, YES) ? @"On" : @"Off";
                 break;
             case SGRQueuePillTransitions: {
                 SGTransitionSettings ts = {0};
@@ -3869,11 +3889,13 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
                 [self stylePill:pill active:transActive symbol:nil isTransitions:YES];
                 pill.showsMenuAsPrimaryAction = NO;
                 pill.menu = nil;
+                pill.accessibilityLabel = @"Transitions";
+                pill.accessibilityValue = transActive ? @"On" : @"Off";
                 break;
             }
             case SGRQueuePillSleepTimer: {
                 BOOL timerActive = NO;
-                SGRPlayerSleepTimerSummary(&timerActive);
+                NSString *sleepSummary = SGRPlayerSleepTimerSummary(&timerActive);
                 [self stylePill:pill active:timerActive symbol:(timerActive ? @"moon.zzz.fill" : @"moon.zzz") isTransitions:NO];
                 pill.showsMenuAsPrimaryAction = YES;
                 UIMenu *timerMenu = SGRPlayerSleepTimerMenu(nil, ^{
@@ -3883,6 +3905,8 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
                 NSMutableArray<UIMenuElement *> *menuElements = [NSMutableArray arrayWithArray:timerMenu.children];
                 [menuElements addObject:customMenu];
                 pill.menu = [UIMenu menuWithTitle:@"" children:menuElements];
+                pill.accessibilityLabel = @"Sleep Timer";
+                pill.accessibilityValue = sleepSummary.length ? sleepSummary : (timerActive ? @"On" : @"Off");
                 break;
             }
             case SGRQueuePillSpeedPitch: {
@@ -3892,6 +3916,8 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
                 [self stylePill:pill active:spActive symbol:@"slider.horizontal.3" isTransitions:NO];
                 pill.showsMenuAsPrimaryAction = NO;
                 pill.menu = nil;
+                pill.accessibilityLabel = @"Speed and pitch";
+                pill.accessibilityValue = spActive ? @"Active" : @"Normal";
                 break;
             }
             case SGRQueuePillLyricsSource: {
@@ -3899,12 +3925,15 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
                 [self stylePill:pill active:lsActive symbol:@"quote.bubble" isTransitions:NO];
                 pill.showsMenuAsPrimaryAction = NO;
                 pill.menu = nil;
+                pill.accessibilityLabel = @"Lyrics source";
+                pill.accessibilityValue = lsActive ? @"Custom" : @"Default";
                 break;
             }
             case SGRQueuePillNone:
                 pill.showsMenuAsPrimaryAction = NO;
                 pill.menu = nil;
                 pill.hidden = YES;
+                pill.accessibilityLabel = nil;
                 break;
         }
     }

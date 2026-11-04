@@ -439,7 +439,6 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
 
     BOOL djAvail = SGRPlayerDJAvailable();
     _djControl.hidden = !djAvail;
-    }
 
     _cover.alpha = 1.0;
     _coverShadow.alpha = 1.0;
