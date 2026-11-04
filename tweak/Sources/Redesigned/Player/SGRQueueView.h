@@ -43,5 +43,7 @@
 
 // Configures the queue view for the right-hand column of the full-screen Landscape Queue layout.
 @property (nonatomic, assign) BOOL landscapeMode;
+// Reads or restores the vertical scroll offset (e.g. when rotating between Portrait and Landscape).
+@property (nonatomic, assign) CGFloat currentScrollOffset;
 
 @end

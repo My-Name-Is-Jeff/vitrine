@@ -195,6 +195,9 @@ void SGRPlayerShowLandscape(BOOL show);
 void SGRPlayerLandscapeLinesChanged(void);
 // Notifies the landscape screen when inline Lyrics or Queue mode changes.
 void SGRPlayerLandscapeModeChanged(void);
+// Reads or restores the inline Queue's vertical scroll offset across Portrait <-> Landscape rotation.
+CGFloat SGRPlayerQueueScrollOffset(void);
+void SGRPlayerSetQueueScrollOffset(CGFloat offset);
 
 // The animated artwork follows the lyrics: blurred behind them (PlayerMotion.x).
 void SGRPlayerMotionLyricsChanged(void);

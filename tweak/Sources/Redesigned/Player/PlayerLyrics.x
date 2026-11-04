@@ -534,6 +534,18 @@ BOOL SGRPlayerQueueOpen(void) {
     return sg_inlineMode == SGRPlayerInlineModeQueue;
 }
 
+CGFloat SGRPlayerQueueScrollOffset(void) {
+    if (!sg_host) return 0.0;
+    SGRPlayerLyricsOverlay *overlay = objc_getAssociatedObject(sg_host, &kOverlayKey);
+    return overlay.existingQueue ? overlay.existingQueue.currentScrollOffset : 0.0;
+}
+
+void SGRPlayerSetQueueScrollOffset(CGFloat offset) {
+    if (!sg_host) return;
+    SGRPlayerLyricsOverlay *overlay = objc_getAssociatedObject(sg_host, &kOverlayKey);
+    if (overlay.existingQueue) overlay.existingQueue.currentScrollOffset = offset;
+}
+
 // Puts the overlay's own views where the measurements say, without animating. The thumbnail is laid out
 // at the size and place Spotify draws its cover at and moved by its transform alone, so a pass that
 // runs while it is up leaves it exactly where the eye has it: the two are worked out from one

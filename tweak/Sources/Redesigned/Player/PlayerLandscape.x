@@ -35,8 +35,10 @@ static BOOL shouldShowLandscapeForCurrentState(void) {
 #pragma mark - the screen
 
 @interface SGRLandscapeLyricsController : UIViewController <SGPlayerStateObserver>
+@property (nonatomic, assign) BOOL closingToPortrait;
 - (void)updateMode;
 - (void)updateBare:(BOOL)mayGoBare;
+- (CGFloat)currentQueueScrollOffset;
 @end
 
 @implementation SGRLandscapeLyricsController {
@@ -169,6 +171,7 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
     _queueView = [[SGRQueueView alloc] initWithFrame:CGRectZero];
     _queueView.landscapeMode = YES;
     [_queueView prepareForOpenTransition];
+    _queueView.currentScrollOffset = SGRPlayerQueueScrollOffset();
     [self.view addSubview:_queueView];
 
     // Right-column 3-glyph footer row matching Apple Music Landscape Queue (Lyrics at x=433.5, AirPlay at x=599.0, Queue at x=764.0, y=328.83)
@@ -232,6 +235,12 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
     [_rest invalidate];
 }
 
+- (void)syncQueueFooterLyricsButtonState {
+    BOOL avail = SGRPlayerLyricsAvailable();
+    _queueFooterLyricsButton.enabled = avail;
+    _queueFooterLyricsButton.alpha = avail ? 1.0 : 0.40;
+}
+
 - (void)applyModeVisibility {
     BOOL queueMode = _showingQueue;
     _queueGrabberPill.hidden = !queueMode;
@@ -239,8 +248,7 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
     _queueFooterLyricsButton.hidden = !queueMode;
     _queueFooterConnectButton.hidden = !queueMode;
     _queueFooterQueueButton.hidden = !queueMode;
-    _queueFooterLyricsButton.enabled = SGRPlayerLyricsAvailable();
-    _queueFooterLyricsButton.alpha = SGRPlayerLyricsAvailable() ? 1.0 : 0.40;
+    [self syncQueueFooterLyricsButtonState];
 
     _title.hidden = queueMode;
     _artist.hidden = queueMode;
@@ -260,8 +268,7 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
     }
     BOOL wantQueue = SGRPlayerQueueOpen() && SGEnabled(SGRKeyQueueLandscape);
     if (wantQueue == _showingQueue) {
-        _queueFooterLyricsButton.enabled = SGRPlayerLyricsAvailable();
-        _queueFooterLyricsButton.alpha = SGRPlayerLyricsAvailable() ? 1.0 : 0.40;
+        [self syncQueueFooterLyricsButtonState];
         return;
     }
     _showingQueue = wantQueue;
@@ -278,6 +285,10 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
     [self.view setNeedsLayout];
 }
 
+- (CGFloat)currentQueueScrollOffset {
+    return _queueView ? _queueView.currentScrollOffset : 0.0;
+}
+
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
     CGSize boundsSize = self.view.bounds.size;
@@ -285,7 +296,33 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
     CGFloat H = boundsSize.height;
 
     if (_showingQueue) {
+        if (W <= H) {
+            // Portrait transitional geometry (when rotating into or out of Landscape):
+            // Matches the portrait Queue layout 1:1 so the window never scrambles into a 630x630 cover mid-turn.
+            _queueView.landscapeMode = NO;
+            _queueGrabberPill.bounds = CGRectMake(0.0, 0.0, 44.0, 4.5);
+            _queueGrabberPill.center = CGPointMake(W * 0.5, 56.0);
+            _cover.frame = CGRectMake(32.0, 80.0, 72.0, 72.0);
+            _cover.layer.cornerRadius = 11.0;
+            _coverShadow.frame = _cover.frame;
+            _coverShadow.cornerRadius = 11.0;
+            _cover.alpha = 0.0;
+            _coverShadow.alpha = 0.0;
+            _queueView.frame = CGRectMake(0.0, 54.0, W, MAX(200.0, H - 54.0 - 94.0));
+            CGFloat footerY = H - 63.0;
+            _queueFooterLyricsButton.center  = CGPointMake(round(W * (80.0 / 390.0)), footerY);
+            _queueFooterConnectButton.center = CGPointMake(W * 0.5, footerY);
+            _queueFooterQueueButton.center   = CGPointMake(round(W * (310.0 / 390.0)), footerY);
+            return;
+        }
+
         // Apple Music Landscape Queue layout (measured 1:1 on 844x390 pt):
+        _queueView.landscapeMode = YES;
+        _cover.alpha = 1.0;
+        _coverShadow.alpha = 1.0;
+        _cover.layer.cornerRadius = 10.0;
+        _coverShadow.cornerRadius = 10.0;
+
         // - Top grabber pill: 60x4 pt at cx = W * 0.5 (422.0 pt), y = 15..19 pt (center.y = 17.0 pt)
         _queueGrabberPill.bounds = CGRectMake(0.0, 0.0, 60.0, 4.0);
         _queueGrabberPill.center = CGPointMake(W * 0.5, 17.0);
@@ -313,6 +350,8 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
         return;
     }
 
+    _cover.alpha = 1.0;
+    _coverShadow.alpha = 1.0;
     CGRect safe = UIEdgeInsetsInsetRect(self.view.bounds, self.view.safeAreaInsets);
     CGFloat column = round(safe.size.width * kColumnShare);
     CGFloat left = CGRectGetMinX(safe) + kSide;
@@ -353,14 +392,32 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
     if (!_showingQueue) [self restartRest];
 }
 
-// The window comes up clear and fades in as the scene turns, so the screen is never seen laid out upright.
+// Keeps the landscape window opaque throughout the 90-degree turn in both directions so the stationary
+// portrait player underneath is never seen cross-fading at a different angle mid-rotation.
 - (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator {
     [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
     UIWindow *window = self.view.window;
-    if (!window || window != sg_window || size.width <= size.height) return;
-    [coordinator animateAlongsideTransition:^(id<UIViewControllerTransitionCoordinatorContext> context) {
-        window.alpha = 1;
-    } completion:nil];
+    if (!window) return;
+    if (size.width > size.height && window == sg_window) {
+        window.alpha = 1.0;
+        [coordinator animateAlongsideTransition:^(id<UIViewControllerTransitionCoordinatorContext> context) {
+            window.alpha = 1.0;
+            [self.view setNeedsLayout];
+            [self.view layoutIfNeeded];
+        } completion:nil];
+    } else if (size.width < size.height && self.closingToPortrait) {
+        [coordinator animateAlongsideTransition:^(id<UIViewControllerTransitionCoordinatorContext> context) {
+            window.alpha = 1.0;
+            [self.view setNeedsLayout];
+            [self.view layoutIfNeeded];
+        } completion:^(id<UIViewControllerTransitionCoordinatorContext> context) {
+            [UIView animateWithDuration:0.10 delay:0 options:UIViewAnimationOptionCurveEaseOut animations:^{
+                window.alpha = 0.0;
+            } completion:^(BOOL finished) {
+                window.hidden = YES;
+            }];
+        }];
+    }
 }
 
 - (void)artworkChanged {
@@ -410,8 +467,7 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
     if (!state) return;
     if (_showingQueue) {
         [_queueView updateWithState:state];
-        _queueFooterLyricsButton.enabled = SGRPlayerLyricsAvailable();
-        _queueFooterLyricsButton.alpha = SGRPlayerLyricsAvailable() ? 1.0 : 0.40;
+        [self syncQueueFooterLyricsButtonState];
     } else {
         [self updateBare:NO];
     }
@@ -576,7 +632,7 @@ void SGRPlayerShowLandscape(BOOL show) {
         sg_window.windowLevel = UIWindowLevelNormal + 1;
         // The window is the mod's own, so what it presents (Sing's alerts, a line's meanings) is dark too.
         sg_window.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
-        sg_window.alpha = 0;
+        sg_window.alpha = 1.0;
         sg_window.rootViewController = [SGRLandscapeLyricsController new];
         [sg_window makeKeyAndVisible];
         requestOrientations(scene, UIInterfaceOrientationMaskLandscape);
@@ -584,16 +640,21 @@ void SGRPlayerShowLandscape(BOOL show) {
         SGLog(@"redesign player: turning sideways into landscape");
     } else if (!show && sg_window) {
         UIWindow *window = sg_window;
+        SGRLandscapeLyricsController *ctrl = [window.rootViewController isKindOfClass:SGRLandscapeLyricsController.class]
+            ? (SGRLandscapeLyricsController *)window.rootViewController : nil;
+        if (ctrl && SGRPlayerQueueOpen()) {
+            SGRPlayerSetQueueScrollOffset([ctrl currentQueueScrollOffset]);
+        }
+        if (ctrl) ctrl.closingToPortrait = YES;
         sg_window = nil;
         window.userInteractionEnabled = NO;
         // A sheet up over the lines (a line's meanings) goes with them, or it would be left on a hidden window.
         [window.rootViewController dismissViewControllerAnimated:NO completion:nil];
+        BOOL wasLandscape = (window.bounds.size.width > window.bounds.size.height);
         if (@available(iOS 16.0, *)) [window.rootViewController setNeedsUpdateOfSupportedInterfaceOrientations];
         requestOrientations(scene, UIInterfaceOrientationMaskPortrait);
-        // Faded out as the scene turns back; the player is key again once it is gone, unless the lines came
-        // back meanwhile.
-        SGRAnimate(SGRMotionFade, ^{ window.alpha = 0; }, ^(BOOL finished) {
-            window.hidden = YES;
+
+        void (^restoreKeyWindow)(void) = ^{
             if (sg_window) return;
             for (UIWindow *other in scene.windows) {
                 if (other != window && !other.hidden && other.windowLevel == UIWindowLevelNormal) {
@@ -601,7 +662,27 @@ void SGRPlayerShowLandscape(BOOL show) {
                     break;
                 }
             }
-        });
+        };
+
+        if (wasLandscape) {
+            // Keep window opaque while viewWillTransitionToSize: rotates it back to Portrait so the two windows
+            // never cross-fade at 45 degrees; safety timer ensures cleanup even if UIKit skips the transition.
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.42 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                if (!window.hidden) {
+                    [UIView animateWithDuration:0.10 animations:^{ window.alpha = 0.0; } completion:^(BOOL finished) {
+                        window.hidden = YES;
+                        restoreKeyWindow();
+                    }];
+                } else {
+                    restoreKeyWindow();
+                }
+            });
+        } else {
+            SGRAnimate(SGRMotionFade, ^{ window.alpha = 0; }, ^(BOOL finished) {
+                window.hidden = YES;
+                restoreKeyWindow();
+            });
+        }
         SGLog(@"redesign player: turning back to portrait");
     }
 }
