@@ -210,6 +210,11 @@ CGFloat SGRPlayerQueueScrollOffset(void);
 void SGRPlayerSetQueueScrollOffset(CGFloat offset);
 // Snapshots the portrait Queue bottom transport chrome (progress bar, playback controls, volume slider) for rotation.
 UIView *SGRPlayerSnapshotQueueTransport(void);
+// AI DJ availability and activation across portrait and landscape screens.
+BOOL SGRPlayerDJAvailable(void);
+void SGRPlayerTriggerDJ(void);
+UIView *SGRPlayerFooterRow(void);
+UIView *SGRPlayerHost(void);
 
 // The animated artwork follows the lyrics: blurred behind them (PlayerMotion.x).
 void SGRPlayerMotionLyricsChanged(void);

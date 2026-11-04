@@ -58,7 +58,10 @@ static BOOL shouldShowLandscapeForCurrentState(void) {
     SGRGlyphButton *_queueFooterLyricsButton;
     SGRGlyphButton *_queueFooterConnectButton;
     SGRGlyphButton *_queueFooterQueueButton;
+    SGRGlyphButton *_queueFooterDJButton;
+    UIButton *_djControl;
     BOOL _showingQueue;
+    BOOL _queueNeedsInitialOffset;
 
     NSTimer *_rest;
     UITapGestureRecognizer *_hide;   // only while the controls are up
@@ -144,9 +147,12 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
     [self.view addSubview:_close];
 
     _play = controlButton(@"pause.fill", 30, @"Pause", @selector(togglePlay), self);
+    _djControl = controlButton(@"waveform", 20, @"DJ", @selector(triggerDJ), self);
+    _djControl.tintColor = SGRPrimary();
+    _djControl.hidden = YES;
     _controls = [[UIStackView alloc] initWithArrangedSubviews:@[
         controlButton(@"backward.fill", 24, @"Previous track", @selector(previous), self), _play,
-        controlButton(@"forward.fill", 24, @"Next track", @selector(next), self),
+        controlButton(@"forward.fill", 24, @"Next track", @selector(next), self), _djControl,
     ]];
     _controls.distribution = UIStackViewDistributionEqualSpacing;
     _controls.alignment = UIStackViewAlignmentCenter;
@@ -217,6 +223,16 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
     };
     [self.view addSubview:_queueFooterQueueButton];
 
+    _queueFooterDJButton = [SGRGlyphButton buttonWithSymbol:@"waveform" pointSize:20.0 title:@"DJ"];
+    _queueFooterDJButton.bounds = CGRectMake(0, 0, 44.0, 44.0);
+    _queueFooterDJButton.glyph.tintColor = SGRPrimary();
+    _queueFooterDJButton.onTap = ^{
+        SGRPlayerTriggerDJ();
+    };
+    [self.view addSubview:_queueFooterDJButton];
+
+    _queueNeedsInitialOffset = YES;
+
     _hide = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(rest)];
     [self.view addGestureRecognizer:_hide];
     _shield = [[UIView alloc] initWithFrame:self.view.bounds];
@@ -261,18 +277,21 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
 
 - (void)applyModeVisibility {
     BOOL queueMode = _showingQueue;
+    BOOL djAvail = SGRPlayerDJAvailable();
     _queueGrabberPill.hidden = !queueMode;
     _queueView.hidden = !queueMode;
     _portraitTransportSnapshot.hidden = !queueMode;
     _queueFooterLyricsButton.hidden = !queueMode;
     _queueFooterConnectButton.hidden = !queueMode;
     _queueFooterQueueButton.hidden = !queueMode;
+    _queueFooterDJButton.hidden = !queueMode || !djAvail;
     [self syncQueueFooterLyricsButtonState];
 
     _title.hidden = queueMode;
     _artist.hidden = queueMode;
     _close.hidden = queueMode;
     _controls.hidden = queueMode;
+    _djControl.hidden = queueMode || !djAvail;
     _stage.hidden = queueMode || _bare;
     _hide.enabled = !queueMode && !_shield.superview;
     if (queueMode && _shield.superview) [_shield removeFromSuperview];
@@ -292,9 +311,12 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
     }
     _showingQueue = wantQueue;
     if (_showingQueue) {
+        CGFloat offset = SGRPlayerQueueScrollOffset();
         [_rest invalidate];
         _rest = nil;
         [_queueView prepareForOpenTransition];
+        _queueView.currentScrollOffset = offset;
+        _queueNeedsInitialOffset = YES;
     }
     [self applyModeVisibility];
     if (!_showingQueue) {
@@ -344,9 +366,18 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
                 _portraitTransportSnapshot.alpha = 1.0;
             }
             CGFloat footerY = H - MAX(safeBottom + 32.0, 44.0); // 778.0 pt on 844 pt screen
-            _queueFooterLyricsButton.center  = CGPointMake(round(W * 0.207), footerY);
-            _queueFooterConnectButton.center = CGPointMake(round(W * 0.500), footerY);
-            _queueFooterQueueButton.center   = CGPointMake(round(W * 0.793), footerY);
+            BOOL djAvail = SGRPlayerDJAvailable();
+            _queueFooterDJButton.hidden = !djAvail;
+            if (djAvail) {
+                _queueFooterLyricsButton.center  = CGPointMake(round(W * 0.20), footerY);
+                _queueFooterConnectButton.center = CGPointMake(round(W * 0.40), footerY);
+                _queueFooterQueueButton.center   = CGPointMake(round(W * 0.60), footerY);
+                _queueFooterDJButton.center      = CGPointMake(round(W * 0.80), footerY);
+            } else {
+                _queueFooterLyricsButton.center  = CGPointMake(round(W * 0.207), footerY);
+                _queueFooterConnectButton.center = CGPointMake(round(W * 0.500), footerY);
+                _queueFooterQueueButton.center   = CGPointMake(round(W * 0.793), footerY);
+            }
             return;
         }
 
@@ -381,13 +412,33 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
         CGFloat queueW = innerWidth + 64.0;
         _queueView.frame = CGRectMake(queueX, 0.0, queueW, H);
         [_queueView layoutIfNeeded];
+        if (_queueNeedsInitialOffset) {
+            _queueNeedsInitialOffset = NO;
+            _queueView.currentScrollOffset = SGRPlayerQueueScrollOffset();
+        }
 
-        // - Bottom-right 3-glyph footer row at y = H - 61.17 pt (328.83 pt on 390 pt height)
+        // - Bottom-right 3- or 4-glyph footer row at y = H - 61.17 pt (328.83 pt on 390 pt height)
         CGFloat footerCenterY = H - 61.17;
-        _queueFooterLyricsButton.center  = CGPointMake(innerLeft + 18.5, footerCenterY);
-        _queueFooterConnectButton.center = CGPointMake(innerLeft + innerWidth * 0.5, footerCenterY);
-        _queueFooterQueueButton.center   = CGPointMake(innerLeft + innerWidth - 19.0, footerCenterY);
+        BOOL djAvail = SGRPlayerDJAvailable();
+        _queueFooterDJButton.hidden = !djAvail;
+        if (djAvail) {
+            CGFloat b0 = innerLeft + 18.5;
+            CGFloat b3 = innerLeft + innerWidth - 19.0;
+            CGFloat step = (b3 - b0) / 3.0;
+            _queueFooterLyricsButton.center  = CGPointMake(round(b0), footerCenterY);
+            _queueFooterConnectButton.center = CGPointMake(round(b0 + step), footerCenterY);
+            _queueFooterQueueButton.center   = CGPointMake(round(b0 + 2.0 * step), footerCenterY);
+            _queueFooterDJButton.center      = CGPointMake(round(b3), footerCenterY);
+        } else {
+            _queueFooterLyricsButton.center  = CGPointMake(innerLeft + 18.5, footerCenterY);
+            _queueFooterConnectButton.center = CGPointMake(innerLeft + innerWidth * 0.5, footerCenterY);
+            _queueFooterQueueButton.center   = CGPointMake(innerLeft + innerWidth - 19.0, footerCenterY);
+        }
         return;
+    }
+
+    BOOL djAvail = SGRPlayerDJAvailable();
+    _djControl.hidden = !djAvail;
     }
 
     _cover.alpha = 1.0;
@@ -508,8 +559,10 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
     if (_showingQueue) {
         [_queueView updateWithState:state];
         [self syncQueueFooterLyricsButtonState];
+        [self applyModeVisibility];
     } else {
         [self updateBare:NO];
+        [self applyModeVisibility];
     }
     _title.text = state.track.trackTitle;
     _artist.text = state.track.artistName;
@@ -546,6 +599,11 @@ static UIButton *controlButton(NSString *symbol, CGFloat size, NSString *label, 
 
 - (void)next {
     [self.player skipToNextTrackWithOptions:nil];
+    [self restartRest];
+}
+
+- (void)triggerDJ {
+    SGRPlayerTriggerDJ();
     [self restartRest];
 }
 

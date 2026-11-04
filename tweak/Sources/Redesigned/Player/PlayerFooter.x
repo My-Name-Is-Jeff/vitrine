@@ -205,6 +205,10 @@ UIImage *SGRPlayerQueueActiveIcon(CGSize size) {
     return SGRQueueActiveKnockoutIconImage(size);
 }
 
+UIView *SGRPlayerFooterRow(void) {
+    return sg_footerRow;
+}
+
 void SGRPlayerTriggerConnect(void) {
     UIView *row = sg_footerRow;
     if (!row) return;

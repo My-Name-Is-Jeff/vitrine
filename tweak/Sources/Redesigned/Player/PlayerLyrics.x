@@ -546,6 +546,10 @@ void SGRPlayerSetQueueScrollOffset(CGFloat offset) {
     if (overlay.existingQueue) overlay.existingQueue.currentScrollOffset = offset;
 }
 
+UIView *SGRPlayerHost(void) {
+    return sg_host;
+}
+
 UIView *SGRPlayerSnapshotQueueTransport(void) {
     UIView *host = sg_host;
     if (!host || host.bounds.size.height < kLivingHeight) return nil;

@@ -2550,6 +2550,8 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
     CGFloat _dragStartOffsetY;
     BOOL _clampAtZeroOnDragOrDecel;
     BOOL _didSetInitialOffset;
+    CGFloat _pendingScrollOffset;
+    BOOL _hasPendingScrollOffset;
 
     // Drag-to-Reorder & Row Delete State
     SGRQueueRowView *_draggingRow;
@@ -2947,16 +2949,22 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
 - (void)prepareForOpenTransition {
     [[SGRQueueSession shared] ensureResolvedIfNeeded];
     _clampAtZeroOnDragOrDecel = NO;
-    _didSetInitialOffset = YES;
+    _pendingScrollOffset = 0.0;
+    _hasPendingScrollOffset = YES;
     [self syncFromSessionAnimatedReorder:NO forceRebuild:YES];
     [self setNeedsLayout];
     [self layoutIfNeeded];
-    _scrollView.contentInset = UIEdgeInsetsMake([self historyTotalHeight], 0.0, 36.0, 0.0);
-    _scrollView.contentOffset = CGPointZero;
-    [self updateStickyHeadersAndClipping];
+    if (self.bounds.size.width >= 100.0 && self.bounds.size.height >= 100.0) {
+        _didSetInitialOffset = YES;
+        _scrollView.contentInset = UIEdgeInsetsMake([self historyTotalHeight], 0.0, 36.0, 0.0);
+        _scrollView.contentOffset = CGPointZero;
+        _hasPendingScrollOffset = NO;
+        [self updateStickyHeadersAndClipping];
+    }
 }
 
 - (CGFloat)currentScrollOffset {
+    if (_hasPendingScrollOffset) return _pendingScrollOffset;
     if (!_scrollView) return 0.0;
     CGFloat y = _scrollView.contentOffset.y;
     if (y < -2.0 && [self historyTotalHeight] > 0.0) {
@@ -2966,7 +2974,12 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
 }
 
 - (void)setCurrentScrollOffset:(CGFloat)currentScrollOffset {
+    _pendingScrollOffset = currentScrollOffset;
+    _hasPendingScrollOffset = YES;
     if (!_scrollView) return;
+    if (self.bounds.size.width < 100.0 || self.bounds.size.height < 100.0 || _scrollView.contentSize.height <= 0.0) {
+        return;
+    }
     CGFloat histH = [self historyTotalHeight];
     _scrollView.contentInset = UIEdgeInsetsMake(histH, 0.0, 36.0, 0.0);
     CGFloat targetY = currentScrollOffset;
@@ -2979,6 +2992,7 @@ static UIImage *SGRRenderPillCapsuleImage(CGSize size, BOOL active, NSString *sy
         : MAX(0.0, targetY);
     CGFloat clampedY = MAX(minY, MIN(maxY, targetY));
     _scrollView.contentOffset = CGPointMake(0.0, clampedY);
+    _hasPendingScrollOffset = NO;
     [self updateStickyHeadersAndClipping];
 }
 
@@ -3405,16 +3419,11 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     ];
     [CATransaction commit];
 
+    CGFloat targetScrollOffset = _hasPendingScrollOffset ? _pendingScrollOffset : [self currentScrollOffset];
+    BOOL hadPending = _hasPendingScrollOffset;
+
     _scrollView.frame = _viewportClipView.bounds;
     _scrollView.verticalScrollIndicatorInsets = UIEdgeInsetsMake(0.0, 0.0, 0.0, _landscapeMode ? 18.0 : 0.0);
-
-    if (!_didSetInitialOffset) {
-        _didSetInitialOffset = YES;
-        _scrollView.contentInset = UIEdgeInsetsMake([self historyTotalHeight], 0.0, 36.0, 0.0);
-        _scrollView.contentOffset = CGPointZero;
-    } else {
-        [self applyHistoryInsetPreservingOffset];
-    }
 
     // Section 1: Now Playing Card subviews
     _npArtView.hidden = _landscapeMode;
@@ -3524,6 +3533,14 @@ static UIImage *SGRNowPlayingSaveImage(BOOL isSaved) {
     }
     CGFloat minScrollContentH = MAX(viewportH + 92.0, totalBottom);
     _scrollView.contentSize = CGSizeMake(w, minScrollContentH);
+    CGFloat histH = [self historyTotalHeight];
+    _scrollView.contentInset = UIEdgeInsetsMake(histH, 0.0, 36.0, 0.0);
+
+    if (hadPending || !_didSetInitialOffset || (!_scrollView.isTracking && !_scrollView.isDecelerating)) {
+        _didSetInitialOffset = YES;
+        _hasPendingScrollOffset = NO;
+        [self setCurrentScrollOffset:targetScrollOffset];
+    }
 
     if (_clearPromptOverlay && !_clearPromptOverlay.hidden) {
         [self layoutClearPromptOverlay];
