@@ -7,6 +7,8 @@
 #define SGRKeyNavbar @"spotifyglass.redesign.navbar"
 // Icons only on the glass bar. Off unless set; applies as soon as the bar lays out again.
 #define SGRKeyNavbarHideLabels @"spotifyglass.redesign.navbar.hideLabels"
+// Auto-split trailing tab (Search) on minimize to sandwich the mini player card. On unless set off.
+#define SGRKeyNavbarAutoSplit @"spotifyglass.redesign.navbar.autoSplit"
 
 extern NSString *const SGRNavbarID;      // NSString, the entry's identity
 extern NSString *const SGRNavbarTitle;   // NSString, the name in the settings list and under the icon

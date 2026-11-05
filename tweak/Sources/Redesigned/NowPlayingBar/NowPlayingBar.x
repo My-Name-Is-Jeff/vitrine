@@ -29,9 +29,14 @@
 #import "NowPlayingBar.h"
 #import "Redesigned/Navbar/Navbar.h"
 
+static inline BOOL SGRIsBarCompact(void) {
+    return SGEnabled(SGRKeyBarCompact);
+}
+
 static const CGFloat kCardRadius = 24;
 // The strip's pane is this much smaller than the strip at each end, so a gap parts it from the card's glass.
 static const CGFloat kStripInset = 4;
+static NSString *const kUnitId = @"Components.UI.PageInformationUnitNowPlayingBar";
 static char kGlassKey, kStripGlassKey;
 static __weak UIView *sg_card;
 static CGRect sg_stripFrame;
@@ -142,23 +147,53 @@ static void roundView(UIView *view, CGFloat radius) {
 }
 
 static void restyleCardContent(UIView *card) {
+    BOOL compact = SGRIsBarCompact();
+    CGFloat artSize = compact ? 34 : 40;
+    CGFloat cardH = compact ? 48 : card.bounds.size.height;
+    CGFloat midY = cardH / 2;
+
     SGForEachView(card, ^(UIView *v) {
         if (inStrip(v, card)) return;
         CGSize size = v.bounds.size;
-        BOOL square = size.width >= 36 && size.width <= 48 && fabs(size.width - size.height) < 1;
-        if (!square || v.layer.cornerRadius <= 0) return;
-        if (v.layer.cornerRadius >= size.width / 2) {
-            if (!sg_cardArtwork) sg_cardArtwork = v;
-            return;
-        }
+        BOOL square = size.width >= 32 && size.width <= 48 && fabs(size.width - size.height) < 1;
+        if (!square) return;
+
         UIView *outer = v;
         for (UIView *u = v; u && u != card && CGSizeEqualToSize(u.bounds.size, size); u = u.superview) {
-            roundView(u, size.width / 2);
+            if (compact) {
+                u.bounds = CGRectMake(0, 0, artSize, artSize);
+                u.center = CGPointMake(25, midY);
+            }
+            roundView(u, artSize / 2);
             u.clipsToBounds = YES;
             outer = u;
         }
         sg_cardArtwork = outer;
     });
+
+    if (compact) {
+        SGForEachView(card, ^(UIView *v) {
+            if (v == card || v == sg_progress || inStrip(v, card)) return;
+            BOOL isControl = [v isKindOfClass:UIButton.class] || [v isKindOfClass:UIControl.class] || [NSStringFromClass(v.class) containsString:@"Button"];
+            BOOL isStack = [v isKindOfClass:UIStackView.class];
+            BOOL isUnit = [v.accessibilityIdentifier isEqualToString:kUnitId];
+            BOOL isArt = v == sg_cardArtwork;
+            if (isControl || isStack || isUnit || isArt) {
+                CGFloat curY = v.center.y;
+                if (curY > 0) {
+                    CGFloat dy = midY - curY;
+                    if (fabs(dy) > 0.5) v.transform = CGAffineTransformMakeTranslation(0, dy);
+                }
+            }
+        });
+    } else {
+        SGForEachView(card, ^(UIView *v) {
+            if (v != card && !CGAffineTransformIsIdentity(v.transform)) {
+                v.transform = CGAffineTransformIdentity;
+            }
+        });
+    }
+
     __block UIView *progress = sg_progress;
     if (![progress isDescendantOfView:card]) {
         progress = nil;
@@ -169,7 +204,7 @@ static void restyleCardContent(UIView *card) {
         sg_progress = progress;
     }
     // Under the text, 226pt on a full width card, shorter on the one in the minimized tab bar.
-    CGRect target = CGRectMake(52, card.bounds.size.height - 6, MAX(0, card.bounds.size.width - 160), 2);
+    CGRect target = CGRectMake(52, cardH - (compact ? 4 : 6), MAX(0, card.bounds.size.width - 160), 2);
     if (progress && !CGRectEqualToRect(progress.frame, target)) {
         progress.frame = target;
         [progress setNeedsLayout];
@@ -284,7 +319,6 @@ static void tuckExtras(UIView *bar, BOOL tuck) {
 // device line under it; the title alone in the minimized row. Each swipe page holds its own track's labels,
 // so the text is read from them and drawn over them page by page. The page reads its own VoiceOver label.
 static NSString *const kPageId = @"now-playing-bar-page";
-static NSString *const kUnitId = @"Components.UI.PageInformationUnitNowPlayingBar";
 static NSString *const kDeviceLineId = @"now-plaging-bar-connect-content";   // Spotify's spelling
 static NSString *const kBullet = @" • ";
 static char kTextKey;
@@ -313,14 +347,23 @@ static char kTextKey;
 - (void)layoutSubviews {
     [super layoutSubviews];
     CGSize size = self.bounds.size;
+    BOOL compact = SGRIsBarCompact();
+    if (compact) {
+        _title.font = [UIFont systemFontOfSize:13.5 weight:UIFontWeightSemibold];
+        _artists.font = [UIFont systemFontOfSize:11.5 weight:UIFontWeightRegular];
+    } else {
+        _title.font = SGRFont(UIFontTextStyleSubheadline, UIFontWeightSemibold, UIContentSizeCategoryLarge);
+        _artists.font = SGRFont(UIFontTextStyleFootnote, UIFontWeightRegular, UIContentSizeCategoryLarge);
+    }
+    CGFloat targetH = compact ? 48.0 : size.height;
     CGFloat titleHeight = ceil(_title.font.lineHeight), artistsHeight = ceil(_artists.font.lineHeight);
-    BOOL two = !_inRow && _artists.text.length;
-    // The lines share 2pt of their leading, set as close as the Music app sets its card's.
-    CGFloat shared = 2;
-    CGFloat top = round((size.height - titleHeight - (two ? artistsHeight - shared : 0)) / 2);
+    BOOL two = _artists.text.length > 0;
+    // The lines share 3pt of their leading in compact, 2pt normally, matching Apple Music's card leading.
+    CGFloat shared = compact ? 3.0 : 2.0;
+    CGFloat top = round((targetH - titleHeight - (two ? artistsHeight - shared : 0)) / 2.0);
     _title.frame = CGRectMake(0, top, size.width, titleHeight);
     _artists.frame = CGRectMake(0, top + titleHeight - shared, size.width, artistsHeight);
-    _artists.alpha = two ? 1 : 0;
+    _artists.alpha = two ? 1.0 : 0.0;
 }
 @end
 
@@ -550,6 +593,11 @@ static CGRect trackFrame(UIView *bar, UIView *card, UIView *strip, CGRect stripF
         frame.size.height -= cut;
         if (*stripAbove) frame.origin.y += cut;
     }
+    if (SGRIsBarCompact() && frame.size.height > 50) {
+        CGFloat diff = frame.size.height - 48;
+        frame.size.height = 48;
+        frame.origin.y += diff;
+    }
     frame.size.height = MIN(frame.size.height, 80);
     return frame.size.height < 30 || frame.size.width < 100 ? CGRectNull : frame;
 }
@@ -575,6 +623,17 @@ static void styleNowPlayingBar(UIViewController *container) {
     UIView *marker = trackMarker(bar);
     UIView *card = sg_card;
     if (!card || !isGoodCard(card, bar, marker) || stripIn(card)) card = sg_card = chooseCard(bar, marker);
+
+    if (card && SGRIsBarCompact()) {
+        CGRect cFrame = card.frame;
+        if (cFrame.size.height > 50) {
+            CGFloat diff = cFrame.size.height - 48;
+            cFrame.size.height = 48;
+            cFrame.origin.y += diff;
+            card.frame = cFrame;
+            card.clipsToBounds = YES;
+        }
+    }
 
     // The strip before the bar's paint goes, so the log says what it was made of.
     UIView *strip = sg_strip = stripIn(bar);

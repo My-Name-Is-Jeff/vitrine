@@ -4,6 +4,7 @@
 #import "Navbar.h"
 #import "Shared/Navigation/AddTabSheet.h"
 #import "Redesigned/Kit/SGRTokens.h"
+#import "Redesigned/NowPlayingBar/NowPlayingBar.h"
 
 // What "Add a tab" offers: URIs Spotify's own router resolves to a page of its own, each with the
 // name of the SPTEncoreIcon class method that draws its glyph. Playlists was spotify:collection:playlists
@@ -145,8 +146,8 @@ typedef NS_ENUM(NSInteger, SGRSplitSection) {
     [super viewDidLoad];
     self.tableView.editing = YES;
     self.tableView.allowsSelectionDuringEditing = YES;
-    _intro = SGNote(@"Tabs here sit apart from the others at the right end of the bar, the way the Music "
-                    "app sets Search apart. They are not on the bar's own list.");
+    _intro = SGNote(@"Tabs here sit apart from the others at the right end of the bar, as on iPadOS. "
+                    "On iPhone, leaving tabs together in the main list gives Apple Music's unified floating bar.");
     self.tableView.tableHeaderView = _intro;
     [self load];
 }
@@ -529,6 +530,7 @@ static const CGFloat kPictureHeight = 76;
 typedef NS_ENUM(NSInteger, SGRNavbarSection) {
     SGRNavbarSectionSwitch,
     SGRNavbarSectionLabels,
+    SGRNavbarSectionCompact,
     SGRNavbarSectionTabs,
     SGRNavbarSectionLinks,   // Add a tab, Use Spotify's tabs
     SGRNavbarSectionSplit,
@@ -652,11 +654,13 @@ typedef NS_ENUM(NSInteger, SGRNavbarSection) {
 }
 
 - (NSInteger)tableView:(UITableView *)table numberOfRowsInSection:(NSInteger)section {
+    if (section == SGRNavbarSectionCompact) return 1;
     if (section == SGRNavbarSectionTabs) return (NSInteger)_entries.count;
     return section == SGRNavbarSectionLinks ? 2 : 1;
 }
 
 - (NSString *)headerFor:(NSInteger)section {
+    if (section == SGRNavbarSectionCompact) return @"Minimize";
     return section == SGRNavbarSectionTabs ? @"Tabs" : nil;
 }
 
@@ -757,6 +761,17 @@ typedef NS_ENUM(NSInteger, SGRNavbarSection) {
             toggle.onTintColor = SGGreen();
             toggle.on = SGEnabled(SGRKeyNavbar);
             [toggle addTarget:self action:@selector(customToggled:) forControlEvents:UIControlEventValueChanged];
+            cell.accessoryView = toggle;
+            break;
+        }
+        case SGRNavbarSectionCompact: {
+            SGFillCell(cell, @"Auto-split on minimize", @"Separate Search into trailing endcap when minimized", nil, nil);
+            UISwitch *toggle = [UISwitch new];
+            toggle.onTintColor = SGGreen();
+            toggle.on = SGEnabled(SGRKeyNavbarAutoSplit);
+            toggle.accessibilityLabel = @"Auto-split on minimize";
+            toggle.accessibilityHint = @"Separate Search into trailing endcap when minimized";
+            [toggle addTarget:self action:@selector(autoSplitToggled:) forControlEvents:UIControlEventValueChanged];
             cell.accessoryView = toggle;
             break;
         }
@@ -880,6 +895,11 @@ typedef NS_ENUM(NSInteger, SGRNavbarSection) {
     [[UISelectionFeedbackGenerator new] selectionChanged];
     SGRRefreshTabBar();
     [self showChoices];
+}
+
+- (void)autoSplitToggled:(UISwitch *)toggle {
+    SGSetEnabled(SGRKeyNavbarAutoSplit, toggle.on);
+    SGRRefreshTabBar();
 }
 
 - (void)customToggled:(UISwitch *)toggle {

@@ -12,10 +12,16 @@ NSArray<SGModRow *> *SGRNowPlayingBarRows(void) {
         if (!on) SGRSetTabBarMinimized(NO, NO);
         SGRRefreshTabBar();
     };
+    SGModRow *compactBar = SGOptionRow(@"Compact height", @"48 pt card matching the Music app", SGRKeyBarCompact);
+    compactBar.changed = ^(BOOL on) {
+        SGRNowPlayingBarFollowTabBar();
+        SGRRefreshTabBar();
+    };
     SGModRow *inlineConnect = SGOptionRow(@"Device button", @"Kept on the bar between the tabs", SGRKeyBarInlineConnect);
     inlineConnect.waitsOn = SGRKeyNavbarMinimize;
     return @[
         minimize,
+        compactBar,
         inlineConnect,
         SGHideRow(@"Hide the device button", @"On the full now playing bar", SGRHideBarConnect),
         // Spotify's own flag for the bar's save button, forced off: Spotify leaves the button out.
