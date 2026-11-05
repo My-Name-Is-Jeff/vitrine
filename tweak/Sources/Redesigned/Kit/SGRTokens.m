@@ -19,7 +19,7 @@ const NSTimeInterval SGRCrossfade = 0.35;
 static const NSTimeInterval kLayoutDuration = 0.45, kPressDuration = 0.32;
 // The tab bar's minimize runs on every scroll, so it is quicker than the 0.3 to 0.4 s Apple gives a
 // repositioning spring.
-static const NSTimeInterval kBarDuration = 0.26;
+static const NSTimeInterval kBarDuration = 0.42;
 static const CGFloat kPressDamping = 0.62;
 // A response lands within the press feedback's budget, on a curve that is most of the way there at once.
 static const NSTimeInterval kRespondDuration = 0.2;

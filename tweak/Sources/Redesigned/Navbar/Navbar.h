@@ -71,6 +71,8 @@ CGRect SGRTabBarInlineSlot(UIView *host, CGFloat height);
 // player stands as wide as its tab bar. CGRectNull out of a window or in a regular width, where Spotify's bar is not
 // the glass row.
 CGRect SGRTabBarGlassRow(UIView *host);
+// The visual top of the tab bar platter in `host` coordinates: the now playing card floats exactly 8pt above it.
+CGFloat SGRTabBarVisualTop(UIView *host);
 
 // A tab's glyph as the glass bar draws it, white, filled when `active` (TabBar.x), for the Tab bar page.
 UIImage *SGRNavbarGlyph(NSDictionary *entry, BOOL active);

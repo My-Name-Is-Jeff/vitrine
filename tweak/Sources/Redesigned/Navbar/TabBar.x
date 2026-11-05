@@ -496,7 +496,10 @@ static void syncBar(UIView *stockBar) {
         [host addSubview:apartBar];
     }
     apartBar.hidden = !apart.count && !sg_keepApart;
-    if (apartBar.hidden) apartBar.sources = nil;
+    if (apartBar.hidden) {
+        apartBar.sources = nil;
+        apartBar.alpha = 0;
+    }
 
     CGRect bounds = stockBar.bounds;
     CGFloat width = bounds.size.width;
@@ -515,6 +518,8 @@ static void syncBar(UIView *stockBar) {
         CGRectDivide(host.bounds, &apartFrame, &mainFrame, apartWidth, CGRectMaxXEdge);
         mainFrame.size.width += 2 * kPlatterInset - kPlatterGap;
     } else if (sg_keepApart) {
+        apartFrame = CGRectMake(width - side, 0, side, height);
+    } else {
         apartFrame = CGRectMake(width - side, 0, side, height);
     }
     if (!CGRectEqualToRect(bar.frame, mainFrame)) bar.frame = mainFrame;
@@ -694,7 +699,7 @@ static void moveFrom(UIView *host, SGRBarState before, void (^along)(void), void
         // A view made for the new items, whose superview was there before. The selected tab's button starts where
         // the old one's glyph was, another fades in where it is going; the rest (the selection's bubble) are there
         // at once, or the selected tab's glyph, drawn under the bubble, went with it.
-        if (![before.frames objectForKey:v.superview] || [v isKindOfClass:UITabBar.class]) return;
+        BOOL superKnown = [before.frames objectForKey:v.superview] != nil;
         NSString *key = buttonKey(v, host);
         NSValue *was = key ? before.glyphs[key] : nil;
         if (was) {
@@ -702,7 +707,10 @@ static void moveFrom(UIView *host, SGRBarState before, void (^along)(void), void
             [starts addObject:was];   // a center in the host, placed once the views above it are back
             [targets addObject:[NSValue valueWithCGRect:v.frame]];
             [taken addObject:key];
-        } else if (isTabButton(v) && v.alpha > 0.01) {
+            return;
+        }
+        if (!superKnown || [v isKindOfClass:UITabBar.class]) return;
+        if (isTabButton(v) && v.alpha > 0.01) {
             [faded addObject:v];
         }
     });
@@ -782,7 +790,7 @@ static void setMinimized(BOOL minimized, BOOL animated) {
     if (!minimized && apartBar) apartBar.alpha = 1;
     moveFrom(host, before, ^{
         SGRNowPlayingBarFollowTabBar();
-        if (!minimized && apartBar) apartBar.alpha = 0;
+        if (apartBar) apartBar.alpha = minimized ? 1 : 0;
     }, ^(BOOL finished) {
         SGRNowPlayingBarMoving(NO);
         settle(finished);
@@ -827,6 +835,21 @@ CGRect SGRTabBarGlassRow(UIView *host) {
     UIView *bar = stockBar ? objc_getAssociatedObject(stockBar, &kBarKey) : nil;
     if (!host || !bar.window || stockBar.traitCollection.horizontalSizeClass != UIUserInterfaceSizeClassCompact) return CGRectNull;
     return platterEdges(stockBar, host);
+}
+
+CGFloat SGRTabBarVisualTop(UIView *host) {
+    UIView *stockBar = sg_stockBar;
+    UIView *bar = stockBar ? objc_getAssociatedObject(stockBar, &kBarKey) : nil;
+    if (!host || !bar.window || stockBar.hidden || stockBar.alpha < 0.01) return 0;
+    __block CGFloat top = 0;
+    SGForEachView(bar, ^(UIView *v) {
+        if (top == 0 && isTabButton(v) && v.window) {
+            top = [v.superview convertRect:v.frame toView:host].origin.y;
+        }
+    });
+    if (top > 0) return top;
+    CGRect lead = [bar.superview convertRect:bar.frame toView:host];
+    return CGRectGetMinY(lead);
 }
 
 #pragma mark - hooks
