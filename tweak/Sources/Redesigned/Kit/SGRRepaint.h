@@ -16,3 +16,6 @@ extern __weak UIView *sgr_playlistRoot;
 extern __weak UIView *sgr_albumRoot;
 // Redesigned/Artist/ArtistField.x, the artist page, kept clear the same way and for the same reason.
 extern __weak UIView *sgr_artistRoot;
+// Defined in Redesigned/NowPlayingBar/NowPlayingBar.x: the listener's round avatar on the Jam strip. Its fill
+// is kept when the bar's paint goes clear, or only the initial is left.
+BOOL SGRIsStripAvatar(UIView *view);

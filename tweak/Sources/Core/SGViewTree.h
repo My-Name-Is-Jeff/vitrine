@@ -2,6 +2,8 @@
 #import <UIKit/UIKit.h>
 
 void SGForEachView(UIView *view, void (^fn)(UIView *));
+// The view `make` builds, made once and kept on `host` under `key`. Not added to the hierarchy.
+UIView *SGLazyChild(UIView *host, const void *key, UIView *(^make)(void));
 CGRect SGFrameIn(UIView *view, UIView *target);
 // Whether `view` sits under `root`, stopping at a visual effect view on the way up.
 BOOL SGIsInside(UIView *view, UIView *root);
