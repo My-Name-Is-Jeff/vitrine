@@ -110,3 +110,6 @@ void SGRPlacePinnedBack(UIView *page);
 // Share and Close. `glyph` is drawn in white when Spotify's control has no image view to copy. Kept on `page` under
 // `key`; cheap to call on every pass.
 SGRMirrorButton *SGRPinnedTrailing(UIView *page, const void *key, UIView *source, NSUInteger slot, UIImage *glyph);
+// Notes `button` as tapped when it is a pinned ⋯, as its touch down does: for a tap run from code, which sends the
+// button no touch down so that its other touch down targets (the press highlight) stay still.
+void SGRPinnedMoreNoteTap(UIView *button);

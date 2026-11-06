@@ -738,9 +738,10 @@ static void openAnchorMenu(SGRMenuAnchor *anchor, BOOL (^up)(void)) {
 // for this menu (the presentation hook) and goes into the mod's window.
 - (void)requestSheet {
     if (!self.direct || self.presented || _requested) return;
-    // A page's ⋯ is noted as touched, as a tap on it would have been (the Kit's recorder listens for the touch down), so
-    // what puts rows of its own on the page's sheet (Sort and Mix, PlaylistMenu.x) knows which page the sheet is for.
-    if (!self.items) [self.spotify sendActionsForControlEvents:UIControlEventTouchDown];
+    // A page's ⋯ is noted as touched, as a tap on it would have been, so what puts rows of its own on the page's sheet
+    // (Sort and Mix, PlaylistMenu.x) knows which page the sheet is for. Noted, not sent a touch down: that would fire the
+    // button's other touch down targets too.
+    if (!self.items) SGRPinnedMoreNoteTap(self.spotify);
     _requested = YES;
     _requestedAt = CACurrentMediaTime();
     sg_requesting = self;
@@ -898,6 +899,10 @@ static void openAnchorMenu(SGRMenuAnchor *anchor, BOOL (^up)(void)) {
 
 #pragma mark pages a row opens
 
+static NSString *pageMenuKey(NSString *kind, NSString *title) {
+    return [NSString stringWithFormat:@"%@|%@", kind, title];
+}
+
 // The kind the rows that open pages are kept under: a page's kind of page, else the player's kind of track.
 - (NSString *)pageRowsKind {
     if (self.fallbackKind.length) return self.fallbackKind;
@@ -913,7 +918,29 @@ static void openAnchorMenu(SGRMenuAnchor *anchor, BOOL (^up)(void)) {
     return [titles isKindOfClass:NSArray.class] && [titles containsObject:title];
 }
 
+// Takes `title` out of the titles kept under `key` for this kind, and its stored page with it. Nothing is written when
+// it was not there.
+- (void)forget:(NSString *)title under:(NSString *)key {
+    if (!title.length) return;
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    NSString *kind = [self pageRowsKind];
+    NSMutableDictionary *all = [[defaults dictionaryForKey:key] mutableCopy];
+    NSArray *titles = [all[kind] isKindOfClass:NSArray.class] ? all[kind] : nil;
+    if ([titles containsObject:title]) {
+        NSMutableArray *left = [titles mutableCopy];
+        [left removeObject:title];
+        all[kind] = left;
+        [defaults setObject:all forKey:key];
+    }
+    NSMutableDictionary *pages = [[defaults dictionaryForKey:kPageMenusKey] mutableCopy];
+    if (pages[pageMenuKey(kind, title)]) {
+        [pages removeObjectForKey:pageMenuKey(kind, title)];
+        [defaults setObject:pages forKey:kPageMenusKey];
+    }
+}
+
 - (void)learnPageRow:(SGRSheetRow *)row {
+    [self forget:row.title under:kPlainRowsKey];
     if (!row.title.length || [self opensPage:row.title identifier:row.identifier]) return;
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     NSMutableDictionary *all = [[defaults dictionaryForKey:kPageRowsKey] mutableCopy] ?: [NSMutableDictionary dictionary];
@@ -931,6 +958,7 @@ static void openAnchorMenu(SGRMenuAnchor *anchor, BOOL (^up)(void)) {
 }
 
 - (void)learnPlainRow:(SGRSheetRow *)row {
+    [self forget:row.title under:kPageRowsKey];
     if (!row.title.length || [self opensPlainPage:row.title]) return;
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     NSMutableDictionary *all = [[defaults dictionaryForKey:kPlainRowsKey] mutableCopy] ?: [NSMutableDictionary dictionary];
@@ -939,10 +967,6 @@ static void openAnchorMenu(SGRMenuAnchor *anchor, BOOL (^up)(void)) {
     all[kind] = [titles arrayByAddingObject:row.title];
     [defaults setObject:all forKey:kPlainRowsKey];
     SGLog(@"system menu: %@ opens a page that is no menu, Spotify's from now on", row.title);
-}
-
-static NSString *pageMenuKey(NSString *kind, NSString *title) {
-    return [NSString stringWithFormat:@"%@|%@", kind, title];
 }
 
 // The rows stored for the page `title` opens on a sheet of this kind, nil when none are.
@@ -958,11 +982,16 @@ static NSString *pageMenuKey(NSString *kind, NSString *title) {
     NSMutableArray *rows = [NSMutableArray array];
     for (SGRSheetRow *row in _pageRows) {
         if (!row.title.length || !row.enabled) continue;
-        [rows addObject:@{@"title": row.title, @"subtitle": row.subtitle ?: @"", @"checked": @(row.checked)}];
+        // Sleep timer's check is the time set when it was read, which runs out: its stored rows carry none.
+        BOOL checked = row.checked && ![_pageRow.identifier isEqualToString:kSleepTimerItem];
+        [rows addObject:@{@"title": row.title, @"subtitle": row.subtitle ?: @"", @"checked": @(checked)}];
     }
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     NSMutableDictionary *all = [[defaults dictionaryForKey:kPageMenusKey] mutableCopy] ?: [NSMutableDictionary dictionary];
-    all[pageMenuKey([self pageRowsKind], _pageRow.title)] = @{@"title": _pageTitle ?: _pageRow.title, @"rows": rows};
+    NSDictionary *page = @{@"title": _pageTitle ?: _pageRow.title, @"rows": rows};
+    NSString *key = pageMenuKey([self pageRowsKind], _pageRow.title);
+    if ([all[key] isEqual:page]) return;
+    all[key] = page;
     [defaults setObject:all forKey:kPageMenusKey];
 }
 
@@ -1042,10 +1071,18 @@ static NSString *pageMenuKey(NSString *kind, NSString *title) {
     _pageCameAt = CACurrentMediaTime();
     __weak SGRMenuSession *weakSelf = self;
     CFTimeInterval started = CACurrentMediaTime();
+    __weak UIViewController *weakPage = _page;
     _pagePoll = [NSTimer timerWithTimeInterval:kRowsPoll repeats:YES block:^(NSTimer *timer) {
         SGRMenuSession *session = weakSelf;
         if (!session || !session->_page) {
             [timer invalidate];
+            // A page sheet still held hidden with no session left to show or close it would stay up unseen: it goes.
+            UIViewController *left = weakPage;
+            if (left && sg_pageSheet == left) {
+                sg_pageSheet = nil;
+                SGLog(@"system menu: %@ was left hidden with no menu, closed", NSStringFromClass(left.class));
+                [left.presentingViewController dismissViewControllerAnimated:NO completion:nil];
+            }
             return;
         }
         if ([session readPage]) {
@@ -1067,8 +1104,9 @@ static NSString *pageMenuKey(NSString *kind, NSString *title) {
 // has one as it comes); Show Spotify Code has none, and waited out kPageWait for rows it never has.
 - (BOOL)pageIsNoMenu {
     UIViewController *page = _page;
-    if (_pagePresented) return page.viewIfLoaded.window && !page.isBeingPresented && page.childViewControllers.count && !sheetIn(page);
     if (!page.viewIfLoaded.window || CACurrentMediaTime() - _pageCameAt < 0.3) return NO;
+    // A presented one that has appeared with no menu in it, whether it holds a page of another kind or nothing.
+    if (_pagePresented) return !page.isBeingPresented && !sheetIn(page);
     __block BOOL heading = NO;
     SGForEachView(page.view, ^(UIView *view) {
         if (!heading && [view.accessibilityIdentifier isEqualToString:@"context-menu-header-view"]) heading = YES;
@@ -1139,7 +1177,10 @@ static NSString *pageMenuKey(NSString *kind, NSString *title) {
     if (sg_firing == self) sg_firing = nil;
     SGLog(@"system menu: the page %@ opened %@%@", _pageRow.title, [self pageIsNoMenu] ? @"is no menu" : [NSString stringWithFormat:@"showed no rows in %.0f s", kPageWait],
           @", so it is shown");
+    // A row whose page showed no rows is no page row any more: its next tap does not wait kPageWait for one, and a page
+    // taken by mistake is not kept as its submenu.
     if ([self pageIsNoMenu]) [self learnPlainRow:_pageRow];
+    else [self forget:_pageRow.title under:kPageRowsKey];
     _pagePick = nil;
     if (_menuGone) [self dismissAll];
     else [self revealPage];
@@ -1334,6 +1375,48 @@ static NSString *pageMenuKey(NSString *kind, NSString *title) {
     return @[none];
 }
 
+// The rows' glyphs, archived once per title for every kind of sheet, as {title: data}: a glyph is the same on every sheet,
+// and up to kStoredGlyphs of them are kept.
+static NSString *glyphsKey(void) {
+    return [kStoredRowsKey stringByAppendingString:@".glyphs"];
+}
+static const NSUInteger kStoredGlyphs = 64;
+// The glyphs read back or archived this launch, by title, so each is unarchived once and archived again only when it is
+// another image.
+static NSMutableDictionary<NSString *, UIImage *> *sg_glyphs;
+
+static UIImage *storedGlyph(NSString *title, NSDictionary *row) {
+    UIImage *image = sg_glyphs[title];
+    if (image) return image;
+    NSData *data = [NSUserDefaults.standardUserDefaults dictionaryForKey:glyphsKey()][title];
+    // Rows stored before the glyphs had a store of their own carry theirs.
+    if (![data isKindOfClass:NSData.class]) data = row[@"image"];
+    image = [data isKindOfClass:NSData.class] ? [NSKeyedUnarchiver unarchivedObjectOfClass:UIImage.class fromData:data error:nil] : nil;
+    if (!image) return nil;
+    if (!sg_glyphs) sg_glyphs = [NSMutableDictionary dictionary];
+    sg_glyphs[title] = image;
+    return image;
+}
+
+// Keeps the glyphs of the rows that are not kept yet, or kept as another image, in one write.
+static void storeGlyphs(NSArray<NSArray<SGRSheetRow *> *> *groups) {
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    NSMutableDictionary *all = nil;
+    BOOL changed = NO;
+    for (SGRSheetRow *row in [groups valueForKeyPath:@"@unionOfArrays.self"]) {
+        if (!row.image || !row.title.length || sg_glyphs[row.title] == row.image) continue;
+        if (!sg_glyphs) sg_glyphs = [NSMutableDictionary dictionary];
+        sg_glyphs[row.title] = row.image;
+        NSData *glyph = [NSKeyedArchiver archivedDataWithRootObject:row.image requiringSecureCoding:YES error:nil];
+        if (!glyph.length || glyph.length >= 32 * 1024) continue;
+        if (!all) all = [[defaults dictionaryForKey:glyphsKey()] mutableCopy] ?: [NSMutableDictionary dictionary];
+        if ([all[row.title] isEqual:glyph] || (!all[row.title] && all.count >= kStoredGlyphs)) continue;
+        all[row.title] = glyph;
+        changed = YES;
+    }
+    if (changed) [defaults setObject:all forKey:glyphsKey()];
+}
+
 static NSString *storedKey(NSString *kind) {
     return [NSString stringWithFormat:@"%@.%@", kStoredRowsKey, kind.length ? kind : @"track"];
 }
@@ -1345,6 +1428,7 @@ static void rememberPage(NSString *kind) {
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     NSString *listKey = [kStoredRowsKey stringByAppendingString:@".pages"];
     NSMutableArray<NSString *> *pages = [[defaults arrayForKey:listKey] mutableCopy] ?: [NSMutableArray array];
+    if ([pages.lastObject isEqual:kind]) return;
     [pages removeObject:kind];
     [pages addObject:kind];
     while (pages.count > kStoredPages) {
@@ -1383,8 +1467,7 @@ static void rememberPage(NSString *kind) {
         for (NSDictionary *row in group) {
             NSString *title = [row isKindOfClass:NSDictionary.class] ? row[@"title"] : nil;
             if (![title isKindOfClass:NSString.class]) continue;
-            NSData *glyph = row[@"image"];
-            UIImage *image = [glyph isKindOfClass:NSData.class] ? [NSKeyedUnarchiver unarchivedObjectOfClass:UIImage.class fromData:glyph error:nil] : nil;
+            UIImage *image = storedGlyph(title, row);
             UIAction *action = [UIAction actionWithTitle:title image:image identifier:nil handler:^(UIAction *picked) {
                 weakSelf.pick = ^{ [weakSelf fireTitle:title]; };
             }];
@@ -1410,20 +1493,20 @@ static void rememberPage(NSString *kind) {
             NSMutableDictionary *stored = [@{@"title": row.title, @"enabled": @(row.enabled)} mutableCopy];
             if (row.subtitle.length) stored[@"subtitle"] = row.subtitle;
             if (row.identifier.length) stored[@"identifier"] = row.identifier;
-            NSData *glyph = row.image ? [NSKeyedArchiver archivedDataWithRootObject:row.image requiringSecureCoding:YES error:nil] : nil;
-            if (glyph.length && glyph.length < 32 * 1024) stored[@"image"] = glyph;
             [rows addObject:stored];
         }
         if (rows.count) [groups addObject:rows];
     }
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     if (!groups.count) return;
+    storeGlyphs(_groups);
     // A page's quick items go with its rows, which leave them out, so a menu opened from the stored rows after a relaunch
     // has its quick row too.
     if (!self.items) {
         NSArray<NSString *> *quick = sg_quickSeen[self.kind ?: @""] ?: @[];
         for (NSString *kind in @[self.kind ?: @"", self.fallbackKind ?: @""]) {
-            if (kind.length) [defaults setObject:quick forKey:[storedKey(kind) stringByAppendingString:@".quick"]];
+            NSString *key = [storedKey(kind) stringByAppendingString:@".quick"];
+            if (kind.length && ![[defaults arrayForKey:key] isEqual:quick]) [defaults setObject:quick forKey:key];
         }
     }
     if (![[defaults arrayForKey:storedKey(self.kind)] isEqual:groups]) [defaults setObject:groups forKey:storedKey(self.kind)];

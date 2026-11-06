@@ -488,12 +488,17 @@ SGRMirrorButton *SGRPinnedMoreRecentButton(void) {
 @end
 @implementation SGRPinnedMoreRecorder
 - (void)sgr_moreTapped:(SGRMirrorButton *)button {
+    SGRPinnedMoreNoteTap(button);
+}
+@end
+
+void SGRPinnedMoreNoteTap(UIView *button) {
+    if (![button isKindOfClass:SGRMirrorButton.class]) return;
     sg_morePage = button.superview;
     sg_moreButton = button;
     sg_moreTappedAt = CACurrentMediaTime();
     SGAlbumQueueMarkSource(button.superview);
 }
-@end
 
 // Over the page's list and its header both, and put back on top whenever Spotify adds to the page.
 static void keepOnTop(UIView *page, UIView *button) {
