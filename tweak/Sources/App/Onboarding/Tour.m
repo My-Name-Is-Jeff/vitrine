@@ -20,7 +20,7 @@ static const CGFloat kCardRadius = 22;
 static char kPaneKey;
 - (void)layoutSubviews {
     [super layoutSubviews];
-    UIVisualEffectView *pane = SGGlassFor(self, &kPaneKey);
+    UIView *pane = SGGlassFor(self, &kPaneKey);
     pane.frame = self.bounds;
     SGShapeGlass(pane, self.radius, self.capsule);
 }

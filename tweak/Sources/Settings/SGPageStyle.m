@@ -352,3 +352,10 @@ void SGOpenURL(NSString *url) {
         [UIApplication.sharedApplication openURL:target options:@{} completionHandler:nil];
     });
 }
+
+void SGOfferRestart(NSString *message) {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Restart Spotify" message:message preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Later" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Restart now" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { SGRestartSpotify(); }]];
+    [SGTopController() presentViewController:alert animated:YES completion:nil];
+}
