@@ -495,7 +495,7 @@ SGRMirrorButton *SGRPinnedMoreRecentButton(void) {
 void SGRPinnedMoreNoteTap(UIView *button) {
     if (![button isKindOfClass:SGRMirrorButton.class]) return;
     sg_morePage = button.superview;
-    sg_moreButton = button;
+    sg_moreButton = (SGRMirrorButton *)button;
     sg_moreTappedAt = CACurrentMediaTime();
     SGAlbumQueueMarkSource(button.superview);
 }
