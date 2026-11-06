@@ -562,6 +562,21 @@ static char kGlyphSeenKey;
     SGRPlayerConnectEntityChanged(aggregator, entity);
 }
 %end
+
+%hook _TtC20Connect_VolumeUXImpl21VolumeUXPresenterImpl
+- (void)systemVolumeChangedTo:(double)volume {
+}
+%end
+
+%hook _TtC20Connect_VolumeUXImpl28SmartControlVolumeController
+- (void)systemVolumeChangedTo:(double)volume {
+}
+%end
+
+%hook _TtC20Connect_VolumeUXImpl27RemoteVolumePopupController
+- (void)remoteMediaSessionVolumeDidChangeToValue:(double)volume {
+}
+%end
 %end
 
 %ctor {
@@ -573,6 +588,9 @@ static char kGlyphSeenKey;
             @"_TtC18Connect_VolumeImpl10VolumeImpl",
             @"_TtC18Connect_VolumeImpl17VolumeServiceImpl",
             @"_TtC18Connect_VolumeImpl21AggregatorEventSource",
+            @"_TtC20Connect_VolumeUXImpl21VolumeUXPresenterImpl",
+            @"_TtC20Connect_VolumeUXImpl27RemoteVolumePopupController",
+            @"_TtC20Connect_VolumeUXImpl28SmartControlVolumeController",
             @"_TtC22Connect_AggregatorImpl24ConnectAggregatorService",
         ]);
     }

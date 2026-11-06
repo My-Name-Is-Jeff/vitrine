@@ -61,7 +61,7 @@ static id<SGRConnectEntity> activeConnectEntity(void) {
     if (!s_connectVolume) return nil;
     id<SGRConnectAggregator> aggregator = s_connectAggregator;
     id<SGRConnectEntity> entity = [aggregator respondsToSelector:@selector(activeConnectEntity)]
-        ? [aggregator activeConnectEntity]
+        ? ([aggregator activeConnectEntity] ?: s_connectEntity)
         : s_connectEntity;
     if (!entity) return nil;
     if ([entity respondsToSelector:@selector(isSelf)] && [entity isSelf]) return nil;
@@ -94,7 +94,7 @@ static BOOL readConnectVolume(CGFloat *out) {
     double value = [s_connectVolume connectVolume];
     if (!isfinite(value)) return NO;
     CGFloat clamped = MIN(1, MAX(0, (CGFloat)value));
-    s_cachedConnectVolume = clamped;
+    if (clamped > 0) s_cachedConnectVolume = clamped;
     *out = clamped;
     return YES;
 }
@@ -262,6 +262,7 @@ static UIImageView *glyph(NSString *symbol) {
         _lastPush = CACurrentMediaTime();
         s_cachedConnectVolume = _value;
         [s_connectVolume setVolume:_value reason:@"DevicePickerUIImpl"];
+        [self refreshAfterPush];
         return;
     }
     UISlider *slider = [self systemSlider];
