@@ -29,3 +29,17 @@ UIView *SGRGlassCapsuleInside(UIView *control, const void *key, CGSize size, BOO
 // The solid shape Reduce Transparency puts in its place has no effect and fades by its own alpha. Animates
 // in the caller's animation.
 void SGRShowGlass(UIView *shape, BOOL shown);
+
+// The faint white film over a floating bar's glass (the tab bar's platter, the now playing card), without
+// which the bar disappears into Spotify's near-black chrome. Made once under `key`, kept just above `glass`
+// and on its frame, with corners of `radius`. Nil on iOS 26, where the system glass needs none.
+UIView *SGRGlassFilm(UIView *host, const void *key, UIView *glass, CGFloat radius);
+
+// How much floating glass is dimmed (SGRDarkenGlass): what Create's menu dims the page behind the tab bar by, under
+// which the bar read best.
+extern const CGFloat SGRBarDim;
+// A black layer of `alpha` inside `pane` (a legacy glass pane or a blur), made once under `key`: over what the glass
+// shows of the page, under its rim, its film and what stands on it, so the controls on floating glass (the tab bar,
+// the now playing card, the top buttons, the toast) stand out over a bright page. Corners of `radius`. Nil on iOS 26.
+UIView *SGRDarkenGlass(UIView *pane, const void *key, CGFloat radius, CGFloat alpha);
+

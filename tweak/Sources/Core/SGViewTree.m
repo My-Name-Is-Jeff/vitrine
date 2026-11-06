@@ -6,6 +6,15 @@ void SGForEachView(UIView *view, void (^fn)(UIView *)) {
     for (UIView *sub in view.subviews) SGForEachView(sub, fn);
 }
 
+UIView *SGLazyChild(UIView *host, const void *key, UIView *(^make)(void)) {
+    UIView *v = objc_getAssociatedObject(host, key);
+    if (!v) {
+        v = make();
+        objc_setAssociatedObject(host, key, v, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    return v;
+}
+
 CGRect SGFrameIn(UIView *view, UIView *target) {
     return [view.superview convertRect:view.frame toView:target];
 }
