@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.0.0-beta.17](https://github.com/My-Name-Is-Jeff/vitrine/compare/v1.0.0-beta.16...v1.0.0-beta.17) (2026-11-06)
+
+
+### Features
+
+* **player:** center back and next when shuffle and repeat are hidden ([#162](https://github.com/My-Name-Is-Jeff/vitrine/issues/162)) ([#174](https://github.com/My-Name-Is-Jeff/vitrine/issues/174)) ([fc64dc7](https://github.com/My-Name-Is-Jeff/vitrine/commit/fc64dc74cf1bf6d29f0161d3bc4d79a7155b3ad0))
+* Spotify's icons in the redesigned player and the AI DJ's footer, and the DJ button as a waveform ([#180](https://github.com/My-Name-Is-Jeff/vitrine/issues/180)) ([9e8b308](https://github.com/My-Name-Is-Jeff/vitrine/commit/9e8b3080bb81b73404d69c90c57ac3d6caec3ac4))
+* the lyrics' Karaoke mic is off by default below iOS 18, where Karaoke cannot run ([#179](https://github.com/My-Name-Is-Jeff/vitrine/issues/179)) ([04ee3fc](https://github.com/My-Name-Is-Jeff/vitrine/commit/04ee3fc1e5d2d25428720bd5331ae6c0b7069668))
+
+
+### Fixes
+
+* **album:** stretch the header artwork on overscroll instead of leaving a gap ([#169](https://github.com/My-Name-Is-Jeff/vitrine/issues/169)) ([#176](https://github.com/My-Name-Is-Jeff/vitrine/issues/176)) ([21d4686](https://github.com/My-Name-Is-Jeff/vitrine/commit/21d46863ce5a0b4e1afccead90d0a585172afd7c))
+* close only the DJ region dialog, matched by its exact title ([#203](https://github.com/My-Name-Is-Jeff/vitrine/issues/203)) ([cd7ace6](https://github.com/My-Name-Is-Jeff/vitrine/commit/cd7ace640513e02e398f1fa9f8f2e29d07aa8eac))
+* four crash, watchdog and player layout fixes ([#147](https://github.com/My-Name-Is-Jeff/vitrine/issues/147)) ([e033415](https://github.com/My-Name-Is-Jeff/vitrine/commit/e033415411e9ae0c7c5033377f4b62d8d837a9ac))
+* **lyrics:** survive a null duration from any lyrics source ([#200](https://github.com/My-Name-Is-Jeff/vitrine/issues/200)) ([3d613a8](https://github.com/My-Name-Is-Jeff/vitrine/commit/3d613a8c493b25071fb364d40cb5e3287c0d4fca))
+* **navbar:** show the filled icon on the selected tab ([#151](https://github.com/My-Name-Is-Jeff/vitrine/issues/151)) ([#173](https://github.com/My-Name-Is-Jeff/vitrine/issues/173)) ([3476a55](https://github.com/My-Name-Is-Jeff/vitrine/commit/3476a55737d75b5b4f4df2a8b4f4ce6782092e5e))
+* **nowplaying:** match the mini player's width to the tab bar ([#170](https://github.com/My-Name-Is-Jeff/vitrine/issues/170)) ([#175](https://github.com/My-Name-Is-Jeff/vitrine/issues/175)) ([87cf7d4](https://github.com/My-Name-Is-Jeff/vitrine/commit/87cf7d4a64c0a6a1d856374d71546efc09cb1229))
+* the DJ keeps requests and starts without "not available in your country" under Spoof Premium ([#202](https://github.com/My-Name-Is-Jeff/vitrine/issues/202)) ([57b155f](https://github.com/My-Name-Is-Jeff/vitrine/commit/57b155f7db3c1690980d2865666214d4a963e359))
+
 ## [1.0.0-beta.16](https://github.com/My-Name-Is-Jeff/vitrine/compare/v1.0.0-beta.15...v1.0.0-beta.16) (2026-10-25)
 
 
