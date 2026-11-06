@@ -383,6 +383,10 @@ static NSArray<UITabBarItem *> *itemsFor(NSArray<NSDictionary *> *entries, BOOL 
         main = shown;
         apart = [NSMutableArray array];
     }
+    if (!apart.count && SGEnabled(SGRKeyNavbarAutoSplit) && main.count >= 2) {
+        [apart addObject:main.lastObject];
+        [main removeLastObject];
+    }
     [_main setItems:itemsFor(main, names) animated:NO];
     _main.selectedItem = _main.items.firstObject;
     [_apart setItems:itemsFor(apart, names) animated:NO];
@@ -667,6 +671,8 @@ typedef NS_ENUM(NSInteger, SGRNavbarSection) {
 - (NSString *)footerFor:(NSInteger)section {
     if (section == SGRNavbarSectionSwitch && !SGEnabled(SGRKeyNavbar))
         return @"Off, the bar shows Spotify's own tabs in Spotify's order. Your list is kept for when it is on again.";
+    if (section == SGRNavbarSectionCompact)
+        return @"Sizes the minimized tab bar to match Apple Music and sets Search apart on the right. For the complete Apple Music look, also turn on Compact mini player in Mod Settings > Player.";
     if (section == SGRNavbarSectionTabs)
         return @"Drag a tab to move it. Tap one you added to rename it or change its icon, or one of Spotify's to hide it.";
     return nil;
@@ -765,12 +771,12 @@ typedef NS_ENUM(NSInteger, SGRNavbarSection) {
             break;
         }
         case SGRNavbarSectionCompact: {
-            SGFillCell(cell, @"Auto-split on minimize", @"Separate Search into trailing endcap when minimized", nil, nil);
+            SGFillCell(cell, @"Compact tab bar", @"Smaller circles and split Search when minimized", nil, nil);
             UISwitch *toggle = [UISwitch new];
             toggle.onTintColor = SGGreen();
             toggle.on = SGEnabled(SGRKeyNavbarAutoSplit);
-            toggle.accessibilityLabel = @"Auto-split on minimize";
-            toggle.accessibilityHint = @"Separate Search into trailing endcap when minimized";
+            toggle.accessibilityLabel = @"Compact tab bar";
+            toggle.accessibilityHint = @"Smaller circles and split Search when minimized";
             [toggle addTarget:self action:@selector(autoSplitToggled:) forControlEvents:UIControlEventValueChanged];
             cell.accessoryView = toggle;
             break;
@@ -900,6 +906,10 @@ typedef NS_ENUM(NSInteger, SGRNavbarSection) {
 - (void)autoSplitToggled:(UISwitch *)toggle {
     SGSetEnabled(SGRKeyNavbarAutoSplit, toggle.on);
     SGRRefreshTabBar();
+    SGRAnimate(SGRMotionBar, ^{
+        [self showChoices];
+        [_preview layoutIfNeeded];
+    }, nil);
 }
 
 - (void)customToggled:(UISwitch *)toggle {

@@ -12,7 +12,7 @@ NSArray<SGModRow *> *SGRNowPlayingBarRows(void) {
         if (!on) SGRSetTabBarMinimized(NO, NO);
         SGRRefreshTabBar();
     };
-    SGModRow *compactBar = SGOptionRow(@"Compact height", @"48 pt card matching the Music app", SGRKeyBarCompact);
+    SGModRow *compactBar = SGSwitchRow(@"Compact mini player", @"48 pt card matching Apple Music", SGRKeyBarCompact);
     compactBar.changed = ^(BOOL on) {
         SGRNowPlayingBarFollowTabBar();
         SGRRefreshTabBar();

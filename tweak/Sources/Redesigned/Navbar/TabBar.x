@@ -21,6 +21,10 @@
 #import "Shared/Navigation/TabIcons.h"
 #import <objc/message.h>
 
+static inline BOOL SGRIsBarCompact(void) {
+    return SGEnabled(SGRKeyBarCompact) && SGEnabled(SGRKeyNavbarAutoSplit);
+}
+
 static char kBarKey, kApartBarKey, kHostKey, kFadeKey, kTabNameKey;
 // On a UITabBarItem: the names of the Encore icons its image and selectedImage were drawn from (see fillBar).
 static char kGlyphNamesKey;
@@ -154,6 +158,14 @@ static BOOL isTabButton(UIView *view) {
     return [view isKindOfClass:UIControl.class] && glyphView(view) != nil;
 }
 
+static UIView *platterIn(UIView *bar) {
+    __block UIView *platter = nil;
+    SGForEachView(bar, ^(UIView *v) {
+        if (!platter && !v.hidden && v.alpha >= 0.01 && [NSStringFromClass(v.class) hasSuffix:@"PlatterView"]) platter = v;
+    });
+    return platter;
+}
+
 @implementation SGRSystemTabBar
 
 // UIKit makes the labels as it lays the items out, so they are shrunk after each pass.
@@ -171,23 +183,11 @@ static BOOL isTabButton(UIView *view) {
         NSString *name = self.items[i].accessibilityLabel ?: self.items[i].title;
         if (name) objc_setAssociatedObject(buttons[i], &kTabNameKey, name, OBJC_ASSOCIATION_COPY_NONATOMIC);
     }
-    if (sg_minimized) {
-        // Solarium tab bar minimized circular endcap: exactly 48x48 pt circle centered vertically
-        CGFloat itemW = 48.0;
-        for (UIView *v in self.subviews) {
-            if (![v isKindOfClass:UIControl.class] && ![NSStringFromClass(v.class) containsString:@"Button"]) {
-                CGRect f = v.frame;
-                f.size.height = itemW;
-                f.size.width = itemW;
-                f.origin.x = (self.bounds.size.width - itemW) / 2.0;
-                f.origin.y = 0;
-                v.frame = f;
-                v.layer.cornerRadius = itemW / 2.0;
-                v.layer.cornerCurve = kCACornerCurveContinuous;
-                v.layer.masksToBounds = YES;
-            } else if ([v isKindOfClass:UIControl.class] || [NSStringFromClass(v.class) containsString:@"Button"]) {
-                v.center = CGPointMake(self.bounds.size.width / 2.0, itemW / 2.0);
-            }
+    if (sg_minimized && SGRIsBarCompact()) {
+        UIView *platter = platterIn(self);
+        if (platter && platter.frame.size.height > 50.0) {
+            platter.frame = CGRectInset(platter.frame, 7.0, 7.0);
+            platter.layer.cornerRadius = 24.0;
         }
     }
 }
@@ -361,11 +361,16 @@ static void setGlyphs(UITabBarItem *item, UIImage *image, UIImage *selectedImage
 }
 
 // One bar's share of the tabs: its items, their glyphs and titles. YES while a glyph is still missing.
-static BOOL fillBar(SGRSystemTabBar *bar, NSArray<UIView *> *sources, BOOL hideLabels) {
+static BOOL fillBar(SGRSystemTabBar *bar, NSArray<UIView *> *sources, BOOL hideLabels, UIView *active, BOOL minimized) {
     bar.tintColor = SGRAccent();
     if (![sources isEqualToArray:bar.sources]) {
         NSMutableArray<UITabBarItem *> *items = [NSMutableArray array];
-        for (UIView *source in sources) [items addObject:[[UITabBarItem alloc] initWithTitle:hideLabels ? nil : labelIn(source).text image:nil tag:items.count]];
+        for (UIView *source in sources) {
+            NSString *label = labelIn(source).text;
+            UITabBarItem *item = [[UITabBarItem alloc] initWithTitle:hideLabels ? nil : label image:nil tag:items.count];
+            item.accessibilityLabel = label;
+            [items addObject:item];
+        }
         bar.sources = sources;
         [bar setItems:items animated:NO];
         NSMutableString *out = [NSMutableString stringWithString:@"tab bar icons"];
@@ -394,7 +399,16 @@ static BOOL fillBar(SGRSystemTabBar *bar, NSArray<UIView *> *sources, BOOL hideL
         UIView *live = iconIn(sources[i]);
         id icon = live ? encoreIconOf(live) : nil;
         NSString *name = iconName(icon);
-        if (!item.image || !item.selectedImage || (name && ![objc_getAssociatedObject(item, &kGlyphNamesKey) containsObject:name])) {
+        BOOL activeMinimized = minimized && sources[i] == active;
+        if (activeMinimized) {
+            id lit = activeVariantOf(icon);
+            UIImage *image = drawGlyph(live, lit ?: icon, YES);
+            if (image) {
+                UIImage *tinted = [image imageWithTintColor:SGRAccent() renderingMode:UIImageRenderingModeAlwaysOriginal];
+                setGlyphs(item, tinted, tinted);
+                objc_setAssociatedObject(item, &kGlyphNamesKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
+        } else if (!item.image || !item.selectedImage || (name && ![objc_getAssociatedObject(item, &kGlyphNamesKey) containsObject:name])) {
             id lit = activeVariantOf(icon);
             setGlyphs(item, drawGlyph(live, icon, NO), drawGlyph(live, lit ?: icon, YES));
             NSString *litName = iconName(lit);
@@ -411,17 +425,20 @@ static BOOL fillBar(SGRSystemTabBar *bar, NSArray<UIView *> *sources, BOOL hideL
 }
 
 // The bar holding the tab Spotify paints as selected selects it, and the other one lets go. With no tab
-// painted (a tab of the mod's own, a repaint still to come) both keep what they have.
-static void selectActive(SGRSystemTabBar *bar, UIView *active) {
+// painted (a tab of the mod's own, a repaint still to come) both keep what they have. When minimized,
+// selectedItem is nil so UIKit omits the dark inner selection bubble while shown remembers the active tab.
+static void selectActive(SGRSystemTabBar *bar, UIView *active, BOOL minimized) {
     NSUInteger index = active ? [bar.sources indexOfObject:active] : NSNotFound;
     UITabBarItem *item = index == NSNotFound ? nil : bar.items[index];
-    if (active && bar.selectedItem != item) bar.selectedItem = item;
+    UITabBarItem *selected = minimized ? nil : item;
+    if (active && bar.selectedItem != selected) bar.selectedItem = selected;
     if (active && item) bar.shown = item;
 }
 
 // The tab a bar shows selected, when Spotify paints none: a tab of the mod's own.
 static UIView *selectedSource(SGRSystemTabBar *bar) {
-    NSUInteger index = bar.selectedItem ? [bar.items indexOfObject:bar.selectedItem] : NSNotFound;
+    UITabBarItem *item = bar.selectedItem ?: bar.shown;
+    NSUInteger index = item ? [bar.items indexOfObject:item] : NSNotFound;
     return index < bar.sources.count ? bar.sources[index] : nil;
 }
 
@@ -498,7 +515,8 @@ static void syncBar(UIView *stockBar) {
     apartBar.hidden = !apart.count && !sg_keepApart;
     if (apartBar.hidden) {
         apartBar.sources = nil;
-        apartBar.alpha = 0;
+    } else {
+        apartBar.alpha = 1;
     }
 
     CGRect bounds = stockBar.bounds;
@@ -508,8 +526,7 @@ static void syncBar(UIView *stockBar) {
     if (!CGRectEqualToRect(host.frame, frame)) host.frame = frame;
     placeFade(stockBar, frame, minimized);
     CGRect mainFrame = host.bounds, apartFrame = CGRectZero;
-    CGFloat apartItemW = (minimized || sg_keepApart) ? 48.0 : kApartItemWidth;
-    CGFloat side = apartItemW + 2 * kPlatterInset;
+    CGFloat side = kApartItemWidth + 2 * kPlatterInset;
     if (minimized) {
         mainFrame.size.width = side;
         if (apart.count) apartFrame = CGRectMake(width - side, 0, side, height);
@@ -517,8 +534,6 @@ static void syncBar(UIView *stockBar) {
         CGFloat apartWidth = MIN(width / 2, apart.count * kApartItemWidth + 2 * kPlatterInset);
         CGRectDivide(host.bounds, &apartFrame, &mainFrame, apartWidth, CGRectMaxXEdge);
         mainFrame.size.width += 2 * kPlatterInset - kPlatterGap;
-    } else if (sg_keepApart) {
-        apartFrame = CGRectMake(width - side, 0, side, height);
     } else {
         apartFrame = CGRectMake(width - side, 0, side, height);
     }
@@ -529,10 +544,20 @@ static void syncBar(UIView *stockBar) {
     // is made in and never again when the bar grows, so items made while a bar was still a circle kept "…" for
     // their names at full width (harness/tabbar, `names`).
     [host layoutIfNeeded];
-    BOOL missing = fillBar(bar, main, hideLabels);
-    if (apart.count) missing |= fillBar(apartBar, apart, hideLabels);
-    selectActive(bar, active);
-    if (apart.count) selectActive(apartBar, active);
+    BOOL missing = fillBar(bar, main, hideLabels, active, minimized);
+    if (apart.count) missing |= fillBar(apartBar, apart, hideLabels, active, minimized);
+    selectActive(bar, active, minimized);
+    if (apart.count) selectActive(apartBar, active, minimized);
+    [bar setNeedsLayout];
+    [bar layoutIfNeeded];
+    if (apartBar && !apartBar.hidden) {
+        [apartBar setNeedsLayout];
+        [apartBar layoutIfNeeded];
+        BOOL hideApartButtons = !minimized && sg_keepApart && !apart.count;
+        for (UIView *v in apartBar.subviews) {
+            if (isTabButton(v)) v.hidden = hideApartButtons;
+        }
+    }
     // An icon view Spotify has not built yet is looked for again shortly, not on the next touch.
     static NSUInteger retries;
     if (missing && retries++ < 40) {
@@ -627,6 +652,14 @@ static BOOL isMoving(UIView *view) {
     return NO;
 }
 
+static BOOL isVisibleInHost(UIView *view, UIView *host) {
+    if (!view.window) return NO;
+    for (UIView *v = view; v && v != host; v = v.superview) {
+        if (v.hidden || v.alpha < 0.01) return NO;
+    }
+    return YES;
+}
+
 static NSString *tabButtonName(UIView *button) {
     NSString *name = objc_getAssociatedObject(button, &kTabNameKey);
     if (name.length) return name;
@@ -646,8 +679,7 @@ static NSString *buttonKey(UIView *button, UIView *host) {
         if (!((UIControl *)button).selected) return nil;
         name = @"selected";
     }
-    BOOL lit = isLitCopy(button, host);
-    return [NSString stringWithFormat:@"%@:%@", name, lit ? @"lit" : @"plain"];
+    return name;
 }
 
 static CGRect shownIn(UIView *view, UIView *host) {
@@ -662,9 +694,12 @@ static SGRBarState barState(UIView *host) {
         [NSMapTable mapTableWithKeyOptions:NSPointerFunctionsWeakMemory | NSPointerFunctionsObjectPointerPersonality valueOptions:NSPointerFunctionsStrongMemory],
     };
     SGForEachView(host, ^(UIView *v) {
+        for (UIView *u = v; u && u != host; u = u.superview) {
+            if (isTabButton(u) && !isVisibleInHost(u, host)) return;
+        }
         CALayer *shownLayer = v.layer.presentationLayer;
         [state.frames setObject:@[[NSValue valueWithCGRect:v.frame], [NSValue valueWithCGRect:shownLayer ? shownLayer.frame : v.frame], @(isMoving(v))] forKey:v];
-        if (!v.window || v == host || !isTabButton(v)) return;
+        if (!isVisibleInHost(v, host) || v == host || !isTabButton(v)) return;
         CGRect shown = shownIn(v, host), glyph = shownIn(glyphView(v), host);
         NSString *key = buttonKey(v, host);
         if (key) state.glyphs[key] = [NSValue valueWithCGPoint:CGPointMake(CGRectGetMidX(glyph), CGRectGetMidY(glyph))];
@@ -686,6 +721,9 @@ static void moveFrom(UIView *host, SGRBarState before, void (^along)(void), void
     NSMutableSet<NSString *> *taken = [NSMutableSet set];
     SGForEachView(host, ^(UIView *v) {
         if (v == host) return;
+        for (UIView *u = v; u && u != host; u = u.superview) {
+            if (isTabButton(u) && u.hidden) return;
+        }
         NSArray<NSValue *> *old = [before.frames objectForKey:v];
         if (old) {
             BOOL stopped = [(NSNumber *)old[2] boolValue] && !isMoving(v);
@@ -787,10 +825,9 @@ static void setMinimized(BOOL minimized, BOOL animated) {
         return;
     }
     SGRNowPlayingBarMoving(YES);
-    if (!minimized && apartBar) apartBar.alpha = 1;
+    if (apartBar) apartBar.alpha = 1;
     moveFrom(host, before, ^{
         SGRNowPlayingBarFollowTabBar();
-        if (apartBar) apartBar.alpha = minimized ? 1 : 0;
     }, ^(BOOL finished) {
         SGRNowPlayingBarMoving(NO);
         settle(finished);
@@ -810,19 +847,17 @@ CGRect SGRTabBarInlineSlot(UIView *host, CGFloat height) {
     if (!sg_minimized || !host || !bar.window || stockBar.hidden || stockBar.alpha < 0.01) return CGRectNull;
     // The frames the bars are going to, not what is on screen mid-spring. Without a split tab's circle the
     // card runs to where the trailing circle's glass would end.
-    CGFloat apartItemW = 48.0;
-    CGFloat gap = 14.0;
     CGRect lead = [bar.superview convertRect:bar.frame toView:host];
-    CGFloat left = CGRectGetMinX(lead) + kPlatterInset + apartItemW + gap;
-    CGFloat right;
-    if (apartBar && !apartBar.hidden) {
-        CGRect trail = [apartBar.superview convertRect:apartBar.frame toView:host];
-        right = CGRectGetMaxX(trail) - kPlatterInset - apartItemW - gap;
-    } else {
-        right = CGRectGetMaxX(platterEdges(stockBar, host));
-    }
-    CGFloat middle = CGRectGetMinY(lead) + apartItemW / 2;
-    CGRect slot = CGRectMake(left, middle - height / 2, right - left, height);
+    CGRect trail = (apartBar && !apartBar.hidden) ? [apartBar.superview convertRect:apartBar.frame toView:host] : CGRectZero;
+    CGFloat apartItemW = SGRIsBarCompact() ? 48.0 : kApartItemWidth;
+    CGFloat gap = SGRIsBarCompact() ? 14.0 : SGRGrid;
+    CGFloat inset = SGRIsBarCompact() ? (kPlatterInset + 7.0) : kPlatterInset;
+    CGFloat left = CGRectGetMinX(lead) + inset + apartItemW + gap;
+    CGFloat right = (apartBar && !apartBar.hidden)
+        ? CGRectGetMaxX(trail) - inset - apartItemW - gap
+        : CGRectGetMaxX(platterEdges(stockBar, host));
+    CGFloat middle = CGRectGetMinY(lead) + kApartItemWidth / 2.0;
+    CGRect slot = CGRectMake(left, middle - height / 2.0, right - left, height);
     // A bar Spotify has slid away for a page takes the slot off the screen with it.
     CGRect inWindow = [host convertRect:slot toView:nil];
     if (slot.size.width < 100 || CGRectGetMaxY(inWindow) > CGRectGetMaxY(bar.window.bounds)) return CGRectNull;
@@ -835,21 +870,6 @@ CGRect SGRTabBarGlassRow(UIView *host) {
     UIView *bar = stockBar ? objc_getAssociatedObject(stockBar, &kBarKey) : nil;
     if (!host || !bar.window || stockBar.traitCollection.horizontalSizeClass != UIUserInterfaceSizeClassCompact) return CGRectNull;
     return platterEdges(stockBar, host);
-}
-
-CGFloat SGRTabBarVisualTop(UIView *host) {
-    UIView *stockBar = sg_stockBar;
-    UIView *bar = stockBar ? objc_getAssociatedObject(stockBar, &kBarKey) : nil;
-    if (!host || !bar.window || stockBar.hidden || stockBar.alpha < 0.01) return 0;
-    __block CGFloat top = 0;
-    SGForEachView(bar, ^(UIView *v) {
-        if (top == 0 && isTabButton(v) && v.window) {
-            top = [v.superview convertRect:v.frame toView:host].origin.y;
-        }
-    });
-    if (top > 0) return top;
-    CGRect lead = [bar.superview convertRect:bar.frame toView:host];
-    return CGRectGetMinY(lead);
 }
 
 #pragma mark - hooks

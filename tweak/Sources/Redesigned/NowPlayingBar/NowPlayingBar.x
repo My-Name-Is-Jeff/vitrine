@@ -148,9 +148,7 @@ static void roundView(UIView *view, CGFloat radius) {
 
 static void restyleCardContent(UIView *card) {
     BOOL compact = SGRIsBarCompact();
-    CGFloat artSize = compact ? 34 : 40;
     CGFloat cardH = card.bounds.size.height;
-    CGFloat midY = cardH / 2;
 
     SGForEachView(card, ^(UIView *v) {
         if (inStrip(v, card)) return;
@@ -160,40 +158,21 @@ static void restyleCardContent(UIView *card) {
 
         UIView *outer = v;
         for (UIView *u = v; u && u != card && CGSizeEqualToSize(u.bounds.size, size); u = u.superview) {
-            if (compact) {
-                u.bounds = CGRectMake(0, 0, artSize, artSize);
-                CGPoint cardPt = CGPointMake(25, midY);
-                if (u.superview == card) u.center = cardPt;
-                else u.center = [card convertPoint:cardPt toView:u.superview];
-            }
-            roundView(u, artSize / 2);
-            u.clipsToBounds = YES;
             outer = u;
+        }
+        for (UIView *u = v; u && u != card && CGSizeEqualToSize(u.bounds.size, size); u = u.superview) {
+            if (compact) {
+                outer.transform = CGAffineTransformConcat(CGAffineTransformMakeScale(0.8, 0.8), CGAffineTransformMakeTranslation(4.0, 0.0));
+                roundView(u, 7.0 / 0.8); // 8.75pt unscaled = 7.0pt continuous squircle
+                u.clipsToBounds = YES;
+            } else {
+                outer.transform = CGAffineTransformIdentity;
+                roundView(u, size.width / 2.0);
+                u.clipsToBounds = YES;
+            }
         }
         sg_cardArtwork = outer;
     });
-
-    if (compact) {
-        SGForEachView(card, ^(UIView *v) {
-            if (v == card || v == sg_progress || inStrip(v, card)) return;
-            BOOL isUnit = [v.accessibilityIdentifier isEqualToString:kUnitId];
-            BOOL isControl = [v isKindOfClass:UIButton.class] || [v isKindOfClass:UIControl.class] || [NSStringFromClass(v.class) containsString:@"Button"];
-            BOOL isStack = [v isKindOfClass:UIStackView.class];
-            // Controls inside a stack view are centered by the stack's layout; only position the stack or top controls
-            if (isControl && [v.superview isKindOfClass:UIStackView.class]) return;
-            if (isStack || isUnit || (isControl && v.superview == card)) {
-                CGPoint ptInCard = [card convertPoint:v.center fromView:v.superview];
-                CGFloat dy = midY - ptInCard.y;
-                if (fabs(dy) > 0.5) v.transform = CGAffineTransformMakeTranslation(0, dy);
-            }
-        });
-    } else {
-        SGForEachView(card, ^(UIView *v) {
-            if (v != card && !CGAffineTransformIsIdentity(v.transform)) {
-                v.transform = CGAffineTransformIdentity;
-            }
-        });
-    }
 
     __block UIView *progress = sg_progress;
     if (![progress isDescendantOfView:card]) {
@@ -205,7 +184,7 @@ static void restyleCardContent(UIView *card) {
         sg_progress = progress;
     }
     // Under the text, 226pt on a full width card, shorter on the one in the minimized tab bar.
-    CGRect target = CGRectMake(52, cardH - (compact ? 3 : 6), MAX(0, card.bounds.size.width - 160), 2);
+    CGRect target = CGRectMake(52, cardH - (compact ? 7 : 6), MAX(0, card.bounds.size.width - 160), 2);
     if (progress && !CGRectEqualToRect(progress.frame, target)) {
         progress.frame = target;
         [progress setNeedsLayout];
@@ -317,7 +296,7 @@ static void tuckExtras(UIView *bar, BOOL tuck) {
 }
 
 // The Music app's two lines, the title over the artists, in place of Spotify's "title • artists" and the
-// device line under it; the title alone in the minimized row. Each swipe page holds its own track's labels,
+// device line under it; the title over the artists in the minimized row too. Each swipe page holds its own track's labels,
 // so the text is read from them and drawn over them page by page. The page reads its own VoiceOver label.
 static NSString *const kPageId = @"now-playing-bar-page";
 static NSString *const kDeviceLineId = @"now-plaging-bar-connect-content";   // Spotify's spelling
@@ -349,6 +328,7 @@ static char kTextKey;
     [super layoutSubviews];
     CGSize size = self.bounds.size;
     BOOL compact = SGRIsBarCompact();
+    _artists.textColor = compact ? SGRPrimary() : SGRSecondary();
     if (compact) {
         _title.font = [UIFont systemFontOfSize:13.5 weight:UIFontWeightSemibold];
         _artists.font = [UIFont systemFontOfSize:11.5 weight:UIFontWeightRegular];
@@ -383,7 +363,9 @@ static BOOL inSight(UIView *view, UIView *unit) {
 
 static void placeText(UIView *page) {
     // The cell lays itself out before its content view places Spotify's text, so the text is placed first.
-    [page layoutIfNeeded];
+    [UIView performWithoutAnimation:^{
+        [page layoutIfNeeded];
+    }];
     __block UIView *unit = nil;
     SGForEachView(page, ^(UIView *v) {
         if (!unit && [v.accessibilityIdentifier isEqualToString:kUnitId]) unit = v;
@@ -423,8 +405,8 @@ static void placeText(UIView *page) {
         text = [SGRBarText new];
         objc_setAssociatedObject(page, &kTextKey, text, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
-    // Inside Spotify's unit, so the text moves and fades with it as Spotify slides a page's in and out.
-    CGRect frame = CGRectMake(0, 0, unit.bounds.size.width, unit.bounds.size.height);
+    // Inside Spotify's unit, spanning the page's height so the two lines center vertically from launch.
+    CGRect frame = CGRectMake(0, -SGFrameIn(unit, page).origin.y, unit.bounds.size.width, page.bounds.size.height);
     BOOL inRow = sg_inline != nil;
     void (^place)(void) = ^{
         if (text.superview != unit) [unit addSubview:text];
@@ -445,6 +427,14 @@ static void placeText(UIView *page) {
 
 static void placeTexts(UIView *bar) {
     SGForEachView(bar, ^(UIView *v) {
+        if (SGClassNamed(v.class, @"InformationContainer")) {
+            v.clipsToBounds = YES;
+        } else if (SGClassNamed(v.class, @"InformationCollectionView")) {
+            [UIView performWithoutAnimation:^{
+                [v setNeedsLayout];
+                [v layoutIfNeeded];
+            }];
+        }
         NSString *name = v.accessibilityIdentifier;
         if ([name isEqualToString:kPageId]) placeText(v);
         else if ([name isEqualToString:kDeviceLineId] && v.alpha > 0) v.alpha = 0;
@@ -499,16 +489,8 @@ static void placeInline(UIViewController *container) {
         // Above the bar the card takes the glass row's edges (SGRTabBarGlassRow).
         CGRect row = bar && bar.superview == view ? SGRTabBarGlassRow(view.superview) : CGRectNull;
         if (!edgesTo(bar, row, origin)) restoreEdges(bar);
-        CGFloat tabTop = SGRTabBarVisualTop(view.superview);
-        if (tabTop > 0) {
-            CGFloat curBottom = origin.y + CGRectGetMaxY(track);
-            CGFloat targetBottom = tabTop - 8.0;
-            CGFloat dy = targetBottom - curBottom;
-            CGAffineTransform move = CGAffineTransformMakeTranslation(0, dy);
-            if (!CGAffineTransformEqualToTransform(view.transform, move)) view.transform = move;
-        } else if (!CGAffineTransformIsIdentity(view.transform)) {
-            view.transform = CGAffineTransformIdentity;
-        }
+        CGFloat dy = SGRIsBarCompact() ? round((bar.bounds.size.height - 48.0) / 2.0) : 0;
+        view.transform = dy > 0 ? CGAffineTransformMakeTranslation(0, dy) : CGAffineTransformIdentity;
         if (bar) placeTexts(bar);
         return;
     }
@@ -516,7 +498,6 @@ static void placeInline(UIViewController *container) {
     if (!CGAffineTransformEqualToTransform(view.transform, move)) view.transform = move;
     tuckExtras(bar, YES);
     sg_inline = view;
-    if (sg_card) sg_card.frame = CGRectMake(0, sg_card.frame.origin.y, bar.bounds.size.width, sg_card.frame.size.height);
     placeTexts(bar);
     static dispatch_once_t once;
     dispatch_once(&once, ^{
@@ -535,6 +516,11 @@ static void placeInline(UIViewController *container) {
 void SGRNowPlayingBarFollowTabBar(void) {
     UIViewController *container = sg_container;
     if (!container.isViewLoaded) return;
+    UIView *bar = container.childViewControllers.firstObject.viewIfLoaded;
+    if (bar) {
+        [bar setNeedsLayout];
+        [bar layoutIfNeeded];
+    }
     placeInline(container);
     [container.view setNeedsLayout];
     [container.view layoutIfNeeded];
@@ -633,17 +619,6 @@ static void styleNowPlayingBar(UIViewController *container) {
     UIView *marker = trackMarker(bar);
     UIView *card = sg_card;
     if (!card || !isGoodCard(card, bar, marker) || stripIn(card)) card = sg_card = chooseCard(bar, marker);
-
-    if (card && SGRIsBarCompact()) {
-        CGRect cFrame = card.frame;
-        if (cFrame.size.height > 50) {
-            CGFloat diff = cFrame.size.height - 48;
-            cFrame.origin.y += round(diff / 2.0);
-            cFrame.size.height = 48;
-            card.frame = cFrame;
-            card.clipsToBounds = YES;
-        }
-    }
 
     // The strip before the bar's paint goes, so the log says what it was made of.
     UIView *strip = sg_strip = stripIn(bar);
