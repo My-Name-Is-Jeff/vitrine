@@ -42,6 +42,8 @@ BOOL SGRObserveImage(UIImageView *view, void (^changed)(UIImageView *view));
 // For a screen that arranges Spotify's controls its own way: a parent lays its children out after the
 // hook that placed them has returned, so frames set from an ancestor's pass are the ones overwritten.
 BOOL SGRObserveLayout(UIView *view, void (^laidOut)(UIView *view));
+// Whether `view` has a block from SGRObserveLayout: a caller that must not replace another's asks first.
+BOOL SGRObservesLayout(UIView *view);
 
 // The first view under `root` (itself included) with the accessibility identifier, depth first. The
 // answer is kept weakly on `root` under `cacheKey` and searched for again only when it is gone, has
@@ -92,3 +94,7 @@ BOOL SGRFire(UIControl *control);
 // other scroll view off it: for text that stays over a page scrolling under it (Home's kept title, HomeHeader.x).
 // iOS 26 on; nothing before.
 void SGRHardTopEdge(UIScrollView *scrollView);
+
+// A Swift class by module and name, under the mangled spelling or the dotted one the trees print; nil when the
+// app has neither.
+Class SGRSwiftClass(NSString *module, NSString *name);

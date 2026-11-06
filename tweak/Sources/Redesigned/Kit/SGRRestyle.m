@@ -221,6 +221,10 @@ BOOL SGRObserveImage(UIImageView *view, void (^changed)(UIImageView *view)) {
 // returned; one level is enough to settle, and re-entering would not end.
 static BOOL sg_reportingLayout = NO;
 
+BOOL SGRObservesLayout(UIView *view) {
+    return view && objc_getAssociatedObject(view, &kLayoutObserverKey) != nil;
+}
+
 BOOL SGRObserveLayout(UIView *view, void (^laidOut)(UIView *view)) {
     if (![view isKindOfClass:UIView.class]) return NO;
     objc_setAssociatedObject(view, &kLayoutObserverKey, laidOut, OBJC_ASSOCIATION_COPY_NONATOMIC);
@@ -455,4 +459,9 @@ BOOL SGRFire(UIControl *control) {
     if (!fire) return NO;
     [control sendActionsForControlEvents:fire];
     return YES;
+}
+
+Class SGRSwiftClass(NSString *module, NSString *name) {
+    NSString *mangled = [NSString stringWithFormat:@"_TtC%lu%@%lu%@", (unsigned long)module.length, module, (unsigned long)name.length, name];
+    return NSClassFromString(mangled) ?: NSClassFromString([NSString stringWithFormat:@"%@.%@", module, name]);
 }
