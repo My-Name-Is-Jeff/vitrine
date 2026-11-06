@@ -19,7 +19,7 @@ static const CGFloat kGlyphSide = 44, kCapsuleLead = 4, kCapsuleTrail = 20;
 // The mirrored glyph, the size Spotify draws one inside a 48pt round button.
 static const CGFloat kMirrorGlyph = 24;
 
-static char kCapsuleGlassKey, kMirrorGlassKey;
+static char kCapsuleGlassKey, kMirrorGlassKey, kMirrorDimKey;
 
 // The glyph Spotify's button draws: an image view of the button's own size that nothing hidden is in the
 // way of. `side` is the size to match, 0 for any image view that is showing.
@@ -156,6 +156,7 @@ static UIFont *capsuleFont(void) {
 }
 
 - (void)sgr_down {
+    if (SGUseLegacyGlass() && objc_getAssociatedObject(self, &kCapsuleGlassKey)) return;    // the glass answers the press itself
     SGRAnimate(SGRMotionPress, ^{ self.transform = CGAffineTransformMakeScale(0.94, 0.94); }, nil);
 }
 
@@ -231,7 +232,8 @@ static BOOL indicatorOn(UIView *button, BOOL *found) {
         ((UIView *)objc_getAssociatedObject(self, &kMirrorGlassKey)).hidden = YES;
         return;
     }
-    SGRGlassInside(self, &kMirrorGlassKey, SGRGlassCircleSize);
+    // A page's Back and ⋯ (and the circles pinned beside them) dimmed as the tab bar's glass is, below iOS 26.
+    SGRDarkenGlass(SGRGlassInside(self, &kMirrorGlassKey, SGRGlassCircleSize), &kMirrorDimKey, SGRGlassCircleSize / 2, SGRBarDim);
     _glyph.frame = CGRectMake(round((bounds.size.width - kMirrorGlyph) / 2), round((bounds.size.height - kMirrorGlyph) / 2),
                               kMirrorGlyph, kMirrorGlyph);
     _download.frame = _glyph.frame;
@@ -414,6 +416,7 @@ static BOOL indicatorOn(UIView *button, BOOL *found) {
 }
 
 - (void)sgr_down {
+    if (SGUseLegacyGlass() && objc_getAssociatedObject(self, &kMirrorGlassKey)) return;    // the glass answers the press itself
     SGRAnimate(SGRMotionPress, ^{ self.transform = CGAffineTransformMakeScale(0.92, 0.92); }, nil);
 }
 
