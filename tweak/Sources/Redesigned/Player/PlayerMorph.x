@@ -71,34 +71,7 @@ static CGFloat screenRadius(void) {
 @property (nonatomic, readonly) CGFloat restY;
 @property (nonatomic, readonly) CGRect card;
 @property (nonatomic, readonly) BOOL masksStrip;
-@property (nonatomic, readonly) BOOL lockstepped;
 @end
-
-static CABasicAnimation *animationForKeyPathPrefix(CALayer *layer, NSString *prefix) {
-    CABasicAnimation *fallback = nil;
-    for (NSString *key in layer.animationKeys) {
-        CAAnimation *anim = [layer animationForKey:key];
-        if (![anim isKindOfClass:CABasicAnimation.class]) continue;
-        CABasicAnimation *basic = (CABasicAnimation *)anim;
-        if ([basic.keyPath hasPrefix:prefix]) return basic;
-        if (!fallback && [prefix isEqualToString:@"position"]) fallback = basic;
-    }
-    return fallback;
-}
-
-static void addLockstepAnimation(CALayer *layer, NSString *keyPath, CAPropertyAnimation *tpl, id fromVal, id toVal) {
-    if (!layer || !tpl || !fromVal || !toVal || ![tpl isKindOfClass:CABasicAnimation.class]) return;
-    CABasicAnimation *anim = [(CABasicAnimation *)tpl copy];
-    anim.keyPath = keyPath;
-    anim.additive = NO;
-    anim.fromValue = fromVal;
-    anim.toValue = toVal;
-    anim.byValue = nil;
-    anim.removedOnCompletion = NO;
-    anim.fillMode = kCAFillModeBoth;
-    [layer setValue:toVal forKeyPath:keyPath];
-    [layer addAnimation:anim forKey:[@"sgr." stringByAppendingString:keyPath]];
-}
 
 @implementation SGRPlayerMorph {
     __weak UIView *_container, *_overlay, *_bar;
@@ -111,23 +84,18 @@ static void addLockstepAnimation(CALayer *layer, NSString *keyPath, CAPropertyAn
     __weak UIView *_masked, *_stripPane;
     CGFloat _stripPaneAlpha;
     CGRect _card, _barArtwork, _barRest, _spotifyFrame;
-    CGPoint _overlayRestOrigin;
+    CGFloat _restY;
     CGFloat _cardRadius, _spotifyAlpha;
     CGColorRef _overlayColor;
     BOOL _coverHidden;
     BOOL _tornDown;
     BOOL _follows;   // 9.1.90: Spotify animates the player's frame and alpha, which the morph then only reads
-    BOOL _lockstepped;
-}
-
-- (BOOL)lockstepped {
-    return _lockstepped;
 }
 
 // Where the player's top edge rests when it has become the bar: 9.1.90's CompactOverlayTransition slides it down only
 // that far (y 727 of 874), not off the screen.
 - (CGFloat)restY {
-    return _overlayRestOrigin.y > 0 ? _overlayRestOrigin.y : CGRectGetMinY(_card);
+    return _restY > 0 ? _restY : CGRectGetMinY(_card);
 }
 
 // 9.1.90's CompactOverlayTransition animates the player itself, so the morph follows where it is drawn. Spotify also
@@ -136,14 +104,9 @@ static void addLockstepAnimation(CALayer *layer, NSString *keyPath, CAPropertyAn
 - (void)followFrom:(UIView *)source npbFrame:(CGRect)npbFrame {
     _follows = YES;
     if (!CGRectIsNull(npbFrame) && npbFrame.origin.y > 100) {
-        _overlayRestOrigin = npbFrame.origin;
+        _restY = npbFrame.origin.y;
     } else {
-        _overlayRestOrigin = CGPointMake(0, CGRectGetMinY(_card));
-    }
-    if (source && _container) {
-        _barRest = [_container convertRect:source.bounds fromView:source];
-    } else if (!CGRectIsNull(npbFrame)) {
-        _barRest = npbFrame;
+        _restY = CGRectGetMinY(_card);
     }
     // Next turn, once every hook on the transition's start has run: a close's glass copies (BarTransition.x) exist by
     // then whichever hook runs first. At either end the strip sits in the stand-in at Spotify's own alpha, so the turn
@@ -157,36 +120,11 @@ static void addLockstepAnimation(CALayer *layer, NSString *keyPath, CAPropertyAn
     if (_tornDown || !source) return;
     UIView *bar = _bar;
     if (!bar) return;
-    // Outside a Jam, punch out the mini-player's static artwork from the close stand-in's content image so it never
-    // shows a second small cover behind the flying _cover.
-    CGRect strip = SGRNowPlayingStripFrameIn(source);
-    if (CGRectIsNull(strip)) {
-        if (_cover && !CGRectIsNull(_barArtwork) && [bar isKindOfClass:UIImageView.class] && !((UIImageView *)bar).image && [bar.subviews.lastObject isKindOfClass:UIImageView.class]) {
-            UIView *content = bar.subviews.lastObject;
-            if (!content.layer.mask) {
-                CGRect artInSource = [source convertRect:_barArtwork fromView:_container];
-                CGSize from = source.bounds.size, to = content.bounds.size;
-                CGFloat sx = from.width > 0 ? to.width / from.width : 1, sy = from.height > 0 ? to.height / from.height : 1;
-                CGRect hole = CGRectInset(CGRectMake(artInSource.origin.x * sx, artInSource.origin.y * sy, artInSource.size.width * sx, artInSource.size.height * sy), -2, -2);
-                CAShapeLayer *mask = [CAShapeLayer layer];
-                mask.frame = content.bounds;
-                UIBezierPath *path = [UIBezierPath bezierPathWithRect:content.bounds];
-                [path appendPath:[UIBezierPath bezierPathWithRect:hole]];
-                mask.path = path.CGPath;
-                mask.fillRule = kCAFillRuleEvenOdd;
-                [CATransaction begin];
-                [CATransaction setDisableActions:YES];
-                content.layer.mask = mask;
-                [CATransaction commit];
-                _stripMask = mask;
-                _masked = content;
-            }
-        }
-        return;
-    }
     // In a Jam the stand-in is the whole bar, strip and card, and the sheet grows from the card alone: the strip fades
     // in the first quarter of an open, so it never stands beside the growing player. Its place comes from Spotify's bar
     // the stand-in copies, scaled to the stand-in, not from the card: Spotify has already set the stand-in's end frame.
+    CGRect strip = SGRNowPlayingStripFrameIn(source);
+    if (CGRectIsNull(strip)) return;
     CGSize from = source.bounds.size, to = bar.bounds.size;
     CGFloat sx = from.width > 0 ? to.width / from.width : 1, sy = from.height > 0 ? to.height / from.height : 1;
     strip = CGRectIntersection(CGRectMake(strip.origin.x * sx, strip.origin.y * sy, strip.size.width * sx, strip.size.height * sy), bar.bounds);
@@ -229,174 +167,6 @@ static void addLockstepAnimation(CALayer *layer, NSString *keyPath, CAPropertyAn
 
 - (BOOL)masksStrip {
     return _stripPart != nil;
-}
-
-static void overlayOriginsForAnimation(CALayer *layer, CAPropertyAnimation *posAnim, CGPoint fallbackFrom, CGPoint fallbackTo, CGPoint *outFrom, CGPoint *outTo) {
-    CGPoint fromOrigin = fallbackFrom, toOrigin = fallbackTo;
-    if ([posAnim isKindOfClass:[CABasicAnimation class]]) {
-        CABasicAnimation *basic = (CABasicAnimation *)posAnim;
-        CGSize sz = layer.bounds.size;
-        CGPoint anchor = layer.anchorPoint;
-        CGPoint anchorOff = CGPointMake(sz.width * anchor.x, sz.height * anchor.y);
-        CGPoint modelOrigin = CGPointMake(layer.position.x - anchorOff.x, layer.position.y - anchorOff.y);
-        if ([basic.keyPath isEqualToString:@"position"] && [basic.fromValue isKindOfClass:[NSValue class]]) {
-            CGPoint fv = [basic.fromValue CGPointValue];
-            CGPoint tv = [basic.toValue isKindOfClass:[NSValue class]] ? [basic.toValue CGPointValue] : (basic.isAdditive ? CGPointZero : layer.position);
-            if (basic.isAdditive) {
-                fromOrigin = CGPointMake(modelOrigin.x + fv.x, modelOrigin.y + fv.y);
-                toOrigin = CGPointMake(modelOrigin.x + tv.x, modelOrigin.y + tv.y);
-            } else {
-                fromOrigin = CGPointMake(fv.x - anchorOff.x, fv.y - anchorOff.y);
-                toOrigin = CGPointMake(tv.x - anchorOff.x, tv.y - anchorOff.y);
-            }
-        } else if ([basic.keyPath isEqualToString:@"position.y"] && [basic.fromValue isKindOfClass:[NSNumber class]]) {
-            CGFloat fv = [basic.fromValue doubleValue];
-            CGFloat tv = [basic.toValue isKindOfClass:[NSNumber class]] ? [basic.toValue doubleValue] : (basic.isAdditive ? 0.0 : layer.position.y);
-            if (basic.isAdditive) {
-                fromOrigin = CGPointMake(modelOrigin.x, modelOrigin.y + fv);
-                toOrigin = CGPointMake(modelOrigin.x, modelOrigin.y + tv);
-            } else {
-                fromOrigin = CGPointMake(modelOrigin.x, fv - anchorOff.y);
-                toOrigin = CGPointMake(modelOrigin.x, tv - anchorOff.y);
-            }
-        }
-    }
-    *outFrom = fromOrigin;
-    *outTo = toOrigin;
-}
-
-- (BOOL)attachLockstepFrom:(CGFloat)fromT to:(CGFloat)toT {
-    UIView *container = _container, *overlay = _overlay, *bar = _bar;
-    if (!container || !overlay || !_follows) return NO;
-    CAPropertyAnimation *posAnim = animationForKeyPathPrefix(overlay.layer, @"position");
-    if (!posAnim) return NO;
-    CAPropertyAnimation *alphaAnim = animationForKeyPathPrefix(overlay.layer, @"opacity") ?: posAnim;
-
-    CGRect full = container.bounds;
-    if (full.size.width <= 0) return NO;
-
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];
-    overlay.layer.sublayerTransform = CATransform3DIdentity;
-    CGRect coverInPlayer = SGRPlayerCoverFrameIn(overlay);
-    if (CGRectIsNull(coverInPlayer)) {
-        [UIView performWithoutAnimation:^{
-            [overlay setNeedsLayout];
-            [overlay layoutIfNeeded];
-        }];
-        coverInPlayer = SGRPlayerCoverFrameIn(overlay);
-    }
-    if (_cover && CGRectIsNull(coverInPlayer)) {
-        [CATransaction commit];
-        return NO;
-    }
-
-    CGPoint restOrigin = _overlayRestOrigin.y > 0 ? _overlayRestOrigin : CGPointMake(0, self.restY);
-    CGPoint fallbackFrom = CGPointMake(lerp(restOrigin.x, 0, fromT), lerp(restOrigin.y, 0, fromT));
-    CGPoint fallbackTo = CGPointMake(lerp(restOrigin.x, 0, toT), lerp(restOrigin.y, 0, toT));
-    CGPoint originFrom = fallbackFrom, originTo = fallbackTo;
-    overlayOriginsForAnimation(overlay.layer, posAnim, fallbackFrom, fallbackTo, &originFrom, &originTo);
-
-    CGRect sheetFrom = lerpRect(_card, full, fromT);
-    CGRect sheetTo = lerpRect(_card, full, toT);
-    CGFloat radiusFrom = lerp(_cardRadius, screenRadius(), fromT);
-    CGFloat radiusTo = lerp(_cardRadius, screenRadius(), toT);
-    CGFloat scaleFrom = sheetFrom.size.width / full.size.width;
-    CGFloat scaleTo = sheetTo.size.width / full.size.width;
-
-    CGSize size = overlay.bounds.size;
-    CGPoint middle = CGPointMake(size.width / 2, size.height / 2);
-
-    CGPoint targetFrom = CGPointMake(sheetFrom.origin.x - originFrom.x, sheetFrom.origin.y - originFrom.y);
-    CGPoint targetTo = CGPointMake(sheetTo.origin.x - originTo.x, sheetTo.origin.y - originTo.y);
-
-    CGPoint shiftFrom = CGPointMake(targetFrom.x - middle.x + scaleFrom * middle.x, targetFrom.y - middle.y + scaleFrom * middle.y);
-    CGPoint shiftTo = CGPointMake(targetTo.x - middle.x + scaleTo * middle.x, targetTo.y - middle.y + scaleTo * middle.y);
-
-    CATransform3D tfFrom = CATransform3DScale(CATransform3DMakeTranslation(shiftFrom.x, shiftFrom.y, 0), scaleFrom, scaleFrom, 1);
-    CATransform3D tfTo = CATransform3DScale(CATransform3DMakeTranslation(shiftTo.x, shiftTo.y, 0), scaleTo, scaleTo, 1);
-
-    overlay.layer.sublayerTransform = tfTo;
-    addLockstepAnimation(overlay.layer, @"sublayerTransform", posAnim, [NSValue valueWithCATransform3D:tfFrom], [NSValue valueWithCATransform3D:tfTo]);
-
-    CGRect maskBoundsFrom = CGRectMake(0, 0, sheetFrom.size.width, sheetFrom.size.height);
-    CGRect maskBoundsTo = CGRectMake(0, 0, sheetTo.size.width, sheetTo.size.height);
-    CGPoint maskPosFrom = CGPointMake(targetFrom.x + sheetFrom.size.width * 0.5, targetFrom.y + sheetFrom.size.height * 0.5);
-    CGPoint maskPosTo = CGPointMake(targetTo.x + sheetTo.size.width * 0.5, targetTo.y + sheetTo.size.height * 0.5);
-
-    _mask.bounds = maskBoundsTo;
-    _mask.position = maskPosTo;
-    _mask.cornerRadius = radiusTo;
-    addLockstepAnimation(_mask, @"bounds", posAnim, [NSValue valueWithCGRect:maskBoundsFrom], [NSValue valueWithCGRect:maskBoundsTo]);
-    addLockstepAnimation(_mask, @"position", posAnim, [NSValue valueWithCGPoint:maskPosFrom], [NSValue valueWithCGPoint:maskPosTo]);
-    addLockstepAnimation(_mask, @"cornerRadius", posAnim, @(radiusFrom), @(radiusTo));
-
-    CGRect sheetBoundsFrom = CGRectMake(0, 0, sheetFrom.size.width, sheetFrom.size.height);
-    CGRect sheetBoundsTo = CGRectMake(0, 0, sheetTo.size.width, sheetTo.size.height);
-    CGPoint sheetPosFrom = CGPointMake(CGRectGetMidX(sheetFrom), CGRectGetMidY(sheetFrom));
-    CGPoint sheetPosTo = CGPointMake(CGRectGetMidX(sheetTo), CGRectGetMidY(sheetTo));
-
-    _sheet.layer.bounds = sheetBoundsTo;
-    _sheet.layer.position = sheetPosTo;
-    _sheet.layer.cornerRadius = radiusTo;
-    _sheet.layer.opacity = (float)toT;
-    addLockstepAnimation(_sheet.layer, @"bounds", posAnim, [NSValue valueWithCGRect:sheetBoundsFrom], [NSValue valueWithCGRect:sheetBoundsTo]);
-    addLockstepAnimation(_sheet.layer, @"position", posAnim, [NSValue valueWithCGPoint:sheetPosFrom], [NSValue valueWithCGPoint:sheetPosTo]);
-    addLockstepAnimation(_sheet.layer, @"cornerRadius", posAnim, @(radiusFrom), @(radiusTo));
-    addLockstepAnimation(_sheet.layer, @"opacity", alphaAnim, @(fromT), @(toT));
-
-    if (bar && !CGRectIsEmpty(_barRest)) {
-        CGFloat riseFrom = sheetFrom.origin.y - _card.origin.y;
-        CGFloat riseTo = sheetTo.origin.y - _card.origin.y;
-        CGPoint barPosFrom = CGPointMake(CGRectGetMidX(_barRest), CGRectGetMidY(_barRest) + riseFrom);
-        CGPoint barPosTo = CGPointMake(CGRectGetMidX(_barRest), CGRectGetMidY(_barRest) + riseTo);
-        bar.layer.position = barPosTo;
-        addLockstepAnimation(bar.layer, @"position", posAnim, [NSValue valueWithCGPoint:barPosFrom], [NSValue valueWithCGPoint:barPosTo]);
-    }
-
-    if (_cover && !CGRectIsNull(coverInPlayer)) {
-        if (!_coverHidden) {
-            SGRPlayerSetCoverHidden(YES);
-            _coverHidden = YES;
-        }
-        _cover.hidden = NO;
-        CGRect fromInCard = CGRectOffset(_barArtwork, -_card.origin.x, -_card.origin.y);
-        CGRect toInSheetFrom = CGRectMake(scaleFrom * coverInPlayer.origin.x, scaleFrom * coverInPlayer.origin.y,
-                                          coverInPlayer.size.width * scaleFrom, coverInPlayer.size.height * scaleFrom);
-        CGRect toInSheetTo = CGRectMake(scaleTo * coverInPlayer.origin.x, scaleTo * coverInPlayer.origin.y,
-                                        coverInPlayer.size.width * scaleTo, coverInPlayer.size.height * scaleTo);
-        CGRect coverRectFrom = CGRectOffset(lerpRect(fromInCard, toInSheetFrom, fromT), sheetFrom.origin.x, sheetFrom.origin.y);
-        CGRect coverRectTo = CGRectOffset(lerpRect(fromInCard, toInSheetTo, toT), sheetTo.origin.x, sheetTo.origin.y);
-
-        CGRect coverBoundsFrom = CGRectMake(0, 0, coverRectFrom.size.width, coverRectFrom.size.height);
-        CGRect coverBoundsTo = CGRectMake(0, 0, coverRectTo.size.width, coverRectTo.size.height);
-        CGPoint coverPosFrom = CGPointMake(CGRectGetMidX(coverRectFrom), CGRectGetMidY(coverRectFrom));
-        CGPoint coverPosTo = CGPointMake(CGRectGetMidX(coverRectTo), CGRectGetMidY(coverRectTo));
-
-        BOOL isCircle = SGInt(SGRKeyBarArtworkShape, SGRBarArtworkShapeRoundedSquare) == SGRBarArtworkShapeCircle;
-        CGFloat barRadius = isCircle ? (fromInCard.size.width / 2.0) : 6.5;
-        CGFloat fullCoverRadius = SGRRadiusArtwork * SGRPlayerCoverScale();
-        CGFloat coverRadiusFrom = lerp(barRadius, fullCoverRadius * scaleFrom, fromT);
-        CGFloat coverRadiusTo = lerp(barRadius, fullCoverRadius * scaleTo, toT);
-
-        _cover.layer.bounds = coverBoundsTo;
-        _cover.layer.position = coverPosTo;
-        _cover.layer.cornerRadius = coverRadiusTo;
-        addLockstepAnimation(_cover.layer, @"bounds", posAnim, [NSValue valueWithCGRect:coverBoundsFrom], [NSValue valueWithCGRect:coverBoundsTo]);
-        addLockstepAnimation(_cover.layer, @"position", posAnim, [NSValue valueWithCGPoint:coverPosFrom], [NSValue valueWithCGPoint:coverPosTo]);
-        addLockstepAnimation(_cover.layer, @"cornerRadius", posAnim, @(coverRadiusFrom), @(coverRadiusTo));
-        if (SGRPlayerMotionShowing()) {
-            CGFloat alphaFrom = 1 - ramp(0.6, 1, fromT);
-            CGFloat alphaTo = 1 - ramp(0.6, 1, toT);
-            _cover.layer.opacity = (float)alphaTo;
-            addLockstepAnimation(_cover.layer, @"opacity", posAnim, @(alphaFrom), @(alphaTo));
-        } else {
-            _cover.alpha = 1.0;
-        }
-    }
-    [CATransaction commit];
-    _lockstepped = YES;
-    return YES;
 }
 
 - (instancetype)initWithContainer:(UIView *)container overlay:(UIView *)overlay bar:(UIView *)bar barRest:(CGRect)barRest {
@@ -459,9 +229,8 @@ static void overlayOriginsForAnimation(CALayer *layer, CAPropertyAnimation *posA
         // Where Spotify's animation has the player now: its frame's model value is already the end. Not drawn yet (an
         // open's first frame), it is at the bar and transparent.
         CALayer *drawn = overlay.layer.presentationLayer;
-        CGPoint restOrigin = _overlayRestOrigin.y > 0 ? _overlayRestOrigin : CGPointMake(_spotifyFrame.origin.x, self.restY);
-        _spotifyFrame = drawn ? drawn.frame : (CGRect){restOrigin, _spotifyFrame.size};
-        _spotifyAlpha = drawn ? drawn.opacity : 0;
+        _spotifyFrame = drawn ? drawn.frame : (CGRect){{self->_spotifyFrame.origin.x, lerp(self.restY, 0, t)}, self->_spotifyFrame.size};
+        _spotifyAlpha = drawn ? drawn.opacity : t;
     }
     CGRect full = container.bounds;
     CGRect sheet = lerpRect(_card, full, t);
@@ -483,12 +252,20 @@ static void overlayOriginsForAnimation(CALayer *layer, CAPropertyAnimation *posA
         overlay.layer.sublayerTransform = CATransform3DIdentity;
         if (!self->_follows) overlay.frame = (CGRect){origin, self->_spotifyFrame.size};
         CGRect coverInPlayer = SGRPlayerCoverFrameIn(overlay);
+        if (CGRectIsNull(coverInPlayer) && self->_cover) {
+            [overlay setNeedsLayout];
+            [overlay layoutIfNeeded];
+            coverInPlayer = SGRPlayerCoverFrameIn(overlay);
+        }
 
         overlay.layer.sublayerTransform = CATransform3DScale(CATransform3DMakeTranslation(shift.x, shift.y, 0), scale, scale, 1);
         self->_mask.frame = CGRectMake(target.x, target.y, sheet.size.width, sheet.size.height);
         self->_mask.cornerRadius = radius;
+        self->_mask.opacity = self->_follows ? ramp(0.08, 0.55, t) : 1.0;
         if (!self->_follows) overlay.alpha = ramp(0.08, 0.55, t);
 
+        UIColor *fieldColor = SGRPlayerField().fieldColor;
+        if (fieldColor) self->_sheet.backgroundColor = fieldColor;
         self->_sheet.frame = sheet;
         self->_sheet.layer.cornerRadius = radius;
         // The sheet is the player's own paint, so it fades with the player Spotify fades against its bar stand-in.
@@ -546,15 +323,7 @@ static void overlayOriginsForAnimation(CALayer *layer, CAPropertyAnimation *posA
     UIView *overlay = _overlay, *bar = _bar;
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
-    for (NSString *key in [overlay.layer.animationKeys copy]) {
-        if ([key hasPrefix:@"sgr."]) [overlay.layer removeAnimationForKey:key];
-    }
-    if (bar) {
-        for (NSString *key in [bar.layer.animationKeys copy]) {
-            if ([key hasPrefix:@"sgr."]) [bar.layer removeAnimationForKey:key];
-        }
-        if (!CGRectIsEmpty(_barRest)) bar.frame = _barRest;
-    }
+    if (bar && !CGRectIsEmpty(_barRest)) bar.frame = _barRest;
     overlay.layer.sublayerTransform = CATransform3DIdentity;
     if (overlay.layer.mask == _mask) overlay.layer.mask = nil;
     UIView *masked = _masked, *pane = _stripPane;
@@ -654,16 +423,8 @@ static void runAtSpeed(CALayer *layer, float speed) {
     // An open's first frame has no presentation layer yet and its model already holds the end; Spotify starts it at the bar.
     CGFloat y = drawn ? drawn.frame.origin.y : (self.closing ? 0 : rest);
     self.lastT = rest > 0 ? MIN(1, MAX(0, 1 - y / rest)) : 1;
+    [self.morph apply:self.lastT];
     BOOL interactive = self.context.isInteractive;
-    if (!self.morph.lockstepped) {
-        [self.morph apply:self.lastT];
-    }
-    // When an interactive drag is released, attach render-server lockstep animations for the remainder of the transition.
-    if (self.wasInteractive && !interactive && !self.morph.lockstepped) {
-        CAPropertyAnimation *posAnim = animationForKeyPathPrefix(overlay.layer, @"position");
-        CGFloat fromT = (posAnim && posAnim.beginTime > 0) ? (self.closing ? 1.0 : 0.0) : self.lastT;
-        [self.morph attachLockstepFrom:fromT to:(self.closing ? 0.0 : 1.0)];
-    }
     // A close dragged by a finger runs faster from the moment it is let go.
     if (self.closing && self.wasInteractive && !interactive && !self.sped) {
         runAtSpeed(container.layer, kCloseSpeed);
@@ -671,14 +432,7 @@ static void runAtSpeed(CALayer *layer, float speed) {
     }
     self.wasInteractive = interactive;
     BOOL moved = fabs(y - self.lastY) > 0.5;
-    BOOL hasSpotifyAnim = NO;
-    for (NSString *key in overlay.layer.animationKeys) {
-        if (![key hasPrefix:@"sgr."]) {
-            hasSpotifyAnim = YES;
-            break;
-        }
-    }
-    BOOL moving = hasSpotifyAnim || moved || interactive;
+    BOOL moving = overlay.layer.animationKeys.count > 0 || moved || interactive;
     self.lastY = y;
     self.still = moving ? 0 : self.still + 1;
     // Let go once still, or kGiveUp after it last moved whatever the layer holds: a mask and a transform left on the player
@@ -762,12 +516,6 @@ static void followTransition(id transition, id<UIViewControllerContextTransition
     // from the start, one dragged by a finger from when it is let go (tick:).
     follower.closing = !to.isBeingPresented;
     follower.wasInteractive = context.isInteractive;
-    if (!context.isInteractive) {
-        CGFloat fromT = follower.closing ? 1.0 : 0.0;
-        CGFloat toT = follower.closing ? 0.0 : 1.0;
-        [morph apply:fromT];
-        [morph attachLockstepFrom:fromT to:toT];
-    }
     if (follower.closing && !context.isInteractive) {
         runAtSpeed(container.layer, kCloseSpeed);
         follower.sped = YES;
