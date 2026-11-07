@@ -1021,13 +1021,6 @@ static UIView *anyPlatterIn(UIView *bar) {
     return platter;
 }
 
-static BOOL isInsideTabButton(UIView *view, UIView *root) {
-    for (UIView *u = view; u && u != root; u = u.superview) {
-        if (isTabButton(u)) return YES;
-    }
-    return NO;
-}
-
 @implementation SGRPlatterHandoff
 
 - (void)start {
