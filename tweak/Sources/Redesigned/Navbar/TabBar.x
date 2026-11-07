@@ -802,7 +802,7 @@ static SGRBarState barState(UIView *host) {
 }
 
 // Moves the host's views from `before` to where they are now, with `along` (the card) in the same spring.
-static void moveFrom(UIView *host, SGRBarState before, void (^along)(void), void (^completion)(BOOL)) {
+static void moveFrom(UIView *host, SGRBarState before, UIView *bar, NSString *apartName, BOOL splitTransition, void (^along)(void), void (^completion)(BOOL)) {
     NSMutableArray<UIView *> *moved = [NSMutableArray array], *faded = [NSMutableArray array];
     NSMutableArray<NSValue *> *starts = [NSMutableArray array], *targets = [NSMutableArray array];
     NSMutableSet<NSString *> *taken = [NSMutableSet set];
@@ -815,6 +815,9 @@ static void moveFrom(UIView *host, SGRBarState before, void (^along)(void), void
         if (old) {
             BOOL stopped = [(NSNumber *)old[2] boolValue] && !isMoving(v);
             CGRect start = stopped ? old[1].CGRectValue : old[0].CGRectValue;
+            if (sg_minimized && splitTransition && (v == bar || [v isDescendantOfView:bar]) && !isTabButton(v) && start.size.width > host.bounds.size.width - 80.0) {
+                start.size.width -= (kApartItemWidth + kPlatterGap);
+            }
             if (!stopped && CGRectEqualToRect(start, v.frame)) return;
             [moved addObject:v];
             [starts addObject:[NSValue valueWithCGRect:start]];
@@ -832,7 +835,7 @@ static void moveFrom(UIView *host, SGRBarState before, void (^along)(void), void
             [starts addObject:was];   // a center in the host, placed once the views above it are back
             [targets addObject:[NSValue valueWithCGRect:v.frame]];
             [taken addObject:key];
-            if (!sg_minimized) {
+            if (!sg_minimized && !(splitTransition && apartName && [key isEqualToString:apartName])) {
                 for (UIView *sub in v.subviews) {
                     if ([sub isKindOfClass:UILabel.class] && !sub.hidden && sub.alpha > 0.01) [faded addObject:sub];
                 }
@@ -841,6 +844,7 @@ static void moveFrom(UIView *host, SGRBarState before, void (^along)(void), void
         }
         if (!superKnown || [v isKindOfClass:UITabBar.class]) return;
         if (isTabButton(v) && v.alpha > 0.01) {
+            if (!sg_minimized && splitTransition && apartName && [key isEqualToString:apartName]) return;
             [faded addObject:v];
         }
     });
@@ -901,6 +905,13 @@ static UIView *anyPlatterIn(UIView *bar) {
     return platter;
 }
 
+static BOOL isInsideTabButton(UIView *view, UIView *root) {
+    for (UIView *u = view; u && u != root; u = u.superview) {
+        if (isTabButton(u)) return YES;
+    }
+    return NO;
+}
+
 @implementation SGRPlatterHandoff
 
 - (void)start {
@@ -915,25 +926,43 @@ static UIView *anyPlatterIn(UIView *bar) {
 
 - (void)tick {
     UIView *host = self.host, *bar = self.bar, *apartBar = self.apartBar;
-    if (!host || !bar || !apartBar) {
+    if (!host || !bar || !apartBar || sg_minimized) {
         [self stop];
         return;
     }
     UIView *barPlatter = anyPlatterIn(bar), *apartPlatter = anyPlatterIn(apartBar);
     if (!barPlatter || !apartPlatter) return;
     CGRect mainRect = shownIn(barPlatter, host), apartRect = shownIn(apartPlatter, host);
-    BOOL overlapped = CGRectGetMaxX(mainRect) > CGRectGetMinX(apartRect) + 8.0;
-    if (apartBar.hidden != overlapped) apartBar.hidden = overlapped;
-    if (!sg_minimized && self.apartName.length) {
+    BOOL merged = CGRectGetMaxX(mainRect) >= CGRectGetMinX(apartRect) - 4.0;
+    if (!merged) {
+        if (apartBar.hidden) apartBar.hidden = NO;
+        if (self.apartName.length) {
+            NSString *target = self.apartName;
+            SGForEachView(bar, ^(UIView *v) {
+                if (isTabButton(v) && [buttonKey(v, host) isEqualToString:target]) v.alpha = 0.0;
+            });
+        }
+        return;
+    }
+    apartBar.hidden = YES;
+    if (self.apartName.length) {
         NSString *target = self.apartName;
         SGForEachView(bar, ^(UIView *v) {
-            if (!isTabButton(v)) return;
-            if ([buttonKey(v, host) isEqualToString:target]) {
-                UIImageView *g = glyphView(v);
-                if (g) g.alpha = overlapped ? 1.0 : 0.0;
+            if (isTabButton(v) && [buttonKey(v, host) isEqualToString:target]) {
+                v.alpha = 1.0;
+                for (UIView *sub in v.subviews) sub.alpha = 1.0;
             }
         });
     }
+    SGForEachView(bar, ^(UIView *v) {
+        if (isInsideTabButton(v, bar)) return;
+        if (v == bar || v.bounds.size.width > host.bounds.size.width - 100.0) {
+            [v.layer removeAnimationForKey:@"bounds.size"];
+            [v.layer removeAnimationForKey:@"bounds"];
+            [v.layer removeAnimationForKey:@"position"];
+        }
+    });
+    [self stop];
 }
 
 - (void)stop {
@@ -943,6 +972,7 @@ static UIView *anyPlatterIn(UIView *bar) {
     if (bar) {
         SGForEachView(bar, ^(UIView *v) {
             if (!isTabButton(v)) return;
+            v.alpha = 1.0;
             UIImageView *g = glyphView(v);
             if (g) g.alpha = 1.0;
         });
@@ -1025,19 +1055,21 @@ static void setMinimized(BOOL minimized, BOOL animated) {
     }
     SGRNowPlayingBarMoving(YES);
     if (apartBar) apartBar.alpha = 1;
-    moveFrom(host, before, ^{
+    UITabBarItem *trailItem = (apartBar && ((SGRSystemTabBar *)apartBar).items.count > 0) ? ((SGRSystemTabBar *)apartBar).items.firstObject : nil;
+    NSString *apartName = trailItem.accessibilityLabel ?: trailItem.title;
+    BOOL splitTransition = !hasPermanentSplit && SGRIsBarCompact();
+    moveFrom(host, before, bar, apartName, splitTransition, ^{
         SGRNowPlayingBarFollowTabBar();
     }, ^(BOOL finished) {
         SGRNowPlayingBarMoving(NO);
         settle(finished);
     });
-    if (!hasPermanentSplit && apartBar && ((SGRSystemTabBar *)apartBar).items.count > 0) {
-        UITabBarItem *trailItem = ((SGRSystemTabBar *)apartBar).items.firstObject;
+    if (!minimized && splitTransition && apartBar && apartName.length) {
         sg_handoff = [SGRPlatterHandoff new];
         sg_handoff.host = host;
         sg_handoff.bar = bar;
         sg_handoff.apartBar = apartBar;
-        sg_handoff.apartName = trailItem.accessibilityLabel ?: trailItem.title;
+        sg_handoff.apartName = apartName;
         [sg_handoff start];
     }
 }
