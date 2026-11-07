@@ -80,9 +80,13 @@ static id activeVariantOf(id icon) {
 // filed under a filled icon's name or the other way round. isActive only picks the view's colors, white either
 // way. Drawn on an icon view of our own, off screen, so the images do not wait for Spotify's views to lay out
 // and paint, and UITabBar swaps image and selectedImage itself.
-static UIImage *drawGlyph(UIView *live, id icon, BOOL active) {
+static UIImage *drawGlyph(UIView *live, id icon, BOOL active, BOOL minimized) {
     if (!live) return nil;
     CGSize size = live.bounds.size;
+    if (SGRIsBarCompact() && size.width >= 20 && size.width <= 25) {
+        CGFloat d = minimized ? 28.0 : 26.5;
+        size = CGSizeMake(d, d);
+    }
     Class viewClass = NSClassFromString(@"SPTEncoreIconView");
     if (icon && viewClass) {
         static NSCache<NSString *, UIImage *> *cache;
@@ -107,6 +111,9 @@ static UIImage *drawGlyph(UIView *live, id icon, BOOL active) {
     if ([live isKindOfClass:UIImageView.class] && ((UIImageView *)live).image) {
         UIImage *sym = ((UIImageView *)live).image;
         CGSize symSize = sym.size;
+        if (minimized && SGRIsBarCompact()) {
+            symSize = CGSizeMake(round(symSize.width * 1.12), round(symSize.height * 1.12));
+        }
         if (symSize.width >= 2 && symSize.height >= 2) {
             UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:symSize];
             UIImage *raster = [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
@@ -123,7 +130,7 @@ static UIImage *glyphOf(UIView *item, BOOL active) {
     UIView *live = iconIn(item);
     id icon = live ? encoreIconOf(live) : nil;
     if (active) icon = activeVariantOf(icon) ?: icon;
-    return drawGlyph(live, icon, active);
+    return drawGlyph(live, icon, active, NO);
 }
 
 // For the Tab bar page's list and preview: a tab of Spotify's drawn from its item on the bar, hidden or not,
@@ -431,20 +438,25 @@ static BOOL fillBar(SGRSystemTabBar *bar, NSArray<UIView *> *sources, BOOL hideL
         UIView *live = iconIn(sources[i]);
         id icon = live ? encoreIconOf(live) : nil;
         NSString *name = iconName(icon);
+        NSString *modeTag = [NSString stringWithFormat:@"%d-%d", SGRIsBarCompact(), minimized];
+        NSArray *drawnTags = objc_getAssociatedObject(item, &kGlyphNamesKey);
         BOOL activeMinimized = minimized && sources[i] == active;
         if (activeMinimized) {
             id lit = activeVariantOf(icon);
-            UIImage *image = drawGlyph(live, lit ?: icon, YES);
+            UIImage *image = drawGlyph(live, lit ?: icon, YES, YES);
             if (image) {
                 UIImage *tinted = [image imageWithTintColor:SGRAccent() renderingMode:UIImageRenderingModeAlwaysOriginal];
                 setGlyphs(item, tinted, tinted);
                 objc_setAssociatedObject(item, &kGlyphNamesKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             }
-        } else if (!item.image || !item.selectedImage || (name && ![objc_getAssociatedObject(item, &kGlyphNamesKey) containsObject:name])) {
+        } else if (!item.image || !item.selectedImage || ![drawnTags containsObject:modeTag] || (name && ![drawnTags containsObject:name])) {
             id lit = activeVariantOf(icon);
-            setGlyphs(item, drawGlyph(live, icon, NO), drawGlyph(live, lit ?: icon, YES));
+            setGlyphs(item, drawGlyph(live, icon, NO, minimized), drawGlyph(live, lit ?: icon, YES, minimized));
             NSString *litName = iconName(lit);
-            if (item.image && item.selectedImage) objc_setAssociatedObject(item, &kGlyphNamesKey, name ? (litName ? @[name, litName] : @[name]) : nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            if (item.image && item.selectedImage) {
+                NSArray *tags = name ? (litName ? @[modeTag, name, litName] : @[modeTag, name]) : @[modeTag];
+                objc_setAssociatedObject(item, &kGlyphNamesKey, tags, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
         }
         missing |= !item.image || !item.selectedImage;
         item.accessibilityLabel = labelIn(sources[i]).text;

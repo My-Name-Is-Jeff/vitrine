@@ -353,7 +353,7 @@ static void styleBarPlayButton(UIView *play) {
     SGRGlyphView *glyph = objc_getAssociatedObject(play, &kPlayGlyphKey);
     if (!glyph) {
         glyph = [[SGRGlyphView alloc] initWithSymbol:(state.isPaused ? @"play.fill" : @"pause.fill")
-                                           pointSize:18.5
+                                           pointSize:20.5
                                               weight:UIImageSymbolWeightRegular];
         objc_setAssociatedObject(play, &kPlayGlyphKey, glyph, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
@@ -395,7 +395,7 @@ static void styleBarPlayButton(UIView *play) {
 }
 
 static UIImageView *makeSkipArrow(void) {
-    UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:13.5 weight:UIImageSymbolWeightRegular];
+    UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:17.5 weight:UIImageSymbolWeightRegular];
     UIImage *img = [[UIImage systemImageNamed:@"play.fill" withConfiguration:cfg] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
     UIImageView *iv = [[UIImageView alloc] initWithImage:img];
     iv.tintColor = SGRPrimary();
@@ -432,8 +432,8 @@ static UIImageView *makeSkipArrow(void) {
 
 - (void)resetArrows {
     CGPoint mid = CGPointMake(CGRectGetMidX(_glyphHost.bounds), CGRectGetMidY(_glyphHost.bounds));
-    CGPoint leftPos = CGPointMake(mid.x - 5.5, mid.y);
-    CGPoint rightPos = CGPointMake(mid.x + 5.5, mid.y);
+    CGPoint leftPos = CGPointMake(mid.x - 6.5, mid.y);
+    CGPoint rightPos = CGPointMake(mid.x + 6.5, mid.y);
     _incomingArrow.transform = CGAffineTransformMakeScale(0.2, 0.2);
     _incomingArrow.center = leftPos;
     _incomingArrow.alpha = 0.0;
@@ -448,8 +448,8 @@ static UIImageView *makeSkipArrow(void) {
 - (void)animateSkip {
     NSUInteger token = ++_animToken;
     CGPoint mid = CGPointMake(CGRectGetMidX(_glyphHost.bounds), CGRectGetMidY(_glyphHost.bounds));
-    CGPoint leftPos = CGPointMake(mid.x - 5.5, mid.y);
-    CGPoint rightPos = CGPointMake(mid.x + 5.5, mid.y);
+    CGPoint leftPos = CGPointMake(mid.x - 6.5, mid.y);
+    CGPoint rightPos = CGPointMake(mid.x + 6.5, mid.y);
     [UIView performWithoutAnimation:^{
         [self resetArrows];
     }];

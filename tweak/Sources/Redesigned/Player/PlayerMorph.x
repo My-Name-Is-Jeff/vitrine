@@ -86,9 +86,9 @@ static CABasicAnimation *animationForKeyPathPrefix(CALayer *layer, NSString *pre
     return fallback;
 }
 
-static void addLockstepAnimation(CALayer *layer, CABasicAnimation *tpl, NSString *keyPath, id fromVal, id toVal) {
-    if (!layer || !tpl || !fromVal || !toVal) return;
-    CABasicAnimation *anim = [tpl copy];
+static void addLockstepAnimation(CALayer *layer, NSString *keyPath, CAPropertyAnimation *tpl, id fromVal, id toVal) {
+    if (!layer || !tpl || !fromVal || !toVal || ![tpl isKindOfClass:CABasicAnimation.class]) return;
+    CABasicAnimation *anim = [(CABasicAnimation *)tpl copy];
     anim.keyPath = keyPath;
     anim.additive = NO;
     anim.fromValue = fromVal;
