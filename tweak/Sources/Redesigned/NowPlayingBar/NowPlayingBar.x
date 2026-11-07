@@ -24,11 +24,13 @@
 #import "Core/SGCore.h"
 #import "Redesigned/Kit/SGRRepaint.h"
 #import "Redesigned/Kit/SGRGlass.h"
+#import "Redesigned/Kit/SGRGlyph.h"
 #import "Redesigned/Kit/SGRTokens.h"
 #import "Settings/SGMarquee.h"
 #import "Shared/Player/PlayerState.h"
 #import "NowPlayingBar.h"
 #import "Redesigned/Navbar/Navbar.h"
+#import <objc/message.h>
 
 static inline BOOL SGRIsBarCompact(void) {
     return SGEnabled(SGRKeyBarCompact);
@@ -38,7 +40,7 @@ static const CGFloat kCardRadius = 24;
 // The strip's pane is this much smaller than the strip at each end, so a gap parts it from the card's glass.
 static const CGFloat kStripInset = 4;
 static NSString *const kUnitId = @"Components.UI.PageInformationUnitNowPlayingBar";
-static char kGlassKey, kStripGlassKey, kNextButtonKey;
+static char kGlassKey, kStripGlassKey, kNextButtonKey, kPlayGlyphKey, kPlayTapHookedKey;
 static __weak UIView *sg_card;
 static CGRect sg_stripFrame;
 // The track's glass frame in the container's view as the bar was last styled, the strip cut off: the row
@@ -279,27 +281,196 @@ static BOOL setEdges(UIView *bar, CGFloat left, CGFloat right) {
     return NO;
 }
 
+static BOOL hasPlayableNextTrack(SPTPlayerState *state) {
+    if (!state) return YES;
+    SPTPlayerOptions *opts = [state respondsToSelector:@selector(options)] ? state.options : nil;
+    if (opts.repeatingContext || opts.repeatingTrack) return YES;
+    SEL restSel = NSSelectorFromString(@"restrictions");
+    id restrictions = [state respondsToSelector:restSel] ? ((id (*)(id, SEL))objc_msgSend)(state, restSel) : nil;
+    SEL disallowSel = NSSelectorFromString(@"disallowSkippingToNextTrack");
+    if (restrictions && [restrictions respondsToSelector:disallowSel]) {
+        if (((BOOL (*)(id, SEL))objc_msgSend)(restrictions, disallowSel)) return NO;
+    }
+    id future = [state respondsToSelector:@selector(future)] ? state.future : nil;
+    Class trackClass = objc_getClass("SPTPlayerTrack");
+    for (id item in [future isKindOfClass:NSArray.class] ? future : @[]) {
+        if (trackClass && ![item isKindOfClass:trackClass]) continue;
+        SPTPlayerTrack *t = (SPTPlayerTrack *)item;
+        NSString *uri = SGURIString([t respondsToSelector:@selector(URI)] ? t.URI : nil);
+        NSString *title = [t respondsToSelector:@selector(trackTitle)] ? t.trackTitle : nil;
+        if (title.length > 0 && uri.length > 0 && ![uri containsString:@"delimiter"]) return YES;
+    }
+    return NO;
+}
+
+static __weak SGRGlyphView *sg_barPlayGlyph;
+static __weak UIView *sg_barPlayView;
+static CFTimeInterval sg_barPlayTappedUntil;
+static BOOL sg_barPlayTappedPaused;
+
+static void refreshBarPlayGlyph(BOOL animated) {
+    SGRGlyphView *glyph = sg_barPlayGlyph;
+    SPTPlayerState *state = SGPlayerState();
+    if (!glyph || !state) return;
+    if (CACurrentMediaTime() < sg_barPlayTappedUntil) {
+        if (state.isPaused != sg_barPlayTappedPaused) return;
+        sg_barPlayTappedUntil = 0;
+    }
+    [glyph setSymbol:(state.isPaused ? @"play.fill" : @"pause.fill") animated:animated];
+}
+
+@interface SGRBarPlayWatcher : NSObject <SGPlayerStateObserver>
+@end
+
+@implementation SGRBarPlayWatcher
+- (void)playerStateDidChange:(SPTPlayerState *)state {
+    refreshBarPlayGlyph(YES);
+}
+- (void)barPlayTapped {
+    SGRGlyphView *glyph = sg_barPlayGlyph;
+    if (!glyph) return;
+    sg_barPlayTappedPaused = ![glyph.symbol isEqualToString:@"play.fill"];
+    sg_barPlayTappedUntil = CACurrentMediaTime() + 1.0;
+    [glyph setSymbol:(sg_barPlayTappedPaused ? @"play.fill" : @"pause.fill") animated:YES];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        refreshBarPlayGlyph(YES);
+    });
+}
+@end
+
+static SGRBarPlayWatcher *sg_barPlayWatcher;
+
+static void styleBarPlayButton(UIView *play) {
+    SPTPlayerState *state = SGPlayerState();
+    if (!play || !state) return;
+    __block UIControl *control = [play isKindOfClass:UIControl.class] ? (UIControl *)play : nil;
+    if (!control) {
+        SGForEachView(play, ^(UIView *v) {
+            if (!control && [v isKindOfClass:UIControl.class]) control = (UIControl *)v;
+        });
+    }
+    UIView *host = control ?: play;
+    SGRGlyphView *glyph = objc_getAssociatedObject(play, &kPlayGlyphKey);
+    if (!glyph) {
+        glyph = [[SGRGlyphView alloc] initWithSymbol:(state.isPaused ? @"play.fill" : @"pause.fill")
+                                           pointSize:18.5
+                                              weight:UIImageSymbolWeightRegular];
+        objc_setAssociatedObject(play, &kPlayGlyphKey, glyph, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    SGForEachView(host, ^(UIView *v) {
+        if (v == host || v == glyph || [v isDescendantOfView:glyph]) return;
+        if ([v isKindOfClass:UIImageView.class] || [NSStringFromClass(v.class) containsString:@"IconView"]) {
+            v.alpha = 0;
+        }
+    });
+    if (glyph.superview != host) {
+        glyph.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin
+                               | UIViewAutoresizingFlexibleTopMargin | UIViewAutoresizingFlexibleBottomMargin;
+        [host addSubview:glyph];
+    } else if (host.subviews.lastObject != glyph) {
+        [host bringSubviewToFront:glyph];
+    }
+    glyph.center = CGPointMake(CGRectGetMidX(host.bounds), CGRectGetMidY(host.bounds));
+    if (control && !objc_getAssociatedObject(control, &kPlayTapHookedKey)) {
+        [control addTarget:sg_barPlayWatcher action:@selector(barPlayTapped) forControlEvents:UIControlEventTouchUpInside];
+        objc_setAssociatedObject(control, &kPlayTapHookedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    sg_barPlayView = play;
+    sg_barPlayGlyph = glyph;
+    refreshBarPlayGlyph(NO);
+}
+
 // Apple Music's mini player shows Play/Pause + Next (`forward.fill`) when expanded above the tab bar,
 // and Play/Pause alone when minimized into the tab bar's inline row.
 @interface SGRBarNextButton : UIButton
 @property (nonatomic, weak) UIView *fallbackPlayView;
 @end
 
-@implementation SGRBarNextButton
+@implementation SGRBarNextButton {
+    UIView *_glyphHost;
+    UIImageView *_incomingArrow;
+    UIImageView *_leftArrow;
+    UIImageView *_rightArrow;
+    NSUInteger _animToken;
+}
+
+static UIImageView *makeSkipArrow(void) {
+    UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:13.5 weight:UIImageSymbolWeightRegular];
+    UIImage *img = [[UIImage systemImageNamed:@"play.fill" withConfiguration:cfg] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    UIImageView *iv = [[UIImageView alloc] initWithImage:img];
+    iv.tintColor = SGRPrimary();
+    iv.contentMode = UIViewContentModeCenter;
+    [iv sizeToFit];
+    return iv;
+}
+
 + (instancetype)button {
     SGRBarNextButton *btn = [self buttonWithType:UIButtonTypeCustom];
     btn.frame = CGRectMake(0, 0, 42, 44);
-    UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:16.5 weight:UIImageSymbolWeightSemibold];
-    UIImage *img = [[UIImage systemImageNamed:@"forward.fill" withConfiguration:cfg] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
-    [btn setImage:img forState:UIControlStateNormal];
-    btn.tintColor = SGRPrimary();
+    btn->_glyphHost = [[UIView alloc] initWithFrame:btn.bounds];
+    btn->_glyphHost.userInteractionEnabled = NO;
+    btn->_glyphHost.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [btn addSubview:btn->_glyphHost];
+    btn->_incomingArrow = makeSkipArrow();
+    btn->_leftArrow = makeSkipArrow();
+    btn->_rightArrow = makeSkipArrow();
+    btn->_incomingArrow.alpha = 0;
+    [btn->_glyphHost addSubview:btn->_incomingArrow];
+    [btn->_glyphHost addSubview:btn->_leftArrow];
+    [btn->_glyphHost addSubview:btn->_rightArrow];
+    [btn resetArrows];
     btn.accessibilityIdentifier = @"SPTNowPlayingNextTrackButton";
     btn.accessibilityLabel = @"Next";
     [btn addTarget:btn action:@selector(sgr_skipNext) forControlEvents:UIControlEventTouchUpInside];
     return btn;
 }
 
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    if (_incomingArrow.alpha < 0.01) [self resetArrows];
+}
+
+- (void)resetArrows {
+    CGPoint mid = CGPointMake(CGRectGetMidX(_glyphHost.bounds), CGRectGetMidY(_glyphHost.bounds));
+    CGPoint leftPos = CGPointMake(mid.x - 5.5, mid.y);
+    CGPoint rightPos = CGPointMake(mid.x + 5.5, mid.y);
+    _incomingArrow.transform = CGAffineTransformMakeScale(0.2, 0.2);
+    _incomingArrow.center = leftPos;
+    _incomingArrow.alpha = 0.0;
+    _leftArrow.transform = CGAffineTransformIdentity;
+    _leftArrow.center = leftPos;
+    _leftArrow.alpha = 1.0;
+    _rightArrow.transform = CGAffineTransformIdentity;
+    _rightArrow.center = rightPos;
+    _rightArrow.alpha = 1.0;
+}
+
+- (void)animateSkip {
+    NSUInteger token = ++_animToken;
+    CGPoint mid = CGPointMake(CGRectGetMidX(_glyphHost.bounds), CGRectGetMidY(_glyphHost.bounds));
+    CGPoint leftPos = CGPointMake(mid.x - 5.5, mid.y);
+    CGPoint rightPos = CGPointMake(mid.x + 5.5, mid.y);
+    [UIView performWithoutAnimation:^{
+        [self resetArrows];
+    }];
+    [UIView animateWithDuration:0.32 delay:0 usingSpringWithDamping:0.85 initialSpringVelocity:0 options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction animations:^{
+        _incomingArrow.transform = CGAffineTransformIdentity;
+        _incomingArrow.center = leftPos;
+        _incomingArrow.alpha = 1.0;
+        _leftArrow.center = rightPos;
+        _rightArrow.transform = CGAffineTransformConcat(CGAffineTransformMakeScale(0.35, 0.35), CGAffineTransformMakeTranslation(4.0, 0));
+        _rightArrow.alpha = 0.0;
+    } completion:^(BOOL finished) {
+        if (_animToken != token) return;
+        [UIView performWithoutAnimation:^{
+            [self resetArrows];
+        }];
+    }];
+}
+
 - (void)sgr_skipNext {
+    [self animateSkip];
+    if (!hasPlayableNextTrack(SGPlayerState())) return;
     id player = SGPlayer();
     if ([player respondsToSelector:@selector(skipToNextTrackWithOptions:)]) {
         [(id<SPTPlayer>)player skipToNextTrackWithOptions:nil];
@@ -310,7 +481,7 @@ static BOOL setEdges(UIView *bar, CGFloat left, CGFloat right) {
 
 - (void)setHighlighted:(BOOL)highlighted {
     [super setHighlighted:highlighted];
-    UIView *iv = self.imageView;
+    UIView *iv = _glyphHost;
     SGRAnimate(SGRMotionPress, ^{
         iv.alpha = highlighted ? 0.5 : 1.0;
         iv.transform = highlighted ? CGAffineTransformMakeScale(0.9, 0.9) : CGAffineTransformIdentity;
@@ -342,6 +513,7 @@ static SGRBarNextButton *ensureNextButton(UIView *bar) {
         });
     }
     if (!play) return next;
+    styleBarPlayButton(play);
 
     if (!next) {
         next = [SGRBarNextButton button];
@@ -937,6 +1109,8 @@ static void styleNowPlayingBar(UIViewController *container) {
 %ctor {
     if (!SGRedesignedUI()) return;
     %init;
+    sg_barPlayWatcher = [SGRBarPlayWatcher new];
+    SGAddPlayerStateObserver(sg_barPlayWatcher);
     SGRequireClasses(@[
         @"_TtC18NowPlaying_BarImpl36NowPlayingBarContainerViewController",
         @"_TtC18NowPlaying_BarImpl27NowPlayingBarViewController",
