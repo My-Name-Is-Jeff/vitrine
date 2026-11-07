@@ -226,7 +226,8 @@ static UIView *platterIn(UIView *bar) {
         NSString *name = self.items[i].accessibilityLabel ?: self.items[i].title;
         if (name) objc_setAssociatedObject(litButtons[i], &kTabNameKey, name, OBJC_ASSOCIATION_COPY_NONATOMIC);
     }
-    if (sg_minimized && SGRIsBarCompact()) {
+    BOOL keepCompactCircle = sg_minimized || (sg_keepApart && self.stockBar && objc_getAssociatedObject(self.stockBar, &kApartBarKey) == self && self.items.count <= 1);
+    if (keepCompactCircle && SGRIsBarCompact()) {
         UIView *platter = platterIn(self);
         if (platter && platter.frame.size.height > 50.0) {
             platter.frame = CGRectInset(platter.frame, 7.0, 7.0);
@@ -735,6 +736,7 @@ typedef struct {
     NSMapTable<UIView *, NSArray<NSValue *> *> *frames; // every view of the host: its frame, the frame shown, moving
     NSMutableDictionary<NSString *, NSValue *> *glyphs; // the selected tab's glyph center in the host (buttonKey)
     NSMapTable<UIView *, UIView *> *buttons;            // each tab button, a picture of it
+    NSMapTable<UIView *, UIView *> *labels;             // each tab button's title label, a picture of it
 } SGRBarState;
 
 static BOOL isMoving(UIView *view) {
@@ -782,6 +784,7 @@ static SGRBarState barState(UIView *host) {
         [NSMapTable mapTableWithKeyOptions:NSPointerFunctionsWeakMemory | NSPointerFunctionsObjectPointerPersonality valueOptions:NSPointerFunctionsStrongMemory],
         [NSMutableDictionary dictionary],
         [NSMapTable mapTableWithKeyOptions:NSPointerFunctionsWeakMemory | NSPointerFunctionsObjectPointerPersonality valueOptions:NSPointerFunctionsStrongMemory],
+        [NSMapTable mapTableWithKeyOptions:NSPointerFunctionsWeakMemory | NSPointerFunctionsObjectPointerPersonality valueOptions:NSPointerFunctionsStrongMemory],
     };
     SGForEachView(host, ^(UIView *v) {
         if (!isVisibleInHost(v, host)) return;
@@ -800,6 +803,16 @@ static SGRBarState barState(UIView *host) {
         if (picture) {
             picture.frame = shown;
             [state.buttons setObject:picture forKey:v];
+        }
+        for (UIView *sub in v.subviews) {
+            if ([sub isKindOfClass:UILabel.class] && !sub.hidden && sub.alpha > 0.01) {
+                UIView *labelPic = [sub snapshotViewAfterScreenUpdates:NO];
+                if (labelPic) {
+                    labelPic.frame = shownIn(sub, host);
+                    [state.labels setObject:labelPic forKey:v];
+                }
+                break;
+            }
         }
     });
     return state;
@@ -836,6 +849,11 @@ static void moveFrom(UIView *host, SGRBarState before, void (^along)(void), void
             [starts addObject:was];   // a center in the host, placed once the views above it are back
             [targets addObject:[NSValue valueWithCGRect:v.frame]];
             [taken addObject:key];
+            if (!sg_minimized) {
+                for (UIView *sub in v.subviews) {
+                    if ([sub isKindOfClass:UILabel.class] && !sub.hidden && sub.alpha > 0.01) [faded addObject:sub];
+                }
+            }
             return;
         }
         if (!superKnown || [v isKindOfClass:UITabBar.class]) return;
@@ -849,6 +867,9 @@ static void moveFrom(UIView *host, SGRBarState before, void (^along)(void), void
         BOOL replaced = key && [taken containsObject:key];
         if (!replaced && (!button.window || button.hidden || button.alpha < 0.01)) {
             [gone addObject:[before.buttons objectForKey:button]];
+        } else if (replaced && sg_minimized) {
+            UIView *labelPic = [before.labels objectForKey:button];
+            if (labelPic) [gone addObject:labelPic];
         }
     }
 
@@ -903,12 +924,28 @@ static void setMinimized(BOOL minimized, BOOL animated) {
         syncBar(stockBar);
     };
     animated &= host.window != nil;
+    if (animated && minimized && apartBar && apartBar.hidden) {
+        [UIView performWithoutAnimation:^{
+            sg_minimized = NO;
+            apartBar.hidden = NO;
+            apartBar.alpha = 1;
+            NSArray<UIView *> *sources = tabItems(stockBar);
+            if (sources.count) fillBar((SGRSystemTabBar *)apartBar, @[sources.lastObject], YES, nil, YES);
+            [apartBar setNeedsLayout];
+            [apartBar layoutIfNeeded];
+            SGForEachView(apartBar, ^(UIView *v) {
+                if (isTabButton(v)) v.hidden = YES;
+            });
+            sg_minimized = minimized;
+        }];
+    }
     SGRBarState before = animated ? barState(host) : (SGRBarState){0};
     // The items are made where the bars are going, before anything moves. UIKit sizes a tab's name by the platter
     // its item is made in and never again, and the first pass made the expanding row's items while the bar still
     // held the circle's one item, its platter a circle: "Your Library" stayed cut. So they are made a second time,
     // the platters now the full row's, and the names are whole all the way.
     [UIView performWithoutAnimation:^{
+        if (minimized && apartBar) ((SGRSystemTabBar *)apartBar).sources = nil;
         syncBar(stockBar);
         [host layoutIfNeeded];
         if (!minimized) {
