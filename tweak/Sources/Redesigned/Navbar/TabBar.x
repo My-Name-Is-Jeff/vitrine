@@ -44,6 +44,7 @@ static CGFloat sg_scrollSquish;
 @property (nonatomic, weak) SGRSystemTabBar *partner;
 // The item last shown selected, so a tap on it can be told from a tap that changes the tab.
 @property (nonatomic, weak) UITabBarItem *shown;
+@property (nonatomic) BOOL layingOut;
 @end
 
 static void syncBar(UIView *stockBar);
@@ -237,6 +238,11 @@ static UIView *platterIn(UIView *bar) {
 
 // UIKit makes the labels as it lays the items out, so they are shrunk after each pass.
 - (void)layoutSubviews {
+    if (self.layingOut) {
+        [super layoutSubviews];
+        return;
+    }
+    self.layingOut = YES;
     [super layoutSubviews];
     SGRShrinkTabTitles(self);
     NSMutableArray<UIView *> *buttons = [NSMutableArray array];
@@ -263,6 +269,8 @@ static UIView *platterIn(UIView *bar) {
     }
     // Apple Music distributes every tab evenly across the platter. UIKit's default proportional layout widens tabs
     // with longer titles (e.g. "Made For You"), which cramps neighboring tabs (Library & Search). Enforce equal slots.
+    // Use CALayer position to update the layout and hit test without marking the superview dirty (which causes
+    // an infinite layout recursion loop with UIKit's layout pass).
     if (!sg_minimized && buttons.count >= 2) {
         UIView *platter = platterIn(self);
         if (platter && platter.bounds.size.width > 100.0) {
@@ -273,11 +281,15 @@ static UIView *platterIn(UIView *bar) {
                 CGPoint centerInPlatter = CGPointMake(targetX, 0);
                 UIView *b = buttons[i];
                 CGPoint c = [b.superview convertPoint:centerInPlatter fromView:platter];
-                if (fabs(b.center.x - c.x) > 0.5) b.center = CGPointMake(c.x, b.center.y);
+                if (fabs(b.layer.position.x - c.x) > 0.5) {
+                    b.layer.position = CGPointMake(c.x, b.layer.position.y);
+                }
                 if (i < litButtons.count) {
                     UIView *lb = litButtons[i];
                     CGPoint lc = [lb.superview convertPoint:centerInPlatter fromView:platter];
-                    if (fabs(lb.center.x - lc.x) > 0.5) lb.center = CGPointMake(lc.x, lb.center.y);
+                    if (fabs(lb.layer.position.x - lc.x) > 0.5) {
+                        lb.layer.position = CGPointMake(lc.x, lb.layer.position.y);
+                    }
                 }
             }
         }
@@ -285,10 +297,11 @@ static UIView *platterIn(UIView *bar) {
     if (sg_minimized && SGRIsBarCompact()) {
         UIView *platter = platterIn(self);
         if (platter && platter.frame.size.height > 50.0) {
-            platter.frame = CGRectInset(platter.frame, 7.0, 7.0);
+            platter.layer.frame = CGRectInset(platter.frame, 7.0, 7.0);
             platter.layer.cornerRadius = 24.0;
         }
     }
+    self.layingOut = NO;
 }
 
 - (void)tabBar:(UITabBar *)tabBar didSelectItem:(UITabBarItem *)item {
@@ -737,10 +750,6 @@ void SGRSetTabBarMinimized(BOOL minimized, BOOL animated) {
     sg_scrollSquish = 0;
     if (!animated) {
         [UIView performWithoutAnimation:^{ setMinimized(minimized, NO); }];
-        return;
-    }
-    if (UIView.areAnimationsEnabled && UIView.inheritedAnimationDuration <= 0) {
-        setMinimized(minimized, YES);
         return;
     }
     dispatch_async(dispatch_get_main_queue(), ^{

@@ -54,27 +54,37 @@ CGFloat SGRTabBarRoom(void) {
 // (one glyph, no title) and asks for another height, and a room that changed as the bar minimized moved the page's
 // inset from inside -[UIScrollView setContentOffset:], the scroll answered it, and the app hung (c52af73).
 CGFloat SGRTabBarGlassHeight(UITabBar *bar, UIView *stockBar) {
-    BOOL canAsk = bar.window && !SGRTabBarMinimized();
-    if (sg_glassHeight <= 0 || (canAsk && sg_room < 0.5)) {
+    if (sg_glassHeight > 0) return sg_glassHeight;
+    if (bar.window && !SGRTabBarMinimized()) {
         CGFloat height = [bar sizeThatFits:CGSizeMake(stockBar.bounds.size.width, kStockRow)].height;
         if (height > 0) sg_glassHeight = height;
     }
-    return sg_glassHeight;
+    return sg_glassHeight > 0 ? sg_glassHeight : 83.0;
 }
 
 void SGRMakeTabBarRoom(UIViewController *container, UIView *stockBar, UITabBar *bar) {
     if (!bar.window || !container.isViewLoaded || ![stockBar isDescendantOfView:container.view]) return;
+    static BOOL sg_makingRoom;
+    if (sg_makingRoom) return;
+    sg_makingRoom = YES;
     UIEdgeInsets extra = container.additionalSafeAreaInsets;
     CGFloat inset = container.view.safeAreaInsets.bottom - extra.bottom;
     // Minimizing never moves the room: only the safe area from outside (the message bar) does, minimized or not.
-    if (SGRTabBarMinimized() && fabs(inset - sg_roomInset) < 0.5) return;
+    if (SGRTabBarMinimized() && fabs(inset - sg_roomInset) < 0.5) {
+        sg_makingRoom = NO;
+        return;
+    }
     sg_roomInset = inset;
     CGFloat height = SGRTabBarGlassHeight(bar, stockBar);
     // Spotify's regular width bar is a fixed 76 pt that ignores the inset.
     BOOL compact = container.traitCollection.horizontalSizeClass == UIUserInterfaceSizeClassCompact;
     CGFloat room = compact ? MAX(0, ceil(height - kStockRow - inset)) : 0;
-    if (fabs(extra.bottom - room) < 0.5) return;
+    if (fabs(extra.bottom - room) < 0.5) {
+        sg_makingRoom = NO;
+        return;
+    }
     sg_room = extra.bottom = room;
     container.additionalSafeAreaInsets = extra;
     SGLog(@"tab bar: %.0f pt of room made under Spotify's bar for the glass bar's %.0f, over an inset of %.0f", room, height, inset);
+    sg_makingRoom = NO;
 }
