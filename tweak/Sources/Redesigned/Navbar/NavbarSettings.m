@@ -688,7 +688,7 @@ typedef NS_ENUM(NSInteger, SGRNavbarSection) {
     if (section == SGRNavbarSectionSwitch && !SGEnabled(SGRKeyNavbar))
         return @"Off, the bar shows Spotify's own tabs in Spotify's order. Your list is kept for when it is on again.";
     if (section == SGRNavbarSectionCompact)
-        return @"Sizes the minimized tab bar to Apple Music's 48 pt Liquid Glass circles and optionally sets Search apart on the right to sandwich the mini player. Pair with Apple Music style and Compact mini player in Mod Settings > Player.";
+        return @"Sizes the minimized tab bar to Apple Music's 48 pt Liquid Glass circles and optionally sets Search apart on the right to sandwich the mini player. Pair with Minimize on scroll and Compact mini player in Mod Settings > Player.";
     if (section == SGRNavbarSectionTabs)
         return @"Drag a tab to move it. Tap one you added to rename it or change its icon, or one of Spotify's to hide it.";
     return nil;

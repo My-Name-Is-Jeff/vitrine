@@ -24,8 +24,8 @@ typedef NS_ENUM(NSInteger, SGRBarArtworkShape) {
 };
 #define SGRKeyBarArtworkShape @"spotifyglass.redesign.nowPlayingBar.artworkShape"
 
-// The bar's rows, the Mini player section of the Player page (Redesigned/Player/PlayerSettings.m): Apple
-// Music style (the tab bar's Minimize on scroll, Redesigned/Navbar/Navbar.h), the device button in that
+// The bar's rows, the Mini player section of the Player page (Redesigned/Player/PlayerSettings.m):
+// Minimize on scroll (Redesigned/Navbar/Navbar.h), the device button in that
 // row, and the device button hidden on the full card.
 NSArray<SGModRow *> *SGRNowPlayingBarRows(void);
 

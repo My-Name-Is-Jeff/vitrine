@@ -7,7 +7,7 @@
 
 NSArray<SGModRow *> *SGRNowPlayingBarRows(void) {
     // The tab bar reads the switch as each scroll goes; a bar minimized when it goes off grows back at once.
-    SGModRow *minimize = SGSwitchRow(@"Apple Music style", @"Dock between the tabs when scrolling down", SGRKeyNavbarMinimize);
+    SGModRow *minimize = SGSwitchRow(@"Minimize on scroll", @"Dock between the tabs when scrolling down", SGRKeyNavbarMinimize);
     minimize.changed = ^(BOOL on) {
         if (!on) SGRSetTabBarMinimized(NO, NO);
         SGRRefreshTabBar();

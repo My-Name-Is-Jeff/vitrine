@@ -194,7 +194,6 @@ static void resetArtworkTransform(UIView *card) {
 static void restyleCardContent(UIView *card) {
     if (!card) return;
     BOOL compact = SGRIsBarCompact();
-    CGFloat cardH = card.bounds.size.height;
     BOOL isCircle = SGInt(SGRKeyBarArtworkShape, SGRBarArtworkShapeRoundedSquare) == SGRBarArtworkShapeCircle;
 
     resetArtworkTransform(card);
@@ -263,31 +262,10 @@ static void restyleCardContent(UIView *card) {
         sg_progress = progress;
     }
     if (progress) {
-        // Apple Music's compact mini player and inline sandwich bar have no bottom progress line; only the full
-        // expanded 56pt bar shows it, positioned under the text column via transform so Auto Layout playback ticks
-        // never snap it back under the cover art.
-        BOOL hideProgress = compact || sg_inline != nil;
-        progress.hidden = hideProgress;
-        progress.alpha = hideProgress ? 0.0 : 1.0;
-        if (!hideProgress) {
-            progress.transform = CGAffineTransformIdentity;
-            CGRect f = SGFrameIn(progress, card);
-            if (f.size.width > 10.0 && f.size.height > 0.0) {
-                CGFloat leftX = 56.0;
-                CGFloat rightInset = SGRIsBarNextButtonEnabled() ? 104.0 : 56.0;
-                CGFloat targetW = MAX(0.0, card.bounds.size.width - leftX - rightInset);
-                CGFloat targetY = cardH - 6.0;
-                CGFloat sx = targetW / f.size.width;
-                CGFloat tx = (leftX + targetW / 2.0) - CGRectGetMidX(f);
-                CGFloat ty = (targetY + f.size.height / 2.0) - CGRectGetMidY(f);
-                progress.transform = CGAffineTransformConcat(
-                    CGAffineTransformMakeScale(sx, 1.0),
-                    CGAffineTransformMakeTranslation(tx, ty)
-                );
-            }
-        } else {
-            progress.transform = CGAffineTransformIdentity;
-        }
+        // Apple Music's compact mini player has no bottom progress line; the non-compact 56pt bar keeps
+        // upstream's native full-width bottom progress bar untouched across both expanded and sandwiched states.
+        progress.hidden = compact;
+        progress.alpha = compact ? 0.0 : 1.0;
     }
 }
 
@@ -1225,7 +1203,6 @@ static void styleNowPlayingBar(UIViewController *container) {
     CGFloat radius = MIN(kCardRadius, frame.size.height / 2);
     if (card) {
         roundView(card, radius);
-        card.clipsToBounds = YES;
         restyleCardContent(card);
     }
     if (sg_barPlayView) {
