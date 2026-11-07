@@ -160,6 +160,7 @@ static BOOL insideControlOrStack(UIView *view, UIView *root) {
 static void restyleCardContent(UIView *card) {
     BOOL compact = SGRIsBarCompact();
     CGFloat cardH = card.bounds.size.height;
+    BOOL isCircle = SGInt(SGRKeyBarArtworkShape, SGRBarArtworkShapeRoundedSquare) == SGRBarArtworkShapeCircle;
 
     __block BOOL foundArt = NO;
     SGForEachView(card, ^(UIView *v) {
@@ -177,8 +178,9 @@ static void restyleCardContent(UIView *card) {
         } else {
             outer.transform = CGAffineTransformIdentity;
         }
+        CGFloat radius = isCircle ? (size.width / 2.0) : (compact ? (6.5 / 0.75) : 8.0);
         for (UIView *u = v; u && u != card && CGSizeEqualToSize(u.bounds.size, size); u = u.superview) {
-            roundView(u, compact ? (6.5 / 0.75) : (size.width / 2.0));
+            roundView(u, radius);
             u.clipsToBounds = YES;
         }
         sg_cardArtwork = outer;
@@ -914,6 +916,7 @@ void SGRNowPlayingBarFollowTabBar(void) {
         [bar setNeedsLayout];
         [bar layoutIfNeeded];
     }
+    if (sg_card) restyleCardContent(sg_card);
     placeInline(container);
     [container.view setNeedsLayout];
     [container.view layoutIfNeeded];

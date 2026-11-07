@@ -17,6 +17,13 @@ NSArray<SGModRow *> *SGRNowPlayingBarRows(void) {
         SGRNowPlayingBarFollowTabBar();
         SGRRefreshTabBar();
     };
+    SGModRow *artworkShape = SGChoiceRow(@"Artwork shape", @"Shape of the cover art on the card",
+                                         SGRKeyBarArtworkShape,
+                                         @[@"Rounded square", @"Circle"],
+                                         SGRBarArtworkShapeRoundedSquare);
+    artworkShape.chosen = ^(NSInteger index) {
+        SGRNowPlayingBarFollowTabBar();
+    };
     SGModRow *inlineConnect = SGOptionRow(@"Device button", @"Kept on the bar between the tabs", SGRKeyBarInlineConnect);
     inlineConnect.waitsOn = SGRKeyNavbarMinimize;
     inlineConnect.changed = ^(BOOL on) {
@@ -29,6 +36,7 @@ NSArray<SGModRow *> *SGRNowPlayingBarRows(void) {
     return @[
         minimize,
         compactBar,
+        artworkShape,
         inlineConnect,
         hideConnect,
         // Spotify's own flag for the bar's save button, forced off: Spotify leaves the button out.
