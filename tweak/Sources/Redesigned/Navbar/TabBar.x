@@ -261,6 +261,27 @@ static UIView *platterIn(UIView *bar) {
         NSString *name = self.items[i].accessibilityLabel ?: self.items[i].title;
         if (name) objc_setAssociatedObject(litButtons[i], &kTabNameKey, name, OBJC_ASSOCIATION_COPY_NONATOMIC);
     }
+    // Apple Music distributes every tab evenly across the platter. UIKit's default proportional layout widens tabs
+    // with longer titles (e.g. "Made For You"), which cramps neighboring tabs (Library & Search). Enforce equal slots.
+    if (!sg_minimized && buttons.count >= 2) {
+        UIView *platter = platterIn(self);
+        if (platter && platter.bounds.size.width > 100.0) {
+            CGFloat totalWidth = platter.bounds.size.width;
+            CGFloat slotWidth = totalWidth / buttons.count;
+            for (NSUInteger i = 0; i < buttons.count; i++) {
+                CGFloat targetX = (i + 0.5) * slotWidth;
+                CGPoint centerInPlatter = CGPointMake(targetX, 0);
+                UIView *b = buttons[i];
+                CGPoint c = [b.superview convertPoint:centerInPlatter fromView:platter];
+                if (fabs(b.center.x - c.x) > 0.5) b.center = CGPointMake(c.x, b.center.y);
+                if (i < litButtons.count) {
+                    UIView *lb = litButtons[i];
+                    CGPoint lc = [lb.superview convertPoint:centerInPlatter fromView:platter];
+                    if (fabs(lb.center.x - lc.x) > 0.5) lb.center = CGPointMake(lc.x, lb.center.y);
+                }
+            }
+        }
+    }
     if (sg_minimized && SGRIsBarCompact()) {
         UIView *platter = platterIn(self);
         if (platter && platter.frame.size.height > 50.0) {
@@ -1039,6 +1060,8 @@ static BOOL isInsideTabButton(UIView *view, UIView *root) {
         }
         return;
     }
+    // As the platters meet, fade apartBar rather than snapping it off, and let bar's spring run its course
+    // without stripping its animations mid-flight (which caused a visual snap).
     apartBar.hidden = YES;
     if (self.apartName.length) {
         NSString *target = self.apartName;
@@ -1049,14 +1072,6 @@ static BOOL isInsideTabButton(UIView *view, UIView *root) {
             }
         });
     }
-    SGForEachView(bar, ^(UIView *v) {
-        if (isInsideTabButton(v, bar)) return;
-        if (v == bar || v.bounds.size.width > host.bounds.size.width - 100.0) {
-            [v.layer removeAnimationForKey:@"bounds.size"];
-            [v.layer removeAnimationForKey:@"bounds"];
-            [v.layer removeAnimationForKey:@"position"];
-        }
-    });
     [self stop];
 }
 
@@ -1160,6 +1175,7 @@ static void setMinimized(BOOL minimized, BOOL animated) {
         settle(finished);
     });
     if (!minimized && splitTransition && apartBar && apartName.length) {
+        [host insertSubview:apartBar belowSubview:bar];
         sg_handoff = [SGRPlatterHandoff new];
         sg_handoff.host = host;
         sg_handoff.bar = bar;

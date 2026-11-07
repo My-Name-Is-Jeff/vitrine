@@ -308,6 +308,8 @@ static __weak UIView *sg_barPlayView;
 static CFTimeInterval sg_barPlayTappedUntil;
 static BOOL sg_barPlayTappedPaused;
 
+static __weak SGRBarNextButton *sg_barNextButton;
+
 static void refreshBarPlayGlyph(BOOL animated) {
     SGRGlyphView *glyph = sg_barPlayGlyph;
     SPTPlayerState *state = SGPlayerState();
@@ -325,6 +327,7 @@ static void refreshBarPlayGlyph(BOOL animated) {
 @implementation SGRBarPlayWatcher
 - (void)playerStateDidChange:(SPTPlayerState *)state {
     refreshBarPlayGlyph(YES);
+    [sg_barNextButton updateAvailability:YES];
 }
 - (void)barPlayTapped {
     SGRGlyphView *glyph = sg_barPlayGlyph;
@@ -387,6 +390,7 @@ static void styleBarPlayButton(UIView *play) {
 // and Play/Pause alone when minimized into the tab bar's inline row.
 @interface SGRBarNextButton : UIButton
 @property (nonatomic, weak) UIView *fallbackPlayView;
+- (void)updateAvailability:(BOOL)animated;
 @end
 
 @implementation SGRBarNextButton {
@@ -474,9 +478,25 @@ static UIImageView *makeSkipArrow(void) {
     }];
 }
 
+- (void)updateAvailability:(BOOL)animated {
+    BOOL canSkip = hasPlayableNextTrack(SGPlayerState());
+    self.enabled = canSkip;
+    void (^apply)(void) = ^{
+        self.alpha = canSkip ? 1.0 : 0.35;
+    };
+    if (animated && self.window) {
+        SGRAnimate(SGRMotionFade, apply, nil);
+    } else {
+        apply();
+    }
+}
+
 - (void)sgr_skipNext {
+    if (!hasPlayableNextTrack(SGPlayerState())) {
+        [self updateAvailability:YES];
+        return;
+    }
     [self animateSkip];
-    if (!hasPlayableNextTrack(SGPlayerState())) return;
     id player = SGPlayer();
     if ([player respondsToSelector:@selector(skipToNextTrackWithOptions:)]) {
         [(id<SPTPlayer>)player skipToNextTrackWithOptions:nil];
@@ -525,6 +545,8 @@ static SGRBarNextButton *ensureNextButton(UIView *bar) {
         next = [SGRBarNextButton button];
         objc_setAssociatedObject(bar, &kNextButtonKey, next, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
+    sg_barNextButton = next;
+    [next updateAvailability:NO];
 
     UIView *playItem = play;
     while (playItem.superview && playItem.superview != bar && ![playItem.superview isKindOfClass:UIStackView.class]) {
