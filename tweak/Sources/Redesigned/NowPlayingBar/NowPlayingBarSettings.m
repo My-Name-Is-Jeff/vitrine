@@ -19,11 +19,18 @@ NSArray<SGModRow *> *SGRNowPlayingBarRows(void) {
     };
     SGModRow *inlineConnect = SGOptionRow(@"Device button", @"Kept on the bar between the tabs", SGRKeyBarInlineConnect);
     inlineConnect.waitsOn = SGRKeyNavbarMinimize;
+    inlineConnect.changed = ^(BOOL on) {
+        SGRNowPlayingBarFollowTabBar();
+    };
+    SGModRow *hideConnect = SGHideRow(@"Hide the device button", @"On the full now playing bar", SGRHideBarConnect);
+    hideConnect.changed = ^(BOOL on) {
+        SGRNowPlayingBarFollowTabBar();
+    };
     return @[
         minimize,
         compactBar,
         inlineConnect,
-        SGHideRow(@"Hide the device button", @"On the full now playing bar", SGRHideBarConnect),
+        hideConnect,
         // Spotify's own flag for the bar's save button, forced off: Spotify leaves the button out.
         SGKillRow(@"Hide the like button", @"ios-feature-nowplayingbar.add_button"),
     ];

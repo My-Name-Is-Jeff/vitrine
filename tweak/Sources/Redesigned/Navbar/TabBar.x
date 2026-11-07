@@ -22,7 +22,7 @@
 #import <objc/message.h>
 
 static inline BOOL SGRIsBarCompact(void) {
-    return SGEnabled(SGRKeyBarCompact) && SGEnabled(SGRKeyNavbarAutoSplit);
+    return SGEnabled(SGRKeyNavbarAutoSplit);
 }
 
 static char kBarKey, kApartBarKey, kHostKey, kFadeKey, kTabNameKey;
@@ -180,6 +180,14 @@ static UIImageView *glyphView(UIView *button) {
 
 static BOOL isTabButton(UIView *view) {
     return [view isKindOfClass:UIControl.class] && glyphView(view) != nil;
+}
+
+// UIKit draws every tab twice, the second time in the accent under the selection's bubble only.
+static BOOL isLitCopy(UIView *view, UIView *host) {
+    for (UIView *up = view.superview; up && up != host; up = up.superview) {
+        if ([NSStringFromClass(up.class) containsString:@"SelectedContent"]) return YES;
+    }
+    return NO;
 }
 
 static UIView *platterIn(UIView *bar) {
@@ -536,8 +544,29 @@ static void syncBar(UIView *stockBar) {
     BOOL minimized = sg_minimized && sources.count >= 2;
     if (minimized) {
         BOOL autoSplit = SGEnabled(SGRKeyNavbarAutoSplit);
-        UIView *last = apart.lastObject ?: (autoSplit && sources.count >= 2 ? sources.lastObject : nil);
-        main = [NSMutableArray arrayWithObject:active && active != last ? active : main.firstObject];
+        UIView *autoTrailing = nil;
+        if (!apart.count && autoSplit && sources.count >= 2) {
+            for (UIView *source in [sources reverseObjectEnumerator]) {
+                NSString *title = labelIn(source).text.lowercaseString;
+                NSString *icon = iconName(encoreIconOf(iconIn(source))).lowercaseString;
+                if ([title isEqualToString:@"search"] || [icon hasPrefix:@"search"]) {
+                    autoTrailing = source;
+                    break;
+                }
+            }
+            if (!autoTrailing) autoTrailing = sources.lastObject;
+        }
+        UIView *last = apart.lastObject ?: autoTrailing;
+        UIView *lead = (active && active != last) ? active : nil;
+        if (!lead) {
+            for (UIView *source in main) {
+                if (source != last) {
+                    lead = source;
+                    break;
+                }
+            }
+        }
+        main = lead ? [NSMutableArray arrayWithObject:lead] : [NSMutableArray arrayWithObject:main.firstObject];
         apart = last ? [NSMutableArray arrayWithObject:last] : [NSMutableArray array];
         hideLabels = YES;
     }
@@ -707,14 +736,6 @@ typedef struct {
     NSMutableDictionary<NSString *, NSValue *> *glyphs; // the selected tab's glyph center in the host (buttonKey)
     NSMapTable<UIView *, UIView *> *buttons;            // each tab button, a picture of it
 } SGRBarState;
-
-// UIKit draws every tab twice, the second time in the accent under the selection's bubble only.
-static BOOL isLitCopy(UIView *view, UIView *host) {
-    for (UIView *up = view.superview; up && up != host; up = up.superview) {
-        if ([NSStringFromClass(up.class) containsString:@"SelectedContent"]) return YES;
-    }
-    return NO;
-}
 
 static BOOL isMoving(UIView *view) {
     for (NSString *key in view.layer.animationKeys) if ([key hasPrefix:@"position"] || [key hasPrefix:@"bounds"]) return YES;

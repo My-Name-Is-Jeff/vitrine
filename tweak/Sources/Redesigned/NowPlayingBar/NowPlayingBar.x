@@ -385,7 +385,8 @@ static void tuckExtras(UIView *bar, BOOL tuck) {
     if (!bar) return;
     if (!sg_tucked) sg_tucked = [NSHashTable weakObjectsHashTable];
     BOOL compact = SGRIsBarCompact();
-    BOOL keepConnect = SGHidden(SGRKeyBarInlineConnect);
+    BOOL keepInlineConnect = SGHidden(SGRKeyBarInlineConnect);
+    BOOL hideFullConnect = SGHidden(SGRHideBarConnect);
     SGRBarNextButton *next = ensureNextButton(bar);
 
     // A stack hides an item only once the animation it was hidden in ends, so the buttons also fade on
@@ -396,7 +397,6 @@ static void tuckExtras(UIView *bar, BOOL tuck) {
         NSMutableArray<UIView *> *restored = [NSMutableArray array];
         for (UIView *item in items) {
             if (item == next && !compact) continue;
-            if (item != next && compact) continue;
             item.hidden = NO;
             [restored addObject:item];
         }
@@ -409,36 +409,52 @@ static void tuckExtras(UIView *bar, BOOL tuck) {
                 next.fallbackPlayView.transform = showNext ? CGAffineTransformMakeTranslation(-42.0, 0) : CGAffineTransformIdentity;
             }
         }
+        SGForEachView(bar, ^(UIView *v) {
+            if (![v.accessibilityIdentifier isEqualToString:@"Components.ConnectButtonOutputSwitcher"]) return;
+            UIView *item = v;
+            while (item.superview && item.superview != bar && ![item.superview isKindOfClass:UIStackView.class]) item = item.superview;
+            if (![item.superview isKindOfClass:UIStackView.class]) return;
+            if (hideFullConnect) {
+                item.hidden = YES;
+                item.alpha = 0;
+                [restored removeObject:item];
+            } else if (item.hidden) {
+                item.hidden = NO;
+                if (![restored containsObject:item]) [restored addObject:item];
+            }
+        });
         if (restored.count) {
             SGRAnimate(SGRMotionRespond, ^{ for (UIView *item in restored) item.alpha = 1; }, nil);
         }
-        if (!compact) return;
+        return;
     }
 
     if (next) {
-        BOOL hideNext = tuck || !compact;
-        if (hideNext && !next.hidden) {
+        if (!next.hidden) {
             next.hidden = YES;
             SGRAnimate(SGRMotionExit, ^{ next.alpha = 0; }, nil);
             [sg_tucked addObject:next];
-        } else if (!hideNext && next.hidden) {
-            next.hidden = NO;
-            next.alpha = 1;
         }
         if (next.fallbackPlayView) {
-            next.fallbackPlayView.transform = (!hideNext) ? CGAffineTransformMakeTranslation(-42.0, 0) : CGAffineTransformIdentity;
+            next.fallbackPlayView.transform = CGAffineTransformIdentity;
         }
     }
 
-    if (!tuck && !compact) return;
     SGForEachView(bar, ^(UIView *v) {
         NSString *name = v.accessibilityIdentifier;
         BOOL connect = [name isEqualToString:@"Components.ConnectButtonOutputSwitcher"];
-        if ((!connect || keepConnect) && ![name isEqualToString:@"Components.UI.AddToButton"]) return;
-        // The stack's own item, so the stack closes the gap.
+        if (!connect && ![name isEqualToString:@"Components.UI.AddToButton"]) return;
         UIView *item = v;
         while (item.superview && item.superview != bar && ![item.superview isKindOfClass:UIStackView.class]) item = item.superview;
-        if (![item.superview isKindOfClass:UIStackView.class] || item.hidden) return;
+        if (![item.superview isKindOfClass:UIStackView.class]) return;
+        if (connect && keepInlineConnect) {
+            if (item.hidden) {
+                item.hidden = NO;
+                SGRAnimate(SGRMotionRespond, ^{ item.alpha = 1; }, nil);
+            }
+            return;
+        }
+        if (item.hidden) return;
         item.hidden = YES;
         SGRAnimate(SGRMotionExit, ^{ item.alpha = 0; }, nil);
         [sg_tucked addObject:item];

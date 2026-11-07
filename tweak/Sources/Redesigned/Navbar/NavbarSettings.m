@@ -383,10 +383,6 @@ static NSArray<UITabBarItem *> *itemsFor(NSArray<NSDictionary *> *entries, BOOL 
         main = shown;
         apart = [NSMutableArray array];
     }
-    if (!apart.count && SGEnabled(SGRKeyNavbarAutoSplit) && main.count >= 2) {
-        [apart addObject:main.lastObject];
-        [main removeLastObject];
-    }
     [_main setItems:itemsFor(main, names) animated:NO];
     _main.selectedItem = _main.items.firstObject;
     [_apart setItems:itemsFor(apart, names) animated:NO];
