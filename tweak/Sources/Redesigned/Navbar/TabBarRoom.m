@@ -55,9 +55,11 @@ CGFloat SGRTabBarRoom(void) {
 // inset from inside -[UIScrollView setContentOffset:], the scroll answered it, and the app hung (c52af73).
 CGFloat SGRTabBarGlassHeight(UITabBar *bar, UIView *stockBar) {
     if (sg_glassHeight > 0) return sg_glassHeight;
-    if (bar.window && !SGRTabBarMinimized()) {
-        CGFloat height = [bar sizeThatFits:CGSizeMake(stockBar.bounds.size.width, kStockRow)].height;
-        if (height > 0) sg_glassHeight = height;
+    if (bar && !SGRTabBarMinimized() && !SGRTabBarMinimizedTarget()) {
+        CGFloat w = stockBar.bounds.size.width > 0 ? stockBar.bounds.size.width : 390.0;
+        CGFloat height = [bar sizeThatFits:CGSizeMake(w, kStockRow)].height;
+        if (height > 0 && bar.window) sg_glassHeight = height;
+        else if (height > 0) return height;
     }
     return sg_glassHeight > 0 ? sg_glassHeight : 83.0;
 }
@@ -66,11 +68,13 @@ void SGRMakeTabBarRoom(UIViewController *container, UIView *stockBar, UITabBar *
     if (!bar.window || !container.isViewLoaded || ![stockBar isDescendantOfView:container.view]) return;
     static BOOL sg_makingRoom;
     if (sg_makingRoom) return;
+    // Never mutate safe area insets during a minimize transition or while minimized unless the external safe area changed.
+    if (SGRTabBarIsTransitioning()) return;
     sg_makingRoom = YES;
     UIEdgeInsets extra = container.additionalSafeAreaInsets;
     CGFloat inset = container.view.safeAreaInsets.bottom - extra.bottom;
-    // Minimizing never moves the room: only the safe area from outside (the message bar) does, minimized or not.
-    if (SGRTabBarMinimized() && fabs(inset - sg_roomInset) < 0.5) {
+    if ((SGRTabBarMinimized() || SGRTabBarMinimizedTarget()) && (sg_roomInset < 0 || fabs(inset - sg_roomInset) < 0.5)) {
+        if (sg_roomInset < 0) sg_roomInset = inset;
         sg_makingRoom = NO;
         return;
     }

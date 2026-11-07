@@ -28,6 +28,7 @@ static BOOL inContainer(UIView *view) {
 
 static void scrolled(UIScrollView *scrollView) {
     if ((!scrollView.isTracking && !scrollView.isDecelerating) || scrollView == sg_other) return;
+    if (SGRTabBarIsTransitioning()) return;
     CGFloat offset = scrollView.contentOffset.y;
     BOOL currentMinimized = SGRTabBarMinimizedTarget();
     if (scrollView != sg_page) {
@@ -57,7 +58,6 @@ static void scrolled(UIScrollView *scrollView) {
         return;
     }
     sg_answering = YES;
-    SGRSetTabBarScrollSquish(0, NO);
     SGRSetTabBarMinimized(minimized, YES);
     sg_answering = NO;
 }
@@ -65,7 +65,7 @@ static void scrolled(UIScrollView *scrollView) {
 %hook UIScrollView
 - (void)setContentOffset:(CGPoint)offset {
     %orig;
-    if (!sg_answering) scrolled(self);
+    if (!sg_answering && !SGRTabBarIsTransitioning()) scrolled(self);
 }
 %end
 
@@ -100,5 +100,8 @@ static void scrolled(UIScrollView *scrollView) {
     if (!sg_containerClass) return;
     %init;
     [NSNotificationCenter.defaultCenter addObserverForName:SGPlayerTransitionNotification object:nil queue:nil
-                                                usingBlock:^(NSNotification *note) { SGRSetTabBarMinimized(NO, NO); }];
+                                                usingBlock:^(NSNotification *note) {
+        if (NSThread.isMainThread) SGRSetTabBarMinimized(NO, NO);
+        else dispatch_async(dispatch_get_main_queue(), ^{ SGRSetTabBarMinimized(NO, NO); });
+    }];
 }

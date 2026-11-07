@@ -63,6 +63,9 @@ BOOL SGRTabBarMinimized(void);
 // deferred to the next run loop turn, so TabBarMinimize.x never mistakes a pending scroll-triggered minimize
 // for an external bar change.
 BOOL SGRTabBarMinimizedTarget(void);
+// YES while TabBar.x or TabBarRoom.m is synchronously laying out the bars or adjusting safe-area room,
+// so TabBarMinimize.x ignores any resulting re-entrant -[UIScrollView setContentOffset:] callbacks.
+BOOL SGRTabBarIsTransitioning(void);
 // TabBar.x lays both bars out for it, the now playing bar in the same animation, at once; asked for inside an
 // animation, on the main queue's next turn (SGRTabBarMinimized changes then too). `animated` NO is a cut, made
 // at once.

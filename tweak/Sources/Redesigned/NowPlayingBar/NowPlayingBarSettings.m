@@ -7,20 +7,25 @@
 
 NSArray<SGModRow *> *SGRNowPlayingBarRows(void) {
     // The tab bar reads the switch as each scroll goes; a bar minimized when it goes off grows back at once.
-    SGModRow *minimize = SGSwitchRow(@"Apple Music style", @"Between two tabs as a page scrolls down", SGRKeyNavbarMinimize);
+    SGModRow *minimize = SGSwitchRow(@"Apple Music style", @"Dock between the tabs when scrolling down", SGRKeyNavbarMinimize);
     minimize.changed = ^(BOOL on) {
         if (!on) SGRSetTabBarMinimized(NO, NO);
         SGRRefreshTabBar();
+        SGRNowPlayingBarFollowTabBar();
     };
-    SGModRow *compactBar = SGSwitchRow(@"Compact mini player", @"48 pt card matching Apple Music", SGRKeyBarCompact);
+    SGModRow *compactBar = SGSwitchRow(@"Compact mini player", @"48 pt pill with 32 pt artwork and Next button", SGRKeyBarCompact);
     compactBar.changed = ^(BOOL on) {
         SGRNowPlayingBarFollowTabBar();
         SGRRefreshTabBar();
     };
-    SGModRow *artworkShape = SGChoiceRow(@"Artwork shape", @"Shape of the cover art on the card",
+    SGModRow *artworkShape = SGChoiceRow(@"Artwork shape", @"Cover art shape on the mini player",
                                          SGRKeyBarArtworkShape,
                                          @[@"Rounded square", @"Circle"],
                                          SGRBarArtworkShapeRoundedSquare);
+    artworkShape.choiceNotes = @[
+        @"Continuous rounded square matching Apple Music.",
+        @"Circular cover art matching the classic Vitrine look.",
+    ];
     artworkShape.chosen = ^(NSInteger index) {
         SGRNowPlayingBarFollowTabBar();
     };
