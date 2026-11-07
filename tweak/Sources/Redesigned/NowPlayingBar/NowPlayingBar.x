@@ -353,7 +353,7 @@ static void styleBarPlayButton(UIView *play) {
     SGRGlyphView *glyph = objc_getAssociatedObject(play, &kPlayGlyphKey);
     if (!glyph) {
         glyph = [[SGRGlyphView alloc] initWithSymbol:(state.isPaused ? @"play.fill" : @"pause.fill")
-                                           pointSize:20.5
+                                           pointSize:19.0
                                               weight:UIImageSymbolWeightRegular];
         objc_setAssociatedObject(play, &kPlayGlyphKey, glyph, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
@@ -370,7 +370,10 @@ static void styleBarPlayButton(UIView *play) {
     } else if (host.subviews.lastObject != glyph) {
         [host bringSubviewToFront:glyph];
     }
-    glyph.center = CGPointMake(CGRectGetMidX(host.bounds), CGRectGetMidY(host.bounds));
+    // In the Music app's mini player play stands 2 pt left of where Spotify's button centers it (its recording, 3x:
+    // 888.5 px against 894.5), a little further from Next.
+    CGFloat inward = SGRIsBarCompact() ? -2.0 : 0;
+    glyph.center = CGPointMake(CGRectGetMidX(host.bounds) + inward, CGRectGetMidY(host.bounds));
     if (control && !objc_getAssociatedObject(control, &kPlayTapHookedKey)) {
         [control addTarget:sg_barPlayWatcher action:@selector(barPlayTapped) forControlEvents:UIControlEventTouchUpInside];
         objc_setAssociatedObject(control, &kPlayTapHookedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -394,8 +397,11 @@ static void styleBarPlayButton(UIView *play) {
     NSUInteger _animToken;
 }
 
+// The Music app's Next is two 16 pt arrows 12 pt apart, 24 x 13 pt in all (its recording, 3x: 72 x 40 px).
+static const CGFloat kSkipArrowOffset = 6.0;
+
 static UIImageView *makeSkipArrow(void) {
-    UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:17.5 weight:UIImageSymbolWeightRegular];
+    UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:16.0 weight:UIImageSymbolWeightRegular];
     UIImage *img = [[UIImage systemImageNamed:@"play.fill" withConfiguration:cfg] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
     UIImageView *iv = [[UIImageView alloc] initWithImage:img];
     iv.tintColor = SGRPrimary();
@@ -432,8 +438,8 @@ static UIImageView *makeSkipArrow(void) {
 
 - (void)resetArrows {
     CGPoint mid = CGPointMake(CGRectGetMidX(_glyphHost.bounds), CGRectGetMidY(_glyphHost.bounds));
-    CGPoint leftPos = CGPointMake(mid.x - 6.5, mid.y);
-    CGPoint rightPos = CGPointMake(mid.x + 6.5, mid.y);
+    CGPoint leftPos = CGPointMake(mid.x - kSkipArrowOffset, mid.y);
+    CGPoint rightPos = CGPointMake(mid.x + kSkipArrowOffset, mid.y);
     _incomingArrow.transform = CGAffineTransformMakeScale(0.2, 0.2);
     _incomingArrow.center = leftPos;
     _incomingArrow.alpha = 0.0;
@@ -448,8 +454,8 @@ static UIImageView *makeSkipArrow(void) {
 - (void)animateSkip {
     NSUInteger token = ++_animToken;
     CGPoint mid = CGPointMake(CGRectGetMidX(_glyphHost.bounds), CGRectGetMidY(_glyphHost.bounds));
-    CGPoint leftPos = CGPointMake(mid.x - 6.5, mid.y);
-    CGPoint rightPos = CGPointMake(mid.x + 6.5, mid.y);
+    CGPoint leftPos = CGPointMake(mid.x - kSkipArrowOffset, mid.y);
+    CGPoint rightPos = CGPointMake(mid.x + kSkipArrowOffset, mid.y);
     [UIView performWithoutAnimation:^{
         [self resetArrows];
     }];
@@ -801,15 +807,11 @@ static BOOL edgesTo(UIView *bar, CGRect r, CGPoint origin) {
     return !CGRectIsNull(r) && setEdges(bar, CGRectGetMinX(r) - origin.x, CGRectGetMaxX(r) - origin.x);
 }
 
+// The Music app's mini player holds still under a slow scroll (frame by frame against its recording); only the
+// tab bar gives a little. sg_scrollSquish is still kept, so the card is placed again when it is let go.
 static CGAffineTransform uninlineTransform(UIView *bar) {
     BOOL compact = SGRIsBarCompact();
     CGFloat dy = (compact && bar) ? round((bar.bounds.size.height - 48.0) / 2.0) : 0;
-    CGFloat squish = (compact && sg_scrollSquish > 0.0005) ? sg_scrollSquish : 0;
-    if (squish > 0) {
-        CGFloat scale = 1.0 - 0.05 * squish;
-        return CGAffineTransformConcat(CGAffineTransformMakeScale(scale, scale),
-                                       CGAffineTransformMakeTranslation(0, dy + 2.0 * squish));
-    }
     return dy > 0 ? CGAffineTransformMakeTranslation(0, dy) : CGAffineTransformIdentity;
 }
 
@@ -820,7 +822,8 @@ void SGRNowPlayingBarSetScrollSquish(CGFloat progress) {
     UIViewController *container = sg_container;
     if (!container.isViewLoaded || sg_inline) return;
     UIView *bar = container.childViewControllers.firstObject.viewIfLoaded;
-    container.view.transform = uninlineTransform(bar);
+    CGAffineTransform rest = uninlineTransform(bar);
+    if (!CGAffineTransformEqualToTransform(container.view.transform, rest)) container.view.transform = rest;
 }
 
 static void placeInline(UIViewController *container) {

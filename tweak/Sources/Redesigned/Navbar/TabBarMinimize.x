@@ -16,6 +16,10 @@ static Class sg_containerClass;
 static __weak UIScrollView *sg_page, *sg_other;
 static SGRMinimizeTrack sg_track;
 static BOOL sg_waitForTouch;
+// Set while the bar answers a scroll. Whatever that change does to a page's offset (its inset moving, a layout
+// pass) comes back through -setContentOffset: and is not a scroll of the user's: answered, it could turn the bar
+// straight back and round again inside the one call, which is a hang.
+static BOOL sg_answering;
 
 static BOOL inContainer(UIView *view) {
     for (UIResponder *r = view.nextResponder; r; r = r.nextResponder) if ([r isKindOfClass:sg_containerClass]) return YES;
@@ -47,17 +51,21 @@ static void scrolled(UIScrollView *scrollView) {
     BOOL minimized = SGRMinimizeStep(&sg_track, offset, top, bottom);
     if (minimized == currentMinimized || (minimized && !allowMinimize)) {
         if (minimized && !allowMinimize) sg_track.minimized = currentMinimized;
+        sg_answering = YES;
         SGRSetTabBarScrollSquish(minimized ? 0 : progress, NO);
+        sg_answering = NO;
         return;
     }
+    sg_answering = YES;
     SGRSetTabBarScrollSquish(0, NO);
     SGRSetTabBarMinimized(minimized, YES);
+    sg_answering = NO;
 }
 
 %hook UIScrollView
 - (void)setContentOffset:(CGPoint)offset {
     %orig;
-    scrolled(self);
+    if (!sg_answering) scrolled(self);
 }
 %end
 

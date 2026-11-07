@@ -80,18 +80,60 @@ static id activeVariantOf(id icon) {
 // filed under a filled icon's name or the other way round. isActive only picks the view's colors, white either
 // way. Drawn on an icon view of our own, off screen, so the images do not wait for Spotify's views to lay out
 // and paint, and UITabBar swaps image and selectedImage itself.
+// Every glyph image is the same outer size in both states, 24 pt as Spotify draws its icon views, so UIKit's
+// measure of the bar (SGRTabBarGlassHeight) never changes with them: a 26.5 and 28 pt image changing as the bar
+// minimized moved the room under Spotify's bar from inside -setContentOffset: and the page scrolled against it
+// for good (the freeze of c52af73). The glyph grows inside its canvas instead, to the Music app's weight: 1.12
+// on the full bar (Search 21.6 pt against the Music app's 21.7) and 1.22 in a minimized circle.
+static const CGFloat kGlyphCanvas = 24, kGlyphScale = 1.12, kMinimizedGlyphScale = 1.22;
+
+// A tab of the mod's own that wears an SF Symbol hands UIKit the symbol itself, with no size of its own, so the
+// bar sizes it the way UIKit sizes every app's tab symbols, the Music app's included. One object per name, so
+// setGlyphs sees the same image again and leaves the item alone.
+static UIImage *symbolGlyph(NSString *name) {
+    static NSCache<NSString *, UIImage *> *cache;
+    if (!cache) cache = [NSCache new];
+    UIImage *image = [cache objectForKey:name];
+    if (image) return image;
+    image = [[UIImage systemImageNamed:name] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    if (image) [cache setObject:image forKey:name];
+    return image;
+}
+
+// The selected tab's glyph on a minimized circle, in the accent (UIKit shows no bubble there): one object per
+// glyph and color, for the same reason.
+static UIImage *tintedGlyph(UIImage *image, UIColor *color) {
+    if (!image || !color) return image;
+    static char kTintedKey;
+    NSMutableDictionary<UIColor *, UIImage *> *tinted = objc_getAssociatedObject(image, &kTintedKey);
+    if (!tinted) {
+        tinted = [NSMutableDictionary dictionary];
+        objc_setAssociatedObject(image, &kTintedKey, tinted, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    UIImage *done = tinted[color];
+    if (!done) {
+        done = [image imageWithTintColor:color renderingMode:UIImageRenderingModeAlwaysOriginal];
+        if (done) tinted[color] = done;
+    }
+    return done;
+}
+
 static UIImage *drawGlyph(UIView *live, id icon, BOOL active, BOOL minimized) {
     if (!live) return nil;
+    NSString *symbol = SGTabIconSymbolName(live);
+    UIImage *symbolImage = symbol.length ? symbolGlyph(symbol) : nil;
+    if (symbolImage) return symbolImage;
     CGSize size = live.bounds.size;
-    if (SGRIsBarCompact() && size.width >= 20 && size.width <= 25) {
-        CGFloat d = minimized ? 28.0 : 26.5;
-        size = CGSizeMake(d, d);
+    CGFloat scale = 1;
+    if (SGRIsBarCompact() && size.width >= 20 && size.width <= 26) {
+        size = CGSizeMake(kGlyphCanvas, kGlyphCanvas);
+        scale = minimized ? kMinimizedGlyphScale : kGlyphScale;
     }
     Class viewClass = NSClassFromString(@"SPTEncoreIconView");
     if (icon && viewClass) {
         static NSCache<NSString *, UIImage *> *cache;
         if (!cache) cache = [NSCache new];
-        NSString *key = [NSString stringWithFormat:@"%@ %d %@", iconName(icon) ?: icon, active, NSStringFromCGSize(size)];
+        NSString *key = [NSString stringWithFormat:@"%@ %d %@ %.2f", iconName(icon) ?: icon, active, NSStringFromCGSize(size), scale];
         UIImage *cached = [cache objectForKey:key];
         if (cached) return cached;
         SPTEncoreIconView *view = [[viewClass alloc] initWithIcon:icon];
@@ -100,27 +142,24 @@ static UIImage *drawGlyph(UIView *live, id icon, BOOL active, BOOL minimized) {
         if ([view respondsToSelector:@selector(setActiveForegroundColor:)]) [view setActiveForegroundColor:UIColor.whiteColor];
         if ([view respondsToSelector:@selector(setIsActive:)]) [view setIsActive:active];
         [view layoutIfNeeded];
-        UIImage *image = renderLayer(view.layer, size);
+        UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:size];
+        UIImage *drawn = [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
+            CGContextRef cg = context.CGContext;
+            CGContextTranslateCTM(cg, size.width / 2, size.height / 2);
+            CGContextScaleCTM(cg, scale, scale);
+            CGContextTranslateCTM(cg, -size.width / 2, -size.height / 2);
+            [view.layer renderInContext:cg];
+        }];
+        UIImage *image = hasInk(drawn) ? [drawn imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate] : nil;
         if (image) {
             [cache setObject:image forKey:key];
             return image;
         }
     }
-    // Tabs of the mod's own draw a UIImageView; rasterize at the symbol image's own size so UITabBar
-    // does not override its UIImageSymbolConfiguration and wide/tall symbols are not clipped to 24x24.
+    // Any other image view (an icon Encore would not draw off screen): its image as it is, one object per image.
     if ([live isKindOfClass:UIImageView.class] && ((UIImageView *)live).image) {
-        UIImage *sym = ((UIImageView *)live).image;
-        CGSize symSize = sym.size;
-        if (minimized && SGRIsBarCompact()) {
-            symSize = CGSizeMake(round(symSize.width * 1.12), round(symSize.height * 1.12));
-        }
-        if (symSize.width >= 2 && symSize.height >= 2) {
-            UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:symSize];
-            UIImage *raster = [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
-                [sym drawInRect:(CGRect){CGPointZero, symSize}];
-            }];
-            return [raster imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
-        }
+        UIImage *image = ((UIImageView *)live).image;
+        return image.renderingMode == UIImageRenderingModeAlwaysTemplate ? image : [image imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
     }
     return size.width >= 2 ? renderLayer(live.layer, live.bounds.size) : nil;
 }
@@ -445,7 +484,7 @@ static BOOL fillBar(SGRSystemTabBar *bar, NSArray<UIView *> *sources, BOOL hideL
             id lit = activeVariantOf(icon);
             UIImage *image = drawGlyph(live, lit ?: icon, YES, YES);
             if (image) {
-                UIImage *tinted = [image imageWithTintColor:SGRAccent() renderingMode:UIImageRenderingModeAlwaysOriginal];
+                UIImage *tinted = tintedGlyph(image, SGRAccent());
                 setGlyphs(item, tinted, tinted);
                 objc_setAssociatedObject(item, &kGlyphNamesKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             }
@@ -688,8 +727,13 @@ void SGRSetTabBarMinimized(BOOL minimized, BOOL animated) {
     });
 }
 
+// The Music app's bar gives at most about 1% under a slow scroll before it minimizes (frame by frame against its
+// recording). 5% pulled Home and Search 6.5 pt in toward the middle, the opposite way to where minimizing then
+// takes them, so the icons went in and then out.
+static const CGFloat kScrollSquish = 0.012;
+
 static void applyScrollSquish(UIView *host, CGFloat progress) {
-    CGFloat scale = (SGRIsBarCompact() && !sg_minimized && progress > 0) ? (1.0 - 0.05 * progress) : 1.0;
+    CGFloat scale = (SGRIsBarCompact() && !sg_minimized && progress > 0) ? (1.0 - kScrollSquish * progress) : 1.0;
     CGAffineTransform transform = fabs(scale - 1.0) > 0.0005 ? CGAffineTransformMakeScale(scale, scale) : CGAffineTransformIdentity;
     if (host && !CGAffineTransformEqualToTransform(host.transform, transform)) {
         host.transform = transform;
@@ -774,6 +818,50 @@ static CGRect shownIn(UIView *view, UIView *host) {
     return [layer convertRect:layer.bounds toLayer:top];
 }
 
+// A picture of a tab's title, in the host. Built from the label rather than snapshotted: a snapshot of a view inside
+// UIKit's glass platter comes back blank (a _UIReplicantView drawing nothing), and the tabs leaving a minimizing
+// bar went in one frame instead of fading.
+static UILabel *labelPicture(UILabel *label, UIView *host) {
+    UILabel *copy = [[UILabel alloc] initWithFrame:shownIn(label, host)];
+    copy.userInteractionEnabled = NO;
+    copy.text = label.text;
+    copy.font = label.font;
+    copy.textColor = label.textColor;
+    copy.textAlignment = label.textAlignment;
+    copy.adjustsFontSizeToFitWidth = label.adjustsFontSizeToFitWidth;
+    copy.minimumScaleFactor = label.minimumScaleFactor;
+    copy.lineBreakMode = label.lineBreakMode;
+    copy.alpha = label.alpha;
+    copy.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+    return copy;
+}
+
+// A picture of a tab button, in the host: its glyph and its title, drawn again the way UIKit shows them.
+static UIView *buttonPicture(UIView *button, UIView *host) {
+    CGRect shown = shownIn(button, host);
+    UIView *picture = [[UIView alloc] initWithFrame:shown];
+    picture.userInteractionEnabled = NO;
+    picture.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+    UIImageView *glyph = glyphView(button);
+    if (glyph.image) {
+        UIImageView *copy = [[UIImageView alloc] initWithImage:glyph.image];
+        copy.tintColor = glyph.tintColor;
+        copy.contentMode = glyph.contentMode;
+        copy.preferredSymbolConfiguration = glyph.preferredSymbolConfiguration;
+        CGRect inHost = shownIn(glyph, host);
+        copy.frame = CGRectOffset(inHost, -shown.origin.x, -shown.origin.y);
+        [picture addSubview:copy];
+    }
+    for (UIView *sub in button.subviews) {
+        if (![sub isKindOfClass:UILabel.class] || sub.hidden || sub.alpha <= 0.01) continue;
+        UILabel *copy = labelPicture((UILabel *)sub, host);
+        copy.frame = CGRectOffset(copy.frame, -shown.origin.x, -shown.origin.y);
+        [picture addSubview:copy];
+        break;
+    }
+    return picture;
+}
+
 static SGRBarState barState(UIView *host) {
     SGRBarState state = {
         [NSMapTable mapTableWithKeyOptions:NSPointerFunctionsWeakMemory | NSPointerFunctionsObjectPointerPersonality valueOptions:NSPointerFunctionsStrongMemory],
@@ -789,23 +877,15 @@ static SGRBarState barState(UIView *host) {
         CALayer *shownLayer = v.layer.presentationLayer;
         [state.frames setObject:@[[NSValue valueWithCGRect:v.frame], [NSValue valueWithCGRect:shownLayer ? shownLayer.frame : v.frame], @(isMoving(v))] forKey:v];
         if (v == host || !isTabButton(v)) return;
-        CGRect shown = shownIn(v, host), glyph = shownIn(glyphView(v), host);
+        CGRect glyph = shownIn(glyphView(v), host);
         NSString *key = buttonKey(v, host);
         if (key) state.glyphs[key] = [NSValue valueWithCGPoint:CGPointMake(CGRectGetMidX(glyph), CGRectGetMidY(glyph))];
         // The lit copy is left out, or its picture would show the tab lit outside the bubble.
         if (isLitCopy(v, host)) return;
-        UIView *picture = [v snapshotViewAfterScreenUpdates:NO];
-        if (picture) {
-            picture.frame = shown;
-            [state.buttons setObject:picture forKey:v];
-        }
+        [state.buttons setObject:buttonPicture(v, host) forKey:v];
         for (UIView *sub in v.subviews) {
             if ([sub isKindOfClass:UILabel.class] && !sub.hidden && sub.alpha > 0.01) {
-                UIView *labelPic = [sub snapshotViewAfterScreenUpdates:NO];
-                if (labelPic) {
-                    labelPic.frame = shownIn(sub, host);
-                    [state.labels setObject:labelPic forKey:v];
-                }
+                [state.labels setObject:labelPicture((UILabel *)sub, host) forKey:v];
                 break;
             }
         }
@@ -827,7 +907,10 @@ static void moveFrom(UIView *host, SGRBarState before, UIView *bar, NSString *ap
         if (old) {
             BOOL stopped = [(NSNumber *)old[2] boolValue] && !isMoving(v);
             CGRect start = stopped ? old[1].CGRectValue : old[0].CGRectValue;
-            if (sg_minimized && splitTransition && (v == bar || [v isDescendantOfView:bar]) && !isTabButton(v) && start.size.width > host.bounds.size.width - 80.0) {
+            // Minimizing into a split, the main platter starts short of the trailing circle's place so the two never
+            // overlap. Only the views inside the bar start short: the bar's own bounds at a width UIKit never laid it
+            // out at would send it through a layout pass of its own mid-move.
+            if (sg_minimized && splitTransition && v != bar && [v isDescendantOfView:bar] && !isTabButton(v) && start.size.width > host.bounds.size.width - 80.0) {
                 start.size.width -= (kApartItemWidth + kPlatterGap);
             }
             if (!stopped && CGRectEqualToRect(start, v.frame)) return;

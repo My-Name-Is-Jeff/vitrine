@@ -41,7 +41,7 @@ void SGRHoldHomeForModSettings(UIView *stockBar) {
 // the now playing bar, the pages and the hide out for the glass bar itself, and moves them all with the
 // message bar.
 static const CGFloat kStockRow = 49;
-static CGFloat sg_room, sg_glassHeight;
+static CGFloat sg_room, sg_glassHeight, sg_roomInset = -1;
 
 CGFloat SGRTabBarRoom(void) {
     return sg_room;
@@ -50,9 +50,15 @@ CGFloat SGRTabBarRoom(void) {
 // UIKit asks for 62 + max(21, inset) on a phone with a home button, max(83, 49 + inset) on a Face ID
 // phone, by the safe area of the view the bar stands in. The bar's host keeps the room out of that; if
 // it ever reached the bar again, the bar would ask for more room every pass, so what it asks for with
-// no room made is what is kept.
+// no room made is what is kept. It is asked of the full bar on screen only: the minimized bar holds other items
+// (one glyph, no title) and asks for another height, and a room that changed as the bar minimized moved the page's
+// inset from inside -[UIScrollView setContentOffset:], the scroll answered it, and the app hung (c52af73).
 CGFloat SGRTabBarGlassHeight(UITabBar *bar, UIView *stockBar) {
-    if (sg_room < 0.5 || sg_glassHeight <= 0) sg_glassHeight = [bar sizeThatFits:CGSizeMake(stockBar.bounds.size.width, kStockRow)].height;
+    BOOL canAsk = bar.window && !SGRTabBarMinimized();
+    if (sg_glassHeight <= 0 || (canAsk && sg_room < 0.5)) {
+        CGFloat height = [bar sizeThatFits:CGSizeMake(stockBar.bounds.size.width, kStockRow)].height;
+        if (height > 0) sg_glassHeight = height;
+    }
     return sg_glassHeight;
 }
 
@@ -60,6 +66,9 @@ void SGRMakeTabBarRoom(UIViewController *container, UIView *stockBar, UITabBar *
     if (!bar.window || !container.isViewLoaded || ![stockBar isDescendantOfView:container.view]) return;
     UIEdgeInsets extra = container.additionalSafeAreaInsets;
     CGFloat inset = container.view.safeAreaInsets.bottom - extra.bottom;
+    // Minimizing never moves the room: only the safe area from outside (the message bar) does, minimized or not.
+    if (SGRTabBarMinimized() && fabs(inset - sg_roomInset) < 0.5) return;
+    sg_roomInset = inset;
     CGFloat height = SGRTabBarGlassHeight(bar, stockBar);
     // Spotify's regular width bar is a fixed 76 pt that ignores the inset.
     BOOL compact = container.traitCollection.horizontalSizeClass == UIUserInterfaceSizeClassCompact;
