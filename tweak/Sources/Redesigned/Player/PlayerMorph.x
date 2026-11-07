@@ -374,7 +374,7 @@ static void overlayOriginsForAnimation(CALayer *layer, CAPropertyAnimation *posA
         CGPoint coverPosTo = CGPointMake(CGRectGetMidX(coverRectTo), CGRectGetMidY(coverRectTo));
 
         BOOL isCircle = SGInt(SGRKeyBarArtworkShape, SGRBarArtworkShapeRoundedSquare) == SGRBarArtworkShapeCircle;
-        CGFloat barRadius = isCircle ? (fromInCard.size.width / 2.0) : (SGEnabled(SGRKeyBarCompact) ? 6.5 : 8.0);
+        CGFloat barRadius = isCircle ? (fromInCard.size.width / 2.0) : 6.5;
         CGFloat fullCoverRadius = SGRRadiusArtwork * SGRPlayerCoverScale();
         CGFloat coverRadiusFrom = lerp(barRadius, fullCoverRadius * scaleFrom, fromT);
         CGFloat coverRadiusTo = lerp(barRadius, fullCoverRadius * scaleTo, toT);
@@ -530,7 +530,7 @@ static void overlayOriginsForAnimation(CALayer *layer, CAPropertyAnimation *posA
                 self->_cover.frame = CGRectOffset(lerpRect(from, to, t), sheet.origin.x, sheet.origin.y);
                 // The cover's corners are drawn under its paused shrink too.
                 BOOL isCircle = SGInt(SGRKeyBarArtworkShape, SGRBarArtworkShapeRoundedSquare) == SGRBarArtworkShapeCircle;
-                CGFloat barRadius = isCircle ? (from.size.width / 2.0) : (SGEnabled(SGRKeyBarCompact) ? 6.5 : 8.0);
+                CGFloat barRadius = isCircle ? (from.size.width / 2.0) : 6.5;
                 self->_cover.layer.cornerRadius = lerp(barRadius, SGRRadiusArtwork * SGRPlayerCoverScale() * scale, t);
                 // Over an animated artwork the player's cover is hidden: the flown one fades out on the
                 // way there instead of landing on an empty slot.

@@ -22,15 +22,20 @@
 #import <objc/message.h>
 
 static inline BOOL SGRIsBarCompact(void) {
+    return SGEnabled(SGRKeyNavbarCompact);
+}
+
+static inline BOOL SGRIsBarAutoSplit(void) {
     return SGEnabled(SGRKeyNavbarAutoSplit);
 }
 
-static char kBarKey, kApartBarKey, kHostKey, kFadeKey, kTabNameKey;
+static char kBarKey, kApartBarKey, kHostKey, kFadeKey, kTabNameKey, kPlatterSubKey;
 // On a UITabBarItem: the names of the Encore icons its image and selectedImage were drawn from (see fillBar).
 static char kGlyphNamesKey;
 static __weak UIView *sg_stockBar;
-// The glass row in the window as the now playing card was last told of it (syncBar), CGRectNull for none.
+// The glass row and inline slot in the window as the now playing card was last told of them (syncBar), CGRectNull for none.
 static CGRect sg_glassRow = {{INFINITY, INFINITY}, {0, 0}};
+static CGRect sg_inlineSlot = {{INFINITY, INFINITY}, {0, 0}};
 // See "minimized". sg_keepApart holds the second bar on screen while the main one grows back under it.
 static BOOL sg_minimized, sg_minimizedTarget, sg_keepApart, sg_transitioning;
 static CGFloat sg_scrollSquish;
@@ -273,9 +278,11 @@ static UIView *platterIn(UIView *bar) {
     [super layoutSubviews];
     SGRShrinkTabTitles(self);
     NSMutableArray<UIView *> *buttons = [NSMutableArray array];
+    NSMutableArray<UIView *> *litButtons = [NSMutableArray array];
     SGForEachView(self, ^(UIView *v) {
         if (!isTabButton(v)) return;
-        if (!isLitCopy(v, self)) [buttons addObject:v];
+        if (isLitCopy(v, self)) [litButtons addObject:v];
+        else [buttons addObject:v];
     });
     NSComparisonResult (^byX)(UIView *, UIView *) = ^NSComparisonResult(UIView *a, UIView *b) {
         CGFloat ax = [self convertPoint:a.bounds.origin fromView:a].x;
@@ -283,18 +290,25 @@ static UIView *platterIn(UIView *bar) {
         return [@(ax) compare:@(bx)];
     };
     [buttons sortUsingComparator:byX];
+    [litButtons sortUsingComparator:byX];
     for (NSUInteger i = 0; i < buttons.count && i < self.items.count; i++) {
         NSString *name = self.items[i].accessibilityLabel ?: self.items[i].title;
         if (name) objc_setAssociatedObject(buttons[i], &kTabNameKey, name, OBJC_ASSOCIATION_COPY_NONATOMIC);
     }
+    for (NSUInteger i = 0; i < litButtons.count && i < self.items.count; i++) {
+        NSString *name = self.items[i].accessibilityLabel ?: self.items[i].title;
+        if (name) objc_setAssociatedObject(litButtons[i], &kTabNameKey, name, OBJC_ASSOCIATION_COPY_NONATOMIC);
+    }
     UIView *platter = platterIn(self);
     if (platter) {
-        if (sg_minimized && SGRIsBarCompact()) {
+        if (sg_minimized) {
             // Both the leading and trailing minimized bars are `kApartItemWidth + 2 * kPlatterInset` (104 pt) wide,
             // and UIKit places the 62 pt platter in the top 62 pt above the bottom safe area (at x = 21, y = 0 in self).
-            // Centering the 48 pt circle inside that 62 x 62 platter slot places it at (28, 7, 48, 48) in self,
-            // keeping its vertical center at y = 31 pt (identical to the expanded 62 pt platter) and 28 pt from the screen edge.
-            CGFloat circleSize = kCompactCircleSize;
+            // In compact mode, centering the 48 pt circle inside that 62 x 62 platter slot places it at (28, 7, 48, 48)
+            // in self; in non-compact mode, pinning the 62 pt circle at (21, 0, 62, 62) prevents UITabBarItemPositioningFill
+            // from stretching a single-item platter wider than 62 pt into the mini player slot.
+            BOOL compact = SGRIsBarCompact();
+            CGFloat circleSize = compact ? kCompactCircleSize : kApartItemWidth;
             CGFloat top = round((kApartItemWidth - circleSize) / 2.0);
             CGFloat xInSelf = kPlatterInset + top;
             CGRect circleInSelf = CGRectMake(xInSelf, top, circleSize, circleSize);
@@ -306,19 +320,31 @@ static UIView *platterIn(UIView *bar) {
             [platter setNeedsLayout];
             [platter layoutIfNeeded];
             for (UIView *sub in platter.subviews) {
-                if (sub.bounds.size.width >= circleSize && fabs(sub.bounds.size.width - sub.bounds.size.height) < 2.0) {
+                if ((sub.bounds.size.width >= circleSize && fabs(sub.bounds.size.width - sub.bounds.size.height) < 2.0)
+                    || objc_getAssociatedObject(sub, &kPlatterSubKey)) {
                     sub.frame = platter.bounds;
                     SGShapeGlass(sub, circleSize / 2.0, YES);
+                    objc_setAssociatedObject(sub, &kPlatterSubKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                 }
             }
             CGPoint centerInSelf = CGPointMake(CGRectGetMidX(circleInSelf), CGRectGetMidY(circleInSelf));
             for (UIView *b in buttons) {
                 b.center = b.superview ? [self convertPoint:centerInSelf toView:b.superview] : centerInSelf;
             }
+            for (UIView *b in litButtons) {
+                b.center = b.superview ? [self convertPoint:centerInSelf toView:b.superview] : centerInSelf;
+            }
         } else {
-            SGShapeGlass(platter, platter.bounds.size.height / 2.0, YES);
+            CGFloat r = platter.bounds.size.height / 2.0;
+            SGShapeGlass(platter, r, YES);
             [platter setNeedsLayout];
             [platter layoutIfNeeded];
+            for (UIView *sub in platter.subviews) {
+                if (objc_getAssociatedObject(sub, &kPlatterSubKey)) {
+                    sub.frame = platter.bounds;
+                    SGShapeGlass(sub, r, YES);
+                }
+            }
         }
     }
     self.layingOut = NO;
@@ -646,11 +672,11 @@ static void syncBar(UIView *stockBar) {
         [apart removeAllObjects];
     }
     // Minimized, the bar keeps the tab it is on, glyph only, on a circle at the leading end, and the last
-    // split tab on one at the trailing end (falling back to Search when no tabs are split apart), the way
-    // the Music app sandwiches the card. Without split tabs the expanded bar stays whole.
+    // split tab on one at the trailing end (falling back to Search when Split Search when minimized is on),
+    // the way the Music app sandwiches the card. Without split tabs the expanded bar stays whole.
     BOOL minimized = sg_minimized && sources.count >= 2;
     if (minimized) {
-        BOOL autoSplit = SGEnabled(SGRKeyNavbarAutoSplit);
+        BOOL autoSplit = SGRIsBarAutoSplit();
         UIView *autoTrailing = (!apart.count && autoSplit) ? autoSplitTrailingSource(sources) : nil;
         UIView *last = apart.lastObject ?: autoTrailing;
         UIView *lead = (active && active != last) ? active : nil;
@@ -683,7 +709,7 @@ static void syncBar(UIView *stockBar) {
     CGFloat side = kApartItemWidth + 2 * kPlatterInset;
     if (minimized) {
         mainFrame.size.width = side;
-        if (apart.count) apartFrame = CGRectMake(width - side, 0, side, height);
+        apartFrame = CGRectMake(width - side, 0, side, height);
     } else if (apart.count) {
         CGFloat apartWidth = MIN(width / 2, apart.count * kApartItemWidth + 2 * kPlatterInset);
         CGRectDivide(host.bounds, &apartFrame, &mainFrame, apartWidth, CGRectMaxXEdge);
@@ -723,15 +749,22 @@ static void syncBar(UIView *stockBar) {
             if (!sg_minimized && !sg_transitioning && sg_stockBar) syncBar(sg_stockBar);
         });
     }
-    // The now playing card takes its edges from the glass row (SGRTabBarGlassRow); it is told, after this pass, when
-    // the row comes, goes or its sides move.
+    // The now playing card takes its edges from the glass row (SGRTabBarGlassRow) or the minimized slot (SGRTabBarInlineSlot);
+    // it is told, after this pass, when the row or slot comes, goes or its sides move.
     CGRect row = SGRTabBarGlassRow(bar.window);
+    CGRect slot = minimized ? SGRTabBarInlineSlot(bar.window, 48.0) : CGRectNull;
     BOOL rowMoved = CGRectIsNull(row) != CGRectIsNull(sg_glassRow)
         || (!CGRectIsNull(row) && (fabs(CGRectGetMinX(row) - CGRectGetMinX(sg_glassRow)) >= 0.5
                                    || fabs(CGRectGetMaxX(row) - CGRectGetMaxX(sg_glassRow)) >= 0.5));
-    if (rowMoved) {
+    BOOL slotMoved = CGRectIsNull(slot) != CGRectIsNull(sg_inlineSlot)
+        || (!CGRectIsNull(slot) && (fabs(CGRectGetMinX(slot) - CGRectGetMinX(sg_inlineSlot)) >= 0.5
+                                    || fabs(CGRectGetMaxX(slot) - CGRectGetMaxX(sg_inlineSlot)) >= 0.5));
+    if (rowMoved || slotMoved) {
         sg_glassRow = row;
-        dispatch_async(dispatch_get_main_queue(), ^{ SGRNowPlayingBarFollowTabBar(); });
+        sg_inlineSlot = slot;
+        if (!sg_transitioning) {
+            dispatch_async(dispatch_get_main_queue(), ^{ SGRNowPlayingBarFollowTabBar(); });
+        }
     }
     logBarOnce(bar);
     makeRoom(containerOf(stockBar));
@@ -964,7 +997,7 @@ static void moveFrom(UIView *host, SGRBarState before, UIView *bar, NSString *ap
     NSMutableArray<NSValue *> *starts = [NSMutableArray array], *targets = [NSMutableArray array];
     NSMutableSet<NSString *> *taken = [NSMutableSet set];
     SGForEachView(host, ^(UIView *v) {
-        if (v == host || !isVisibleInHost(v, host)) return;
+        if (v == host || [v isKindOfClass:UITabBar.class] || !isVisibleInHost(v, host)) return;
         for (UIView *u = v; u && u != host; u = u.superview) {
             if (isTabButton(u) && u.hidden) return;
         }
@@ -996,9 +1029,9 @@ static void moveFrom(UIView *host, SGRBarState before, UIView *bar, NSString *ap
             [targets addObject:[NSValue valueWithCGRect:v.frame]];
             [taken addObject:key];
             if (!sg_minimized && !(splitTransition && apartName && [key isEqualToString:apartName])) {
-                for (UIView *sub in v.subviews) {
+                SGForEachView(v, ^(UIView *sub) {
                     if ([sub isKindOfClass:UILabel.class] && !sub.hidden && sub.alpha > 0.01) [faded addObject:sub];
-                }
+                });
             }
             return;
         }
@@ -1138,10 +1171,9 @@ static void setMinimized(BOOL minimized, BOOL animated) {
     sg_transitioning = YES;
     [sg_handoff stop];
     sg_handoff = nil;
-    sg_minimized = sg_minimizedTarget = minimized;
-    sg_keepApart = !minimized;
-    SGLog(@"tab bar: %@", minimized ? @"minimized" : @"expanded");
     if (!stockBar) {
+        sg_minimized = sg_minimizedTarget = minimized;
+        sg_keepApart = NO;
         sg_transitioning = NO;
         return;
     }
@@ -1156,6 +1188,12 @@ static void setMinimized(BOOL minimized, BOOL animated) {
             break;
         }
     }
+    BOOL wasShowingApart = apartBar && !apartBar.hidden;
+    BOOL willAutoSplit = !hasPermanentSplit && SGRIsBarAutoSplit() && allSources.count >= 2;
+    sg_minimized = sg_minimizedTarget = minimized;
+    // Only keep apartBar on screen during expand if apartBar was actually visible while minimized.
+    sg_keepApart = !minimized && wasShowingApart;
+    SGLog(@"tab bar: %@", minimized ? @"minimized" : @"expanded");
     void (^settle)(BOOL) = ^(BOOL finished) {
         if (sg_minimized != minimized) return;
         [sg_handoff stop];
@@ -1165,7 +1203,7 @@ static void setMinimized(BOOL minimized, BOOL animated) {
         syncBar(stockBar);
     };
     animated &= host.window != nil;
-    if (animated && minimized && apartBar && apartBar.hidden) {
+    if (animated && minimized && willAutoSplit && apartBar && apartBar.hidden) {
         [UIView performWithoutAnimation:^{
             sg_minimized = NO;
             apartBar.hidden = NO;
@@ -1211,7 +1249,7 @@ static void setMinimized(BOOL minimized, BOOL animated) {
     if (apartBar) apartBar.alpha = 1;
     UITabBarItem *trailItem = (apartBar && ((SGRSystemTabBar *)apartBar).items.count > 0) ? ((SGRSystemTabBar *)apartBar).items.firstObject : nil;
     NSString *apartName = trailItem.accessibilityLabel ?: trailItem.title;
-    BOOL splitTransition = !hasPermanentSplit && SGRIsBarCompact();
+    BOOL splitTransition = !hasPermanentSplit && (minimized ? willAutoSplit : wasShowingApart);
     moveFrom(host, before, bar, apartName, splitTransition, ^{
         sg_scrollSquish = 0;
         applyScrollSquish(host, 0);

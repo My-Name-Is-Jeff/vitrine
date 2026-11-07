@@ -41,8 +41,11 @@ BOOL SGRIsBarNextButtonEnabled(void) {
 }
 
 static const CGFloat kCardRadius = 24;
-static const CGFloat kCompactArtScale = 0.80;   // 40 pt -> 32 pt inside the 48 pt compact card
-static const CGFloat kCompactArtShiftX = 2.0;   // 14 pt leading inset inside the 48 pt capsule
+static const CGFloat kCompactArtScale = 0.80;          // 40 pt -> 32 pt inside the 48 pt compact card
+static const CGFloat kCompactArtShiftX = 2.0;          // 14 pt leading inset inside the 48 pt capsule
+static const CGFloat kNonCompactSquareArtScale = 0.85; // 40 pt -> 34 pt inside the 56 pt non-compact capsule
+static const CGFloat kNonCompactSquareArtShiftX = 3.0; // 14 pt leading inset inside the 56 pt capsule
+static const CGFloat kSquareArtCornerRadius = 6.5;     // visual continuous corner radius for rounded-square artwork
 // The strip's pane is this much smaller than the strip at each end, so a gap parts it from the card's glass.
 static const CGFloat kStripInset = 4;
 static NSString *const kUnitId = @"Components.UI.PageInformationUnitNowPlayingBar";
@@ -63,6 +66,9 @@ static __weak UIViewController *sg_container;
 static __weak UIView *sg_inline;
 static CGFloat sg_scrollSquish;
 static BOOL sg_stylingBar;
+// The tab bar's moves under way (one can start before the last one ends), and the relayout owed to their end.
+static NSInteger sg_barMoves;
+static BOOL sg_owedLayout, sg_owedRefresh;
 
 CGRect SGRNowPlayingCardFrameIn(UIView *host, CGFloat *radius) {
     UIVisualEffectView *glass = sg_cardGlass;
@@ -222,7 +228,9 @@ static void restyleCardContent(UIView *card) {
             [outer setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
         }
         CGFloat baseWidth = size.width > 0 ? size.width : 40.0;
-        CGFloat radius = isCircle ? (baseWidth / 2.0) : (compact ? (6.5 / kCompactArtScale) : 8.0);
+        CGFloat artScale = compact ? kCompactArtScale : (isCircle ? 1.0 : kNonCompactSquareArtScale);
+        CGFloat artShiftX = compact ? kCompactArtShiftX : (isCircle ? 0.0 : kNonCompactSquareArtShiftX);
+        CGFloat radius = isCircle ? (baseWidth / 2.0) : (kSquareArtCornerRadius / artScale);
         // Round both the outer wrapper and all matching square image views inside it so neither background nor cover bleeds.
         for (UIView *u = foundView; u && u != card && CGSizeEqualToSize(u.bounds.size, size); u = u.superview) {
             roundView(u, radius);
@@ -234,10 +242,10 @@ static void restyleCardContent(UIView *card) {
                 sub.clipsToBounds = YES;
             }
         });
-        if (compact) {
+        if (fabs(artScale - 1.0) > 0.001 || fabs(artShiftX) > 0.001) {
             outer.transform = CGAffineTransformConcat(
-                CGAffineTransformMakeScale(kCompactArtScale, kCompactArtScale),
-                CGAffineTransformMakeTranslation(kCompactArtShiftX, 0.0)
+                CGAffineTransformMakeScale(artScale, artScale),
+                CGAffineTransformMakeTranslation(artShiftX, 0.0)
             );
         } else {
             outer.transform = CGAffineTransformIdentity;
@@ -255,16 +263,30 @@ static void restyleCardContent(UIView *card) {
         sg_progress = progress;
     }
     if (progress) {
-        // Apple Music's compact mini player has no bottom progress line; only the full 56pt bar shows it.
-        progress.hidden = compact;
-        progress.alpha = compact ? 0.0 : 1.0;
-        if (!compact) {
-            CGRect target = CGRectMake(52, cardH - 6, MAX(0, card.bounds.size.width - 160), 2);
-            if (!CGRectEqualToRect(progress.frame, target)) {
-                progress.frame = target;
-                [progress setNeedsLayout];
-                [progress layoutIfNeeded];
+        // Apple Music's compact mini player and inline sandwich bar have no bottom progress line; only the full
+        // expanded 56pt bar shows it, positioned under the text column via transform so Auto Layout playback ticks
+        // never snap it back under the cover art.
+        BOOL hideProgress = compact || sg_inline != nil;
+        progress.hidden = hideProgress;
+        progress.alpha = hideProgress ? 0.0 : 1.0;
+        if (!hideProgress) {
+            progress.transform = CGAffineTransformIdentity;
+            CGRect f = SGFrameIn(progress, card);
+            if (f.size.width > 10.0 && f.size.height > 0.0) {
+                CGFloat leftX = 56.0;
+                CGFloat rightInset = SGRIsBarNextButtonEnabled() ? 104.0 : 56.0;
+                CGFloat targetW = MAX(0.0, card.bounds.size.width - leftX - rightInset);
+                CGFloat targetY = cardH - 6.0;
+                CGFloat sx = targetW / f.size.width;
+                CGFloat tx = (leftX + targetW / 2.0) - CGRectGetMidX(f);
+                CGFloat ty = (targetY + f.size.height / 2.0) - CGRectGetMidY(f);
+                progress.transform = CGAffineTransformConcat(
+                    CGAffineTransformMakeScale(sx, 1.0),
+                    CGAffineTransformMakeTranslation(tx, ty)
+                );
             }
+        } else {
+            progress.transform = CGAffineTransformIdentity;
         }
     }
 }
@@ -453,7 +475,7 @@ static void styleBarPlayButton(UIView *play) {
     }
     // In the Music app's mini player play stands 2 pt left of where Spotify's button centers it (its recording, 3x:
     // 888.5 px against 894.5), a little further from Next.
-    CGFloat inward = (SGRIsBarCompact() && !sg_inline) ? -2.0 : 0;
+    CGFloat inward = (SGRIsBarCompact() && SGRIsBarNextButtonEnabled() && !sg_inline) ? -2.0 : 0;
     CGSize hostSize = host.bounds.size;
     if (hostSize.width >= 1 && hostSize.height >= 1) {
         glyph.center = CGPointMake(hostSize.width / 2.0 + inward, hostSize.height / 2.0);
@@ -628,7 +650,7 @@ static SGRBarNextButton *ensureNextButton(UIView *bar) {
     if (!showNext) {
         next.hidden = YES;
         next.alpha = 0;
-    } else {
+    } else if (!next.hidden && ![next.layer animationForKey:@"opacity"]) {
         [next updateAvailability:NO];
     }
 
@@ -687,13 +709,21 @@ static void tuckExtras(UIView *bar, BOOL tuck) {
         [UIView performWithoutAnimation:^{
             for (UIView *item in items) {
                 if (item == next && !showNext) continue;
+                item.alpha = 0;
                 item.hidden = NO;
                 [restored addObject:item];
             }
             if (next) {
-                next.hidden = !showNext;
-                if (showNext && ![restored containsObject:next] && next.alpha < 1.0) [restored addObject:next];
-                if (!showNext) next.alpha = 0;
+                if (!showNext) {
+                    next.hidden = YES;
+                    next.alpha = 0;
+                } else if (next.hidden) {
+                    next.alpha = 0;
+                    next.hidden = NO;
+                    if (![restored containsObject:next]) [restored addObject:next];
+                } else if (![restored containsObject:next] && next.alpha < 1.0 && ![next.layer animationForKey:@"opacity"]) {
+                    [restored addObject:next];
+                }
                 if (next.fallbackPlayView) {
                     next.fallbackPlayView.transform = showNext ? CGAffineTransformMakeTranslation(-42.0, 0) : CGAffineTransformIdentity;
                 }
@@ -714,13 +744,14 @@ static void tuckExtras(UIView *bar, BOOL tuck) {
                     item.alpha = 0;
                     [restored removeObject:item];
                 } else if (item.hidden) {
+                    item.alpha = 0;
                     item.hidden = NO;
                     if (![restored containsObject:item]) [restored addObject:item];
                 }
             });
         }];
         if (restored.count) {
-            SGRAnimate(SGRMotionRespond, ^{
+            SGRAnimate(SGRMotionFade, ^{
                 for (UIView *item in restored) {
                     if (item == next) [next updateAvailability:NO];
                     else item.alpha = 1;
@@ -796,26 +827,30 @@ static void tuckExtras(UIView *bar, BOOL tuck) {
 
 - (void)layoutSubviews {
     [super layoutSubviews];
-    CGSize size = self.bounds.size;
-    BOOL compact = SGRIsBarCompact();
-    _title.textColor = SGRPrimary();
-    _artists.textColor = SGRIncreaseContrast() ? SGRSecondary() : [UIColor colorWithWhite:0xB3 / 255.0 alpha:1.0];
-    if (compact) {
-        _title.font = [UIFont systemFontOfSize:13.5 weight:UIFontWeightSemibold];
-        _artists.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightRegular];
-    } else {
-        _title.font = SGRFont(UIFontTextStyleSubheadline, UIFontWeightSemibold, UIContentSizeCategoryLarge);
-        _artists.font = SGRFont(UIFontTextStyleFootnote, UIFontWeightRegular, UIContentSizeCategoryLarge);
-    }
-    CGFloat titleHeight = ceil(_title.font.lineHeight), artistsHeight = ceil(_artists.font.lineHeight);
-    BOOL two = _artists.text.length > 0;
-    // The lines share 1.5pt of their leading in compact (~14.5pt baseline-to-baseline), 2pt normally.
-    CGFloat shared = compact ? 1.5 : 2.0;
-    CGFloat totalH = titleHeight + (two ? artistsHeight - shared : 0);
-    CGFloat top = round((size.height - totalH) / 2.0);
-    _title.frame = CGRectMake(0, top, size.width, titleHeight);
-    _artists.frame = CGRectMake(0, top + titleHeight - shared, size.width, artistsHeight);
-    _artists.alpha = two ? 1.0 : 0.0;
+    [UIView performWithoutAnimation:^{
+        CGSize size = self.bounds.size;
+        BOOL compact = SGRIsBarCompact();
+        _title.textColor = SGRPrimary();
+        _artists.textColor = SGRIncreaseContrast() ? SGRSecondary() : [UIColor colorWithWhite:0xB3 / 255.0 alpha:1.0];
+        if (compact) {
+            _title.font = [UIFont systemFontOfSize:13.5 weight:UIFontWeightSemibold];
+            _artists.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightRegular];
+        } else {
+            _title.font = SGRFont(UIFontTextStyleSubheadline, UIFontWeightSemibold, UIContentSizeCategoryLarge);
+            _artists.font = SGRFont(UIFontTextStyleFootnote, UIFontWeightRegular, UIContentSizeCategoryLarge);
+        }
+        CGFloat titleHeight = ceil(_title.font.lineHeight), artistsHeight = ceil(_artists.font.lineHeight);
+        BOOL two = _artists.text.length > 0;
+        // The lines share 1.5pt of their leading in compact (~14.5pt baseline-to-baseline), 2pt normally.
+        CGFloat shared = compact ? 1.5 : 2.0;
+        CGFloat totalH = titleHeight + (two ? artistsHeight - shared : 0);
+        CGFloat top = round((size.height - totalH) / 2.0);
+        _title.frame = CGRectMake(0, top, size.width, titleHeight);
+        _artists.frame = CGRectMake(0, top + titleHeight - shared, size.width, artistsHeight);
+        _artists.alpha = two ? 1.0 : 0.0;
+        [_title layoutIfNeeded];
+        [_artists layoutIfNeeded];
+    }];
 }
 @end
 
@@ -837,16 +872,18 @@ static BOOL sg_placingText;
 static void placeText(UIView *page) {
     if (!page || sg_placingText) return;
     sg_placingText = YES;
-    // Ensure page's subviews and unit have settled their frames (especially on cold launch when layout is top-down).
-    [UIView performWithoutAnimation:^{
-        [page layoutIfNeeded];
-        for (UIView *sub in page.subviews) [sub layoutIfNeeded];
-    }];
+    // Ensure page's subviews and unit have settled their frames on cold launch when layout is top-down.
+    if (!sg_barMoves) {
+        [UIView performWithoutAnimation:^{
+            [page layoutIfNeeded];
+            for (UIView *sub in page.subviews) [sub layoutIfNeeded];
+        }];
+    }
     __block UIView *unit = nil;
     SGForEachView(page, ^(UIView *v) {
         if (!unit && [v.accessibilityIdentifier isEqualToString:kUnitId]) unit = v;
     });
-    if (unit) {
+    if (unit && !sg_barMoves) {
         [UIView performWithoutAnimation:^{
             [unit.superview layoutIfNeeded];
             [unit layoutIfNeeded];
@@ -885,8 +922,7 @@ static void placeText(UIView *page) {
     }
 
     SGRBarText *text = objc_getAssociatedObject(page, &kTextKey);
-    BOOL made = !text;
-    if (made) {
+    if (!text) {
         text = [SGRBarText new];
         objc_setAssociatedObject(page, &kTextKey, text, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
@@ -907,9 +943,8 @@ static void placeText(UIView *page) {
         [text setNeedsLayout];
         [text layoutIfNeeded];
     };
-    // A new page's text is placed where it belongs, never grown from nothing inside the bar's animation.
-    if (made) [UIView performWithoutAnimation:place];
-    else place();
+    // Placed without animating UILabel bounds/position so kCAGravityCenter never shifts the text left mid-spring.
+    [UIView performWithoutAnimation:place];
     for (UIView *sub in unit.subviews) if (sub != text && sub.alpha > 0) sub.alpha = 0;
     sg_placingText = NO;
 }
@@ -1039,10 +1074,6 @@ CGRect SGRNowPlayingStripFrameIn(UIView *host) {
     return [host convertRect:strip.bounds fromView:strip];
 }
 
-// The tab bar's moves under way (one can start before the last one ends), and the relayout owed to their end.
-static NSInteger sg_barMoves;
-static BOOL sg_owedLayout, sg_owedRefresh;
-
 static void relayoutBar(UIView *host, BOOL taller) {
     if (sg_barMoves > 0) {
         sg_owedLayout = YES;
@@ -1123,9 +1154,11 @@ static void styleNowPlayingBar(UIViewController *container) {
     resetArtworkTransform(sg_card);
 
     // Ensure bar's subviews (the card and its children) have laid out during cold launch's top-down layout pass.
-    [UIView performWithoutAnimation:^{
-        for (UIView *sub in bar.subviews) [sub layoutIfNeeded];
-    }];
+    if (!sg_barMoves) {
+        [UIView performWithoutAnimation:^{
+            for (UIView *sub in bar.subviews) [sub layoutIfNeeded];
+        }];
+    }
 
     // What is painted now, before it goes clear; SGRRepaint.x adds what Spotify paints later. Its size is
     // judged when the card is chosen: in a Jam the card can still be unsized here (harness/tabbar).
@@ -1192,6 +1225,7 @@ static void styleNowPlayingBar(UIViewController *container) {
     CGFloat radius = MIN(kCardRadius, frame.size.height / 2);
     if (card) {
         roundView(card, radius);
+        card.clipsToBounds = YES;
         restyleCardContent(card);
     }
     if (sg_barPlayView) {

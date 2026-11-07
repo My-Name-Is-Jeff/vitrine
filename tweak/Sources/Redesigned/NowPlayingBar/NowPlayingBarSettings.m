@@ -13,15 +13,16 @@ NSArray<SGModRow *> *SGRNowPlayingBarRows(void) {
         SGRRefreshTabBar();
         SGRNowPlayingBarFollowTabBar();
     };
-    SGModRow *compactBar = SGSwitchRow(@"Compact mini player", @"48 pt pill with 32 pt artwork", SGRKeyBarCompact);
-    compactBar.changed = ^(BOOL on) {
-        SGRNowPlayingBarFollowTabBar();
-        SGRRefreshTabBar();
-    };
     SGModRow *nextButton = SGSwitchRow(@"Next button", @"Skip forward button next to play", SGRKeyBarNextButton);
     nextButton.defaultOn = SGEnabled(SGRKeyBarCompact);
     nextButton.changed = ^(BOOL on) {
         SGRNowPlayingBarFollowTabBar();
+    };
+    SGModRow *compactBar = SGSwitchRow(@"Compact mini player", @"48 pt pill with 32 pt artwork", SGRKeyBarCompact);
+    compactBar.changed = ^(BOOL on) {
+        nextButton.defaultOn = on;
+        SGRNowPlayingBarFollowTabBar();
+        SGRRefreshTabBar();
     };
     SGModRow *artworkShape = SGChoiceRow(@"Artwork shape", @"Cover art shape on the mini player",
                                          SGRKeyBarArtworkShape,

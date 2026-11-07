@@ -674,7 +674,7 @@ typedef NS_ENUM(NSInteger, SGRNavbarSection) {
 }
 
 - (NSInteger)tableView:(UITableView *)table numberOfRowsInSection:(NSInteger)section {
-    if (section == SGRNavbarSectionCompact) return 1;
+    if (section == SGRNavbarSectionCompact) return 2;
     if (section == SGRNavbarSectionTabs) return (NSInteger)_entries.count;
     return section == SGRNavbarSectionLinks ? 2 : 1;
 }
@@ -688,7 +688,7 @@ typedef NS_ENUM(NSInteger, SGRNavbarSection) {
     if (section == SGRNavbarSectionSwitch && !SGEnabled(SGRKeyNavbar))
         return @"Off, the bar shows Spotify's own tabs in Spotify's order. Your list is kept for when it is on again.";
     if (section == SGRNavbarSectionCompact)
-        return @"Sizes the minimized tab bar to match Apple Music's 48 pt Liquid Glass circles and sets Search apart on the right. Pair with Apple Music style and Compact mini player in Mod Settings > Player.";
+        return @"Sizes the minimized tab bar to Apple Music's 48 pt Liquid Glass circles and optionally sets Search apart on the right to sandwich the mini player. Pair with Apple Music style and Compact mini player in Mod Settings > Player.";
     if (section == SGRNavbarSectionTabs)
         return @"Drag a tab to move it. Tap one you added to rename it or change its icon, or one of Spotify's to hide it.";
     return nil;
@@ -787,14 +787,25 @@ typedef NS_ENUM(NSInteger, SGRNavbarSection) {
             break;
         }
         case SGRNavbarSectionCompact: {
-            SGFillCell(cell, @"Compact tab bar", @"48 pt circles and split Search when minimized", nil, nil);
-            UISwitch *toggle = [UISwitch new];
-            toggle.onTintColor = SGGreen();
-            toggle.on = SGEnabled(SGRKeyNavbarAutoSplit);
-            toggle.accessibilityLabel = @"Compact tab bar";
-            toggle.accessibilityHint = @"48 pt circles and split Search when minimized";
-            [toggle addTarget:self action:@selector(autoSplitToggled:) forControlEvents:UIControlEventValueChanged];
-            cell.accessoryView = toggle;
+            if (path.row == 0) {
+                SGFillCell(cell, @"Compact tab bar", @"48 pt circles and scaled glyphs when minimized", nil, nil);
+                UISwitch *toggle = [UISwitch new];
+                toggle.onTintColor = SGGreen();
+                toggle.on = SGEnabled(SGRKeyNavbarCompact);
+                toggle.accessibilityLabel = @"Compact tab bar";
+                toggle.accessibilityHint = @"48 pt circles and scaled glyphs when minimized";
+                [toggle addTarget:self action:@selector(compactToggled:) forControlEvents:UIControlEventValueChanged];
+                cell.accessoryView = toggle;
+            } else {
+                SGFillCell(cell, @"Split Search when minimized", @"Set Search apart on the right to sandwich the mini player", nil, nil);
+                UISwitch *toggle = [UISwitch new];
+                toggle.onTintColor = SGGreen();
+                toggle.on = SGEnabled(SGRKeyNavbarAutoSplit);
+                toggle.accessibilityLabel = @"Split Search when minimized";
+                toggle.accessibilityHint = @"Set Search apart on the right to sandwich the mini player";
+                [toggle addTarget:self action:@selector(autoSplitToggled:) forControlEvents:UIControlEventValueChanged];
+                cell.accessoryView = toggle;
+            }
             break;
         }
         case SGRNavbarSectionLinks:
@@ -916,6 +927,18 @@ typedef NS_ENUM(NSInteger, SGRNavbarSection) {
     SGSetEnabled(SGRKeyNavbarHideLabels, !card.names);
     [[UISelectionFeedbackGenerator new] selectionChanged];
     SGRRefreshTabBar();
+    SGRAnimate(SGRMotionBar, ^{
+        [self showChoices];
+        [_preview layoutIfNeeded];
+    }, nil);
+}
+
+- (void)compactToggled:(UISwitch *)toggle {
+    SGSetEnabled(SGRKeyNavbarCompact, toggle.on);
+    SGRRefreshTabBar();
+    [UIView performWithoutAnimation:^{
+        [self.tableView reloadSections:[NSIndexSet indexSetWithIndex:SGRNavbarSectionTabs] withRowAnimation:UITableViewRowAnimationNone];
+    }];
     SGRAnimate(SGRMotionBar, ^{
         [self showChoices];
         [_preview layoutIfNeeded];

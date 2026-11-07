@@ -7,6 +7,8 @@
 #define SGRKeyNavbar @"spotifyglass.redesign.navbar"
 // Icons only on the glass bar. Off unless set; applies as soon as the bar lays out again.
 #define SGRKeyNavbarHideLabels @"spotifyglass.redesign.navbar.hideLabels"
+// 48 pt circles and scaled glyph proportions on the glass tab bar. On unless set off.
+#define SGRKeyNavbarCompact @"spotifyglass.redesign.navbar.compact"
 // Auto-split trailing tab (Search) on minimize to sandwich the mini player card. On unless set off.
 #define SGRKeyNavbarAutoSplit @"spotifyglass.redesign.navbar.autoSplit"
 
