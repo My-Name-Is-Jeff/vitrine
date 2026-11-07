@@ -59,10 +59,17 @@ void SGRNavbarForgetTab(void);
 // now playing card coming down between them. On unless switched off; read as each scroll goes.
 #define SGRKeyNavbarMinimize @"spotifyglass.redesign.navbar.minimize"
 BOOL SGRTabBarMinimized(void);
+// What the last SGRSetTabBarMinimized call asked for, updated immediately even when the animated layout is
+// deferred to the next run loop turn, so TabBarMinimize.x never mistakes a pending scroll-triggered minimize
+// for an external bar change.
+BOOL SGRTabBarMinimizedTarget(void);
 // TabBar.x lays both bars out for it, the now playing bar in the same animation, at once; asked for inside an
 // animation, on the main queue's next turn (SGRTabBarMinimized changes then too). `animated` NO is a cut, made
 // at once.
 void SGRSetTabBarMinimized(BOOL minimized, BOOL animated);
+// Interactive pre-minimize scroll progress (0 at rest, 1 at the minimize threshold): scales the expanded
+// sandwich slightly down as the user gently scrolls down before crossing the split threshold.
+void SGRSetTabBarScrollSquish(CGFloat progress, BOOL animated);
 // The room between the minimized bar's two tabs, `height` high and centered on them, in `host`'s
 // coordinates: where the now playing card goes. CGRectNull while the bar is not minimized or not on screen.
 CGRect SGRTabBarInlineSlot(UIView *host, CGFloat height);

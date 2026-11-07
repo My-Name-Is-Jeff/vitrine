@@ -26,6 +26,7 @@
 #import "Redesigned/Kit/SGRGlass.h"
 #import "Redesigned/Kit/SGRTokens.h"
 #import "Settings/SGMarquee.h"
+#import "Shared/Player/PlayerState.h"
 #import "NowPlayingBar.h"
 #import "Redesigned/Navbar/Navbar.h"
 
@@ -37,7 +38,7 @@ static const CGFloat kCardRadius = 24;
 // The strip's pane is this much smaller than the strip at each end, so a gap parts it from the card's glass.
 static const CGFloat kStripInset = 4;
 static NSString *const kUnitId = @"Components.UI.PageInformationUnitNowPlayingBar";
-static char kGlassKey, kStripGlassKey;
+static char kGlassKey, kStripGlassKey, kNextButtonKey;
 static __weak UIView *sg_card;
 static CGRect sg_stripFrame;
 // The track's glass frame in the container's view as the bar was last styled, the strip cut off: the row
@@ -49,6 +50,7 @@ static __weak UIView *sg_progress;
 static __weak UIViewController *sg_container;
 // The container's view while it stands in the minimized tab bar's row, below the page that holds it.
 static __weak UIView *sg_inline;
+static CGFloat sg_scrollSquish;
 
 CGRect SGRNowPlayingCardFrameIn(UIView *host, CGFloat *radius) {
     UIVisualEffectView *glass = sg_cardGlass;
@@ -146,32 +148,39 @@ static void roundView(UIView *view, CGFloat radius) {
     view.layer.cornerCurve = kCACornerCurveContinuous;
 }
 
+static BOOL insideControlOrStack(UIView *view, UIView *root) {
+    for (UIView *v = view; v && v != root; v = v.superview) {
+        if ([v isKindOfClass:UIControl.class] || [v isKindOfClass:UIStackView.class]) return YES;
+    }
+    return NO;
+}
+
 static void restyleCardContent(UIView *card) {
     BOOL compact = SGRIsBarCompact();
     CGFloat cardH = card.bounds.size.height;
 
+    __block BOOL foundArt = NO;
     SGForEachView(card, ^(UIView *v) {
-        if (inStrip(v, card)) return;
+        if (foundArt || inStrip(v, card) || insideControlOrStack(v, card)) return;
         CGSize size = v.bounds.size;
         BOOL square = size.width >= 32 && size.width <= 48 && fabs(size.width - size.height) < 1;
-        if (!square) return;
+        if (!square || SGFrameIn(v, card).origin.x > 36) return;
 
         UIView *outer = v;
         for (UIView *u = v; u && u != card && CGSizeEqualToSize(u.bounds.size, size); u = u.superview) {
             outer = u;
         }
+        if (compact) {
+            outer.transform = CGAffineTransformConcat(CGAffineTransformMakeScale(0.75, 0.75), CGAffineTransformMakeTranslation(3.0, 0.0));
+        } else {
+            outer.transform = CGAffineTransformIdentity;
+        }
         for (UIView *u = v; u && u != card && CGSizeEqualToSize(u.bounds.size, size); u = u.superview) {
-            if (compact) {
-                outer.transform = CGAffineTransformConcat(CGAffineTransformMakeScale(0.8, 0.8), CGAffineTransformMakeTranslation(4.0, 0.0));
-                roundView(u, 7.0 / 0.8); // 8.75pt unscaled = 7.0pt continuous squircle
-                u.clipsToBounds = YES;
-            } else {
-                outer.transform = CGAffineTransformIdentity;
-                roundView(u, size.width / 2.0);
-                u.clipsToBounds = YES;
-            }
+            roundView(u, compact ? (6.5 / 0.75) : (size.width / 2.0));
+            u.clipsToBounds = YES;
         }
         sg_cardArtwork = outer;
+        foundArt = YES;
     });
 
     __block UIView *progress = sg_progress;
@@ -183,12 +192,18 @@ static void restyleCardContent(UIView *card) {
         });
         sg_progress = progress;
     }
-    // Under the text, 226pt on a full width card, shorter on the one in the minimized tab bar.
-    CGRect target = CGRectMake(52, cardH - (compact ? 7 : 6), MAX(0, card.bounds.size.width - 160), 2);
-    if (progress && !CGRectEqualToRect(progress.frame, target)) {
-        progress.frame = target;
-        [progress setNeedsLayout];
-        [progress layoutIfNeeded];
+    if (progress) {
+        // Apple Music's compact mini player has no bottom progress line; only the full 56pt bar shows it.
+        progress.hidden = compact;
+        progress.alpha = compact ? 0.0 : 1.0;
+        if (!compact) {
+            CGRect target = CGRectMake(52, cardH - 6, MAX(0, card.bounds.size.width - 160), 2);
+            if (!CGRectEqualToRect(progress.frame, target)) {
+                progress.frame = target;
+                [progress setNeedsLayout];
+                [progress layoutIfNeeded];
+            }
+        }
     }
 }
 
@@ -264,23 +279,158 @@ static BOOL setEdges(UIView *bar, CGFloat left, CGFloat right) {
     return NO;
 }
 
+// Apple Music's mini player shows Play/Pause + Next (`forward.fill`) when expanded above the tab bar,
+// and Play/Pause alone when minimized into the tab bar's inline row.
+@interface SGRBarNextButton : UIButton
+@property (nonatomic, weak) UIView *fallbackPlayView;
+@end
+
+@implementation SGRBarNextButton
++ (instancetype)button {
+    SGRBarNextButton *btn = [self buttonWithType:UIButtonTypeCustom];
+    btn.frame = CGRectMake(0, 0, 42, 44);
+    UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:16.5 weight:UIImageSymbolWeightSemibold];
+    UIImage *img = [[UIImage systemImageNamed:@"forward.fill" withConfiguration:cfg] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    [btn setImage:img forState:UIControlStateNormal];
+    btn.tintColor = SGRPrimary();
+    btn.accessibilityIdentifier = @"SPTNowPlayingNextTrackButton";
+    btn.accessibilityLabel = @"Next";
+    [btn addTarget:btn action:@selector(sgr_skipNext) forControlEvents:UIControlEventTouchUpInside];
+    return btn;
+}
+
+- (void)sgr_skipNext {
+    id player = SGPlayer();
+    if ([player respondsToSelector:@selector(skipToNextTrackWithOptions:)]) {
+        [(id<SPTPlayer>)player skipToNextTrackWithOptions:nil];
+    } else if ([player respondsToSelector:@selector(skipToNextTrack)]) {
+        [(id<SPTPlayer>)player skipToNextTrack];
+    }
+}
+
+- (void)setHighlighted:(BOOL)highlighted {
+    [super setHighlighted:highlighted];
+    UIView *iv = self.imageView;
+    SGRAnimate(SGRMotionPress, ^{
+        iv.alpha = highlighted ? 0.5 : 1.0;
+        iv.transform = highlighted ? CGAffineTransformMakeScale(0.9, 0.9) : CGAffineTransformIdentity;
+    }, nil);
+}
+
+- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gestureRecognizer {
+    return gestureRecognizer.view == self;
+}
+
+- (CGSize)intrinsicContentSize {
+    return CGSizeMake(42, 44);
+}
+@end
+
+static SGRBarNextButton *ensureNextButton(UIView *bar) {
+    if (!bar) return nil;
+    SGRBarNextButton *next = objc_getAssociatedObject(bar, &kNextButtonKey);
+    __block UIView *play = nil;
+    SGForEachView(bar, ^(UIView *v) {
+        if (!play && [v.accessibilityIdentifier isEqualToString:@"SPTNowPlayingPlayButton"]) play = v;
+    });
+    if (!play) {
+        UIView *card = sg_card ?: bar;
+        SGForEachView(card, ^(UIView *v) {
+            if (!play && [v isKindOfClass:UIButton.class] && ![v isKindOfClass:SGRBarNextButton.class] && !inStrip(v, card)) {
+                play = v;
+            }
+        });
+    }
+    if (!play) return next;
+
+    if (!next) {
+        next = [SGRBarNextButton button];
+        objc_setAssociatedObject(bar, &kNextButtonKey, next, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+
+    UIView *playItem = play;
+    while (playItem.superview && playItem.superview != bar && ![playItem.superview isKindOfClass:UIStackView.class]) {
+        playItem = playItem.superview;
+    }
+    if ([playItem.superview isKindOfClass:UIStackView.class] && ((UIStackView *)playItem.superview).axis == UILayoutConstraintAxisHorizontal) {
+        UIStackView *stack = (UIStackView *)playItem.superview;
+        next.fallbackPlayView = nil;
+        if (next.superview != stack) {
+            next.translatesAutoresizingMaskIntoConstraints = NO;
+            [NSLayoutConstraint activateConstraints:@[
+                [next.widthAnchor constraintEqualToConstant:42],
+                [next.heightAnchor constraintEqualToConstant:44],
+            ]];
+            [stack addArrangedSubview:next];
+        }
+    } else {
+        UIView *host = play.superview ?: bar;
+        next.fallbackPlayView = play;
+        if (next.superview != host) {
+            next.translatesAutoresizingMaskIntoConstraints = YES;
+            next.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleTopMargin | UIViewAutoresizingFlexibleBottomMargin;
+            [host addSubview:next];
+        }
+        next.frame = CGRectMake(host.bounds.size.width - 50, round((host.bounds.size.height - 44) / 2.0), 42, 44);
+    }
+    return next;
+}
+
 // In the row the card keeps the cover, the title and play, as the Music app's does: the device and add
 // buttons stand aside while it is there and come back with the full card, the device button staying when the
 // Player page's Device button asks for it (SGRKeyBarInlineConnect). Only what this hid is shown again.
 static NSHashTable<UIView *> *sg_tucked;
 
 static void tuckExtras(UIView *bar, BOOL tuck) {
+    if (!bar) return;
     if (!sg_tucked) sg_tucked = [NSHashTable weakObjectsHashTable];
+    BOOL compact = SGRIsBarCompact();
+    BOOL keepConnect = SGHidden(SGRKeyBarInlineConnect);
+    SGRBarNextButton *next = ensureNextButton(bar);
+
     // A stack hides an item only once the animation it was hidden in ends, so the buttons also fade on
     // their own, out as the card heads for the row and back in after it leaves.
     if (!tuck) {
         NSArray<UIView *> *items = sg_tucked.allObjects;
         [sg_tucked removeAllObjects];
-        for (UIView *item in items) item.hidden = NO;
-        SGRAnimate(SGRMotionRespond, ^{ for (UIView *item in items) item.alpha = 1; }, nil);
-        return;
+        NSMutableArray<UIView *> *restored = [NSMutableArray array];
+        for (UIView *item in items) {
+            if (item == next && !compact) continue;
+            if (item != next && compact) continue;
+            item.hidden = NO;
+            [restored addObject:item];
+        }
+        if (next) {
+            BOOL showNext = compact;
+            if (next.hidden == showNext) next.hidden = !showNext;
+            if (showNext && ![restored containsObject:next] && next.alpha < 1.0) [restored addObject:next];
+            if (!showNext) next.alpha = 0;
+            if (next.fallbackPlayView) {
+                next.fallbackPlayView.transform = showNext ? CGAffineTransformMakeTranslation(-42.0, 0) : CGAffineTransformIdentity;
+            }
+        }
+        if (restored.count) {
+            SGRAnimate(SGRMotionRespond, ^{ for (UIView *item in restored) item.alpha = 1; }, nil);
+        }
+        if (!compact) return;
     }
-    BOOL keepConnect = SGHidden(SGRKeyBarInlineConnect);
+
+    if (next) {
+        BOOL hideNext = tuck || !compact;
+        if (hideNext && !next.hidden) {
+            next.hidden = YES;
+            SGRAnimate(SGRMotionExit, ^{ next.alpha = 0; }, nil);
+            [sg_tucked addObject:next];
+        } else if (!hideNext && next.hidden) {
+            next.hidden = NO;
+            next.alpha = 1;
+        }
+        if (next.fallbackPlayView) {
+            next.fallbackPlayView.transform = (!hideNext) ? CGAffineTransformMakeTranslation(-42.0, 0) : CGAffineTransformIdentity;
+        }
+    }
+
+    if (!tuck && !compact) return;
     SGForEachView(bar, ^(UIView *v) {
         NSString *name = v.accessibilityIdentifier;
         BOOL connect = [name isEqualToString:@"Components.ConnectButtonOutputSwitcher"];
@@ -331,15 +481,15 @@ static char kTextKey;
     _artists.textColor = compact ? SGRPrimary() : SGRSecondary();
     if (compact) {
         _title.font = [UIFont systemFontOfSize:13.5 weight:UIFontWeightSemibold];
-        _artists.font = [UIFont systemFontOfSize:11.5 weight:UIFontWeightRegular];
+        _artists.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightRegular];
     } else {
         _title.font = SGRFont(UIFontTextStyleSubheadline, UIFontWeightSemibold, UIContentSizeCategoryLarge);
         _artists.font = SGRFont(UIFontTextStyleFootnote, UIFontWeightRegular, UIContentSizeCategoryLarge);
     }
     CGFloat titleHeight = ceil(_title.font.lineHeight), artistsHeight = ceil(_artists.font.lineHeight);
     BOOL two = _artists.text.length > 0;
-    // The lines share 3pt of their leading in compact, 2pt normally, matching Apple Music's card leading.
-    CGFloat shared = compact ? 3.0 : 2.0;
+    // The lines share 1pt of their leading in compact (~15pt baseline-to-baseline), 2pt normally.
+    CGFloat shared = compact ? 1.0 : 2.0;
     CGFloat totalH = titleHeight + (two ? artistsHeight - shared : 0);
     CGFloat top = round((size.height - totalH) / 2.0);
     _title.frame = CGRectMake(0, top, size.width, titleHeight);
@@ -463,6 +613,28 @@ static BOOL edgesTo(UIView *bar, CGRect r, CGPoint origin) {
     return !CGRectIsNull(r) && setEdges(bar, CGRectGetMinX(r) - origin.x, CGRectGetMaxX(r) - origin.x);
 }
 
+static CGAffineTransform uninlineTransform(UIView *bar) {
+    BOOL compact = SGRIsBarCompact();
+    CGFloat dy = (compact && bar) ? round((bar.bounds.size.height - 48.0) / 2.0) : 0;
+    CGFloat squish = (compact && sg_scrollSquish > 0.0005) ? sg_scrollSquish : 0;
+    if (squish > 0) {
+        CGFloat scale = 1.0 - 0.05 * squish;
+        return CGAffineTransformConcat(CGAffineTransformMakeScale(scale, scale),
+                                       CGAffineTransformMakeTranslation(0, dy + 2.0 * squish));
+    }
+    return dy > 0 ? CGAffineTransformMakeTranslation(0, dy) : CGAffineTransformIdentity;
+}
+
+void SGRNowPlayingBarSetScrollSquish(CGFloat progress) {
+    progress = MIN(1.0, MAX(0.0, progress));
+    if (fabs(progress - sg_scrollSquish) < 0.001) return;
+    sg_scrollSquish = progress;
+    UIViewController *container = sg_container;
+    if (!container.isViewLoaded || sg_inline) return;
+    UIView *bar = container.childViewControllers.firstObject.viewIfLoaded;
+    container.view.transform = uninlineTransform(bar);
+}
+
 static void placeInline(UIViewController *container) {
     UIView *view = container.view;
     UIView *bar = container.childViewControllers.firstObject.viewIfLoaded;
@@ -484,13 +656,13 @@ static void placeInline(UIViewController *container) {
     // Where the view stands untransformed, in the slot's coordinates.
     CGPoint origin = CGPointMake(view.center.x - view.bounds.size.width / 2, view.center.y - view.bounds.size.height / 2);
     if (!edgesTo(bar, slot, origin)) {
-        if (sg_inline) tuckExtras(bar, NO);
+        tuckExtras(bar, NO);
         sg_inline = nil;
         // Above the bar the card takes the glass row's edges (SGRTabBarGlassRow).
         CGRect row = bar && bar.superview == view ? SGRTabBarGlassRow(view.superview) : CGRectNull;
         if (!edgesTo(bar, row, origin)) restoreEdges(bar);
-        CGFloat dy = SGRIsBarCompact() ? round((bar.bounds.size.height - 48.0) / 2.0) : 0;
-        view.transform = dy > 0 ? CGAffineTransformMakeTranslation(0, dy) : CGAffineTransformIdentity;
+        CGAffineTransform rest = uninlineTransform(bar);
+        if (!CGAffineTransformEqualToTransform(view.transform, rest)) view.transform = rest;
         if (bar) placeTexts(bar);
         return;
     }

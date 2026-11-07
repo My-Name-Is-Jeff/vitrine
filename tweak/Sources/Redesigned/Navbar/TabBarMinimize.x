@@ -25,25 +25,32 @@ static BOOL inContainer(UIView *view) {
 static void scrolled(UIScrollView *scrollView) {
     if ((!scrollView.isTracking && !scrollView.isDecelerating) || scrollView == sg_other) return;
     CGFloat offset = scrollView.contentOffset.y;
+    BOOL currentMinimized = SGRTabBarMinimizedTarget();
     if (scrollView != sg_page) {
         if (!inContainer(scrollView)) {
             sg_other = scrollView;
             return;
         }
         sg_page = scrollView;
-        sg_track = (SGRMinimizeTrack){offset, SGRTabBarMinimized()};
+        sg_track = (SGRMinimizeTrack){offset, currentMinimized};
     }
     // The bar changed some other way (a tab, the player): the scroll counts from here.
-    if (sg_track.minimized != SGRTabBarMinimized()) {
-        sg_track = (SGRMinimizeTrack){offset, SGRTabBarMinimized()};
+    if (sg_track.minimized != currentMinimized) {
+        sg_track = (SGRMinimizeTrack){offset, currentMinimized};
         sg_waitForTouch = YES;
     }
     if (scrollView.isTracking) sg_waitForTouch = NO;
     UIEdgeInsets inset = scrollView.adjustedContentInset;
     CGFloat top = -inset.top, bottom = scrollView.contentSize.height + inset.bottom - scrollView.bounds.size.height;
+    BOOL allowMinimize = SGEnabled(SGRKeyNavbarMinimize) && !sg_waitForTouch;
+    CGFloat progress = allowMinimize ? SGRMinimizeProgress(&sg_track, offset, top, bottom) : 0;
     BOOL minimized = SGRMinimizeStep(&sg_track, offset, top, bottom);
-    if (minimized == SGRTabBarMinimized() || (minimized && !SGEnabled(SGRKeyNavbarMinimize))) return;
-    if (minimized && sg_waitForTouch) return;
+    if (minimized == currentMinimized || (minimized && !allowMinimize)) {
+        if (minimized && !allowMinimize) sg_track.minimized = currentMinimized;
+        SGRSetTabBarScrollSquish(minimized ? 0 : progress, NO);
+        return;
+    }
+    SGRSetTabBarScrollSquish(0, NO);
     SGRSetTabBarMinimized(minimized, YES);
 }
 
@@ -51,6 +58,31 @@ static void scrolled(UIScrollView *scrollView) {
 - (void)setContentOffset:(CGPoint)offset {
     %orig;
     scrolled(self);
+}
+%end
+
+%hook UIPanGestureRecognizer
+- (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    %orig;
+    if (self.view == sg_page) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (!sg_page.isTracking && !sg_page.isDecelerating && !SGRTabBarMinimizedTarget()) {
+                sg_track.turn = sg_page.contentOffset.y;
+                SGRSetTabBarScrollSquish(0, YES);
+            }
+        });
+    }
+}
+- (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    %orig;
+    if (self.view == sg_page) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (!sg_page.isTracking && !sg_page.isDecelerating && !SGRTabBarMinimizedTarget()) {
+                sg_track.turn = sg_page.contentOffset.y;
+                SGRSetTabBarScrollSquish(0, YES);
+            }
+        });
+    }
 }
 %end
 

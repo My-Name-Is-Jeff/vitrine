@@ -32,7 +32,8 @@ static __weak UIView *sg_stockBar;
 // The glass row in the window as the now playing card was last told of it (syncBar), CGRectNull for none.
 static CGRect sg_glassRow = {{INFINITY, INFINITY}, {0, 0}};
 // See "minimized". sg_keepApart holds the second bar on screen while the main one grows back under it.
-static BOOL sg_minimized, sg_keepApart;
+static BOOL sg_minimized, sg_minimizedTarget, sg_keepApart;
+static CGFloat sg_scrollSquish;
 
 @interface SGRSystemTabBar : UITabBar <UITabBarDelegate, UIGestureRecognizerDelegate>
 @property (nonatomic, weak) UIView *stockBar;
@@ -79,9 +80,29 @@ static id activeVariantOf(id icon) {
 // filed under a filled icon's name or the other way round. isActive only picks the view's colors, white either
 // way. Drawn on an icon view of our own, off screen, so the images do not wait for Spotify's views to lay out
 // and paint, and UITabBar swaps image and selectedImage itself.
-static UIImage *drawGlyph(UIView *live, id icon, BOOL active) {
+static UIImage * appleMusicSymbolForTab(NSString *name, NSString *label) {
+    if (!SGRIsBarCompact()) return nil;
+    UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:19.0 weight:UIImageSymbolWeightMedium];
+    NSString *lower = (name ?: @"").lowercaseString;
+    NSString *title = (label ?: @"").lowercaseString;
+    if ([lower hasPrefix:@"home"] || [title isEqualToString:@"home"]) {
+        return [[UIImage systemImageNamed:@"house.fill" withConfiguration:config] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    }
+    if ([lower hasPrefix:@"search"] || [title isEqualToString:@"search"]) {
+        UIImageSymbolConfiguration *searchConfig = [UIImageSymbolConfiguration configurationWithPointSize:18.5 weight:UIImageSymbolWeightSemibold];
+        return [[UIImage systemImageNamed:@"magnifyingglass" withConfiguration:searchConfig] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    }
+    return nil;
+}
+
+static UIImage *drawGlyph(UIView *live, id icon, BOOL active, NSString *label) {
     if (!live) return nil;
+    UIImage *amSymbol = appleMusicSymbolForTab(iconName(icon), label);
+    if (amSymbol) return amSymbol;
     CGSize size = live.bounds.size;
+    if (SGRIsBarCompact() && size.width >= 20 && size.width <= 26) {
+        size = CGSizeMake(28, 28);
+    }
     Class viewClass = NSClassFromString(@"SPTEncoreIconView");
     if (icon && viewClass) {
         static NSCache<NSString *, UIImage *> *cache;
@@ -102,7 +123,10 @@ static UIImage *drawGlyph(UIView *live, id icon, BOOL active) {
         }
     }
     // Tabs of the mod's own draw a UIImageView, or an icon Encore would not draw off screen.
-    return size.width >= 2 ? renderLayer(live.layer, size) : nil;
+    if ([live isKindOfClass:UIImageView.class] && ((UIImageView *)live).image) {
+        return [((UIImageView *)live).image imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    }
+    return size.width >= 2 ? renderLayer(live.layer, live.bounds.size) : nil;
 }
 
 // A tab's glyph from what its view holds now, the filled variant for the selected state where the icon has one.
@@ -110,7 +134,7 @@ static UIImage *glyphOf(UIView *item, BOOL active) {
     UIView *live = iconIn(item);
     id icon = live ? encoreIconOf(live) : nil;
     if (active) icon = activeVariantOf(icon) ?: icon;
-    return drawGlyph(live, icon, active);
+    return drawGlyph(live, icon, active, labelIn(item).text);
 }
 
 // For the Tab bar page's list and preview: a tab of Spotify's drawn from its item on the bar, hidden or not,
@@ -173,15 +197,26 @@ static UIView *platterIn(UIView *bar) {
     [super layoutSubviews];
     SGRShrinkTabTitles(self);
     NSMutableArray<UIView *> *buttons = [NSMutableArray array];
-    for (UIView *v in self.subviews) {
-        if (isTabButton(v)) [buttons addObject:v];
-    }
-    [buttons sortUsingComparator:^NSComparisonResult(UIView *a, UIView *b) {
-        return [@(a.frame.origin.x) compare:@(b.frame.origin.x)];
-    }];
+    NSMutableArray<UIView *> *litButtons = [NSMutableArray array];
+    SGForEachView(self, ^(UIView *v) {
+        if (!isTabButton(v)) return;
+        if (isLitCopy(v, self)) [litButtons addObject:v];
+        else [buttons addObject:v];
+    });
+    NSComparisonResult (^byX)(UIView *, UIView *) = ^NSComparisonResult(UIView *a, UIView *b) {
+        CGFloat ax = [self convertPoint:a.bounds.origin fromView:a].x;
+        CGFloat bx = [self convertPoint:b.bounds.origin fromView:b].x;
+        return [@(ax) compare:@(bx)];
+    };
+    [buttons sortUsingComparator:byX];
+    [litButtons sortUsingComparator:byX];
     for (NSUInteger i = 0; i < buttons.count && i < self.items.count; i++) {
         NSString *name = self.items[i].accessibilityLabel ?: self.items[i].title;
         if (name) objc_setAssociatedObject(buttons[i], &kTabNameKey, name, OBJC_ASSOCIATION_COPY_NONATOMIC);
+    }
+    for (NSUInteger i = 0; i < litButtons.count && i < self.items.count; i++) {
+        NSString *name = self.items[i].accessibilityLabel ?: self.items[i].title;
+        if (name) objc_setAssociatedObject(litButtons[i], &kTabNameKey, name, OBJC_ASSOCIATION_COPY_NONATOMIC);
     }
     if (sg_minimized && SGRIsBarCompact()) {
         UIView *platter = platterIn(self);
@@ -399,10 +434,11 @@ static BOOL fillBar(SGRSystemTabBar *bar, NSArray<UIView *> *sources, BOOL hideL
         UIView *live = iconIn(sources[i]);
         id icon = live ? encoreIconOf(live) : nil;
         NSString *name = iconName(icon);
+        NSString *tabTitle = labelIn(sources[i]).text;
         BOOL activeMinimized = minimized && sources[i] == active;
         if (activeMinimized) {
             id lit = activeVariantOf(icon);
-            UIImage *image = drawGlyph(live, lit ?: icon, YES);
+            UIImage *image = drawGlyph(live, lit ?: icon, YES, tabTitle);
             if (image) {
                 UIImage *tinted = [image imageWithTintColor:SGRAccent() renderingMode:UIImageRenderingModeAlwaysOriginal];
                 setGlyphs(item, tinted, tinted);
@@ -410,7 +446,7 @@ static BOOL fillBar(SGRSystemTabBar *bar, NSArray<UIView *> *sources, BOOL hideL
             }
         } else if (!item.image || !item.selectedImage || (name && ![objc_getAssociatedObject(item, &kGlyphNamesKey) containsObject:name])) {
             id lit = activeVariantOf(icon);
-            setGlyphs(item, drawGlyph(live, icon, NO), drawGlyph(live, lit ?: icon, YES));
+            setGlyphs(item, drawGlyph(live, icon, NO, tabTitle), drawGlyph(live, lit ?: icon, YES, tabTitle));
             NSString *litName = iconName(lit);
             if (item.image && item.selectedImage) objc_setAssociatedObject(item, &kGlyphNamesKey, name ? (litName ? @[name, litName] : @[name]) : nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
@@ -554,9 +590,9 @@ static void syncBar(UIView *stockBar) {
         [apartBar setNeedsLayout];
         [apartBar layoutIfNeeded];
         BOOL hideApartButtons = !minimized && sg_keepApart && !apart.count;
-        for (UIView *v in apartBar.subviews) {
+        SGForEachView(apartBar, ^(UIView *v) {
             if (isTabButton(v)) v.hidden = hideApartButtons;
-        }
+        });
     }
     // An icon view Spotify has not built yet is looked for again shortly, not on the next touch.
     static NSUInteger retries;
@@ -594,7 +630,12 @@ BOOL SGRTabBarMinimized(void) {
     return sg_minimized;
 }
 
+BOOL SGRTabBarMinimizedTarget(void) {
+    return sg_minimizedTarget;
+}
+
 static void setMinimized(BOOL minimized, BOOL animated);
+static void applyScrollSquish(UIView *host, CGFloat progress);
 
 // The scroll asks from inside -[UIScrollView setContentOffset:], which Spotify can call inside an animation of
 // its own: a block, whose length the spring then took, or a property animator held part way, which kept the bar's
@@ -607,6 +648,8 @@ static NSUInteger sg_request;
 
 void SGRSetTabBarMinimized(BOOL minimized, BOOL animated) {
     NSUInteger request = ++sg_request;
+    sg_minimizedTarget = minimized;
+    sg_scrollSquish = 0;
     if (!animated) {
         [UIView performWithoutAnimation:^{ setMinimized(minimized, NO); }];
         return;
@@ -618,6 +661,32 @@ void SGRSetTabBarMinimized(BOOL minimized, BOOL animated) {
     dispatch_async(dispatch_get_main_queue(), ^{
         if (request == sg_request) setMinimized(minimized, YES);
     });
+}
+
+static void applyScrollSquish(UIView *host, CGFloat progress) {
+    CGFloat scale = (SGRIsBarCompact() && !sg_minimized && progress > 0) ? (1.0 - 0.05 * progress) : 1.0;
+    CGAffineTransform transform = fabs(scale - 1.0) > 0.0005 ? CGAffineTransformMakeScale(scale, scale) : CGAffineTransformIdentity;
+    if (host && !CGAffineTransformEqualToTransform(host.transform, transform)) {
+        host.transform = transform;
+    }
+}
+
+void SGRSetTabBarScrollSquish(CGFloat progress, BOOL animated) {
+    progress = MIN(1.0, MAX(0.0, progress));
+    if (sg_minimized || !SGRIsBarCompact()) progress = 0;
+    if (fabs(progress - sg_scrollSquish) < 0.001 && !animated) return;
+    sg_scrollSquish = progress;
+    UIView *stockBar = sg_stockBar;
+    UIView *host = stockBar ? objc_getAssociatedObject(stockBar, &kHostKey) : nil;
+    void (^apply)(void) = ^{
+        applyScrollSquish(host, progress);
+        SGRNowPlayingBarSetScrollSquish(progress);
+    };
+    if (animated && host.window) {
+        SGRAnimate(SGRMotionBar, apply, nil);
+    } else {
+        [UIView performWithoutAnimation:apply];
+    }
 }
 
 #pragma mark - one move
@@ -694,12 +763,13 @@ static SGRBarState barState(UIView *host) {
         [NSMapTable mapTableWithKeyOptions:NSPointerFunctionsWeakMemory | NSPointerFunctionsObjectPointerPersonality valueOptions:NSPointerFunctionsStrongMemory],
     };
     SGForEachView(host, ^(UIView *v) {
+        if (!isVisibleInHost(v, host)) return;
         for (UIView *u = v; u && u != host; u = u.superview) {
             if (isTabButton(u) && !isVisibleInHost(u, host)) return;
         }
         CALayer *shownLayer = v.layer.presentationLayer;
         [state.frames setObject:@[[NSValue valueWithCGRect:v.frame], [NSValue valueWithCGRect:shownLayer ? shownLayer.frame : v.frame], @(isMoving(v))] forKey:v];
-        if (!isVisibleInHost(v, host) || v == host || !isTabButton(v)) return;
+        if (v == host || !isTabButton(v)) return;
         CGRect shown = shownIn(v, host), glyph = shownIn(glyphView(v), host);
         NSString *key = buttonKey(v, host);
         if (key) state.glyphs[key] = [NSValue valueWithCGPoint:CGPointMake(CGRectGetMidX(glyph), CGRectGetMidY(glyph))];
@@ -720,7 +790,7 @@ static void moveFrom(UIView *host, SGRBarState before, void (^along)(void), void
     NSMutableArray<NSValue *> *starts = [NSMutableArray array], *targets = [NSMutableArray array];
     NSMutableSet<NSString *> *taken = [NSMutableSet set];
     SGForEachView(host, ^(UIView *v) {
-        if (v == host) return;
+        if (v == host || !isVisibleInHost(v, host)) return;
         for (UIView *u = v; u && u != host; u = u.superview) {
             if (isTabButton(u) && u.hidden) return;
         }
@@ -756,7 +826,9 @@ static void moveFrom(UIView *host, SGRBarState before, void (^along)(void), void
     for (UIView *button in before.buttons) {
         NSString *key = buttonKey(button, host);
         BOOL replaced = key && [taken containsObject:key];
-        if (!button.window && !replaced) [gone addObject:[before.buttons objectForKey:button]];
+        if (!replaced && (!button.window || button.hidden || button.alpha < 0.01)) {
+            [gone addObject:[before.buttons objectForKey:button]];
+        }
     }
 
     [UIView performWithoutAnimation:^{
@@ -790,13 +862,19 @@ static void setMinimized(BOOL minimized, BOOL animated) {
     UIView *stockBar = sg_stockBar;
     if (minimized == sg_minimized) return;
     // Spotify's regular width bar is not the glass one's row of tabs; it stays as it is.
-    if (minimized && (!stockBar.window || stockBar.traitCollection.horizontalSizeClass != UIUserInterfaceSizeClassCompact)) return;
-    sg_minimized = minimized;
+    if (minimized && (!stockBar.window || stockBar.traitCollection.horizontalSizeClass != UIUserInterfaceSizeClassCompact)) {
+        sg_minimizedTarget = sg_minimized;
+        return;
+    }
+    sg_minimized = sg_minimizedTarget = minimized;
     sg_keepApart = !minimized;
+    sg_scrollSquish = 0;
     SGLog(@"tab bar: %@", minimized ? @"minimized" : @"expanded");
     if (!stockBar) return;
     UIView *host = objc_getAssociatedObject(stockBar, &kHostKey);
     UIView *apartBar = objc_getAssociatedObject(stockBar, &kApartBarKey);
+    applyScrollSquish(host, 0);
+    SGRNowPlayingBarSetScrollSquish(0);
     void (^settle)(BOOL) = ^(BOOL finished) {
         if (sg_minimized != minimized) return;
         sg_keepApart = NO;
@@ -826,6 +904,18 @@ static void setMinimized(BOOL minimized, BOOL animated) {
     }
     SGRNowPlayingBarMoving(YES);
     if (apartBar) apartBar.alpha = 1;
+    BOOL fadingApart = !minimized && sg_keepApart && apartBar && !apartBar.hidden;
+    if (fadingApart) {
+        for (UIView *source in tabItems(stockBar)) {
+            if (SGRTabIsApart(source)) {
+                fadingApart = NO;
+                break;
+            }
+        }
+    }
+    if (fadingApart) {
+        SGRAnimate(SGRMotionExit, ^{ apartBar.alpha = 0; }, nil);
+    }
     moveFrom(host, before, ^{
         SGRNowPlayingBarFollowTabBar();
     }, ^(BOOL finished) {

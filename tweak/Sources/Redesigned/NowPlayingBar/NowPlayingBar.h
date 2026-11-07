@@ -29,6 +29,9 @@ CGRect SGRNowPlayingArtworkFrameIn(UIView *host);
 // Lays the bar out again at once, into the minimized tab bar's slot or back above the bar
 // (Navbar.h's SGRTabBarInlineSlot); TabBar.x calls it inside its own animation.
 void SGRNowPlayingBarFollowTabBar(void);
+// Interactive pre-minimize scroll progress (0 at rest, 1 at the minimize threshold): scales the expanded
+// bar card slightly down with the tab bar as the user gently scrolls down before crossing the threshold.
+void SGRNowPlayingBarSetScrollSquish(CGFloat progress);
 // TabBar.x brackets its animated minimize and expand with YES and NO. Meanwhile the bar's own relayout after the Jam
 // strip moves waits for the end, so it cannot snap the bar mid-spring.
 void SGRNowPlayingBarMoving(BOOL moving);

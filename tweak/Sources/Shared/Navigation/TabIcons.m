@@ -8,7 +8,7 @@ NSString *const SGTabIconSetSymbols = @"symbols";
 
 static UIImage *symbolImage(NSString *name) {
     if (!name.length) return nil;
-    return [UIImage systemImageNamed:name withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:19 weight:UIImageSymbolWeightSemibold]];
+    return [UIImage systemImageNamed:name withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:20.5 weight:UIImageSymbolWeightMedium]];
 }
 
 // SPTEncoreIcon exposes one class method per glyph ("podcasts", "heart"), 538 of them in 9.1.78.
