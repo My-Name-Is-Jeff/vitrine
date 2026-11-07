@@ -308,6 +308,11 @@ static __weak UIView *sg_barPlayView;
 static CFTimeInterval sg_barPlayTappedUntil;
 static BOOL sg_barPlayTappedPaused;
 
+@interface SGRBarNextButton : UIButton
+@property (nonatomic, weak) UIView *fallbackPlayView;
+- (void)updateAvailability:(BOOL)animated;
+@end
+
 static __weak SGRBarNextButton *sg_barNextButton;
 
 static void refreshBarPlayGlyph(BOOL animated) {
@@ -388,11 +393,6 @@ static void styleBarPlayButton(UIView *play) {
 
 // Apple Music's mini player shows Play/Pause + Next (`forward.fill`) when expanded above the tab bar,
 // and Play/Pause alone when minimized into the tab bar's inline row.
-@interface SGRBarNextButton : UIButton
-@property (nonatomic, weak) UIView *fallbackPlayView;
-- (void)updateAvailability:(BOOL)animated;
-@end
-
 @implementation SGRBarNextButton {
     UIView *_glyphHost;
     UIImageView *_incomingArrow;
