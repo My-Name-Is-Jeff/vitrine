@@ -642,12 +642,20 @@ static void tuckExtras(UIView *bar, BOOL tuck) {
 
     SGForEachView(bar, ^(UIView *v) {
         NSString *name = v.accessibilityIdentifier;
-        BOOL connect = [name isEqualToString:@"Components.ConnectButtonOutputSwitcher"];
+        Class cls = v.class;
+        BOOL connect = [name isEqualToString:@"Components.ConnectButtonOutputSwitcher"] ||
+                       SGClassNamed(cls, @"ConnectButtonView") || SGClassNamed(cls, @"ConnectStateView");
         if (!connect && ![name isEqualToString:@"Components.UI.AddToButton"]) return;
         UIView *item = v;
         while (item.superview && item.superview != bar && ![item.superview isKindOfClass:UIStackView.class]) item = item.superview;
-        if (![item.superview isKindOfClass:UIStackView.class]) return;
-        if (connect && keepInlineConnect) {
+        if (![item.superview isKindOfClass:UIStackView.class]) {
+            if (connect) {
+                item.hidden = YES;
+                item.alpha = 0;
+            }
+            return;
+        }
+        if (connect && keepInlineConnect && !compact) {
             if (item.hidden) {
                 item.hidden = NO;
                 SGRAnimate(SGRMotionRespond, ^{ item.alpha = 1; }, nil);

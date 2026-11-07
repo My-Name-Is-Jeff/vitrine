@@ -262,9 +262,19 @@ static UIView *platterIn(UIView *bar) {
     }
     if (sg_minimized && SGRIsBarCompact()) {
         UIView *platter = platterIn(self);
-        if (platter && platter.frame.size.height > 50.0) {
-            platter.layer.frame = CGRectInset(platter.frame, 7.0, 7.0);
-            platter.layer.cornerRadius = 24.0;
+        if (platter) {
+            CGFloat circleSize = 48.0;
+            CGFloat top = round((self.bounds.size.height - circleSize) / 2.0);
+            CGFloat inset = 16.0;
+            BOOL isLeading = (self == objc_getAssociatedObject(self.stockBar, &kBarKey)) || (self.partner && self != objc_getAssociatedObject(self.stockBar, &kApartBarKey));
+            CGFloat x = isLeading ? inset : (self.bounds.size.width - inset - circleSize);
+            platter.layer.frame = CGRectMake(x, top, circleSize, circleSize);
+            platter.layer.cornerRadius = circleSize / 2.0;
+            platter.layer.masksToBounds = YES;
+
+            for (UIView *b in buttons) {
+                b.center = CGPointMake(x + circleSize / 2.0, top + circleSize / 2.0);
+            }
         }
     }
     self.layingOut = NO;
@@ -559,6 +569,7 @@ static void syncBar(UIView *stockBar) {
     for (UIView *sub in stockBar.subviews) {
         if (sub == host || [sub isKindOfClass:SGRBarFade.class]) continue;
         sub.alpha = 0;
+        sub.hidden = YES;
         sub.userInteractionEnabled = NO;
     }
     stockBar.superview.layer.backgroundColor = NULL;
@@ -1168,17 +1179,32 @@ CGRect SGRTabBarInlineSlot(UIView *host, CGFloat height) {
     // The frames the bars are going to, not what is on screen mid-spring. Without a split tab's circle the
     // card runs to where the trailing circle's glass would end.
     BOOL hasApart = apartBar && (!apartBar.hidden || ((SGRSystemTabBar *)apartBar).sources.count > 0);
+    UIView *leadPlatter = anyPlatterIn(bar);
+    UIView *trailPlatter = hasApart ? anyPlatterIn(apartBar) : nil;
+
+    CGFloat gap = SGRIsBarCompact() ? 12.0 : SGRGrid;
+    CGFloat left = 0;
+    CGFloat right = 0;
+
+    if (SGRIsBarCompact() && leadPlatter && trailPlatter) {
+        CGRect leadRect = [leadPlatter.superview convertRect:leadPlatter.frame toView:host];
+        CGRect trailRect = [trailPlatter.superview convertRect:trailPlatter.frame toView:host];
+        left = CGRectGetMaxX(leadRect) + gap;
+        right = CGRectGetMinX(trailRect) - gap;
+    } else {
+        CGRect lead = [bar.superview convertRect:bar.frame toView:host];
+        CGRect trail = hasApart ? [apartBar.superview convertRect:apartBar.frame toView:host] : CGRectZero;
+        CGFloat apartItemW = SGRIsBarCompact() ? 48.0 : kApartItemWidth;
+        CGFloat inset = SGRIsBarCompact() ? (kPlatterInset + 7.0) : kPlatterInset;
+        left = CGRectGetMinX(lead) + inset + apartItemW + gap;
+        right = hasApart
+            ? CGRectGetMaxX(trail) - inset - apartItemW - gap
+            : CGRectGetMaxX(platterEdges(stockBar, host));
+    }
+
     CGRect lead = [bar.superview convertRect:bar.frame toView:host];
-    CGRect trail = hasApart ? [apartBar.superview convertRect:apartBar.frame toView:host] : CGRectZero;
-    CGFloat apartItemW = SGRIsBarCompact() ? 48.0 : kApartItemWidth;
-    CGFloat gap = SGRIsBarCompact() ? 14.0 : SGRGrid;
-    CGFloat inset = SGRIsBarCompact() ? (kPlatterInset + 7.0) : kPlatterInset;
-    CGFloat left = CGRectGetMinX(lead) + inset + apartItemW + gap;
-    CGFloat right = hasApart
-        ? CGRectGetMaxX(trail) - inset - apartItemW - gap
-        : CGRectGetMaxX(platterEdges(stockBar, host));
-    CGFloat middle = CGRectGetMinY(lead) + kApartItemWidth / 2.0;
-    CGRect slot = CGRectMake(left, middle - height / 2.0, right - left, height);
+    CGFloat middle = leadPlatter ? CGRectGetMidY([leadPlatter.superview convertRect:leadPlatter.frame toView:host]) : (CGRectGetMinY(lead) + kApartItemWidth / 2.0);
+    CGRect slot = CGRectMake(left, middle - height / 2.0, MAX(0, right - left), height);
     // A bar Spotify has slid away for a page takes the slot off the screen with it.
     CGRect inWindow = [host convertRect:slot toView:nil];
     if (slot.size.width < 100 || CGRectGetMaxY(inWindow) > CGRectGetMaxY(bar.window.bounds)) return CGRectNull;
