@@ -36,6 +36,10 @@ static inline BOOL SGRIsBarCompact(void) {
     return SGEnabled(SGRKeyBarCompact);
 }
 
+BOOL SGRIsBarNextButtonEnabled(void) {
+    return SGFlag(SGRKeyBarNextButton, SGRIsBarCompact());
+}
+
 static const CGFloat kCardRadius = 24;
 static const CGFloat kCompactArtScale = 0.80;   // 40 pt -> 32 pt inside the 48 pt compact card
 static const CGFloat kCompactArtShiftX = 2.0;   // 14 pt leading inset inside the 48 pt capsule
@@ -551,6 +555,7 @@ static UIImageView *makeSkipArrow(void) {
 }
 
 - (void)updateAvailability:(BOOL)animated {
+    if (self.hidden) return;
     BOOL canSkip = hasPlayableNextTrack(SGPlayerState());
     self.enabled = canSkip;
     void (^apply)(void) = ^{
@@ -619,7 +624,13 @@ static SGRBarNextButton *ensureNextButton(UIView *bar) {
         objc_setAssociatedObject(bar, &kNextButtonKey, next, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     sg_barNextButton = next;
-    [next updateAvailability:NO];
+    BOOL showNext = SGRIsBarNextButtonEnabled();
+    if (!showNext) {
+        next.hidden = YES;
+        next.alpha = 0;
+    } else {
+        [next updateAvailability:NO];
+    }
 
     UIView *playItem = play;
     while (playItem.superview && playItem.superview != bar && ![playItem.superview isKindOfClass:UIStackView.class]) {
@@ -666,6 +677,7 @@ static void tuckExtras(UIView *bar, BOOL tuck) {
     BOOL compact = SGRIsBarCompact();
     BOOL keepInlineConnect = SGHidden(SGRKeyBarInlineConnect);
     BOOL hideFullConnect = SGHidden(SGRHideBarConnect);
+    BOOL showNext = SGRIsBarNextButtonEnabled();
     SGRBarNextButton *next = ensureNextButton(bar);
 
     if (!tuck) {
@@ -674,13 +686,12 @@ static void tuckExtras(UIView *bar, BOOL tuck) {
         NSMutableArray<UIView *> *restored = [NSMutableArray array];
         [UIView performWithoutAnimation:^{
             for (UIView *item in items) {
-                if (item == next && !compact) continue;
+                if (item == next && !showNext) continue;
                 item.hidden = NO;
                 [restored addObject:item];
             }
             if (next) {
-                BOOL showNext = compact;
-                if (next.hidden == showNext) next.hidden = !showNext;
+                next.hidden = !showNext;
                 if (showNext && ![restored containsObject:next] && next.alpha < 1.0) [restored addObject:next];
                 if (!showNext) next.alpha = 0;
                 if (next.fallbackPlayView) {

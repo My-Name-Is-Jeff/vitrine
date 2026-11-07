@@ -14,6 +14,9 @@
 #define SGRKeyBarInlineConnect @"spotifyglass.redesign.nowPlayingBar.inlineConnect"
 // 48 pt card height with 32 pt rounded-square artwork, matching the compact proportions of the Music app.
 #define SGRKeyBarCompact @"spotifyglass.redesign.bar.compact"
+// Whether the next track button on the mini player is enabled (on by default when compact is enabled).
+#define SGRKeyBarNextButton @"spotifyglass.redesign.nowPlayingBar.nextButton"
+BOOL SGRIsBarNextButtonEnabled(void);
 // The artwork shape on the now playing card: rounded square (Apple Music) or circle (upstream).
 typedef NS_ENUM(NSInteger, SGRBarArtworkShape) {
     SGRBarArtworkShapeRoundedSquare = 0,
