@@ -246,11 +246,9 @@ static UIView *platterIn(UIView *bar) {
     [super layoutSubviews];
     SGRShrinkTabTitles(self);
     NSMutableArray<UIView *> *buttons = [NSMutableArray array];
-    NSMutableArray<UIView *> *litButtons = [NSMutableArray array];
     SGForEachView(self, ^(UIView *v) {
         if (!isTabButton(v)) return;
-        if (isLitCopy(v, self)) [litButtons addObject:v];
-        else [buttons addObject:v];
+        if (!isLitCopy(v, self)) [buttons addObject:v];
     });
     NSComparisonResult (^byX)(UIView *, UIView *) = ^NSComparisonResult(UIView *a, UIView *b) {
         CGFloat ax = [self convertPoint:a.bounds.origin fromView:a].x;
@@ -258,41 +256,9 @@ static UIView *platterIn(UIView *bar) {
         return [@(ax) compare:@(bx)];
     };
     [buttons sortUsingComparator:byX];
-    [litButtons sortUsingComparator:byX];
     for (NSUInteger i = 0; i < buttons.count && i < self.items.count; i++) {
         NSString *name = self.items[i].accessibilityLabel ?: self.items[i].title;
         if (name) objc_setAssociatedObject(buttons[i], &kTabNameKey, name, OBJC_ASSOCIATION_COPY_NONATOMIC);
-    }
-    for (NSUInteger i = 0; i < litButtons.count && i < self.items.count; i++) {
-        NSString *name = self.items[i].accessibilityLabel ?: self.items[i].title;
-        if (name) objc_setAssociatedObject(litButtons[i], &kTabNameKey, name, OBJC_ASSOCIATION_COPY_NONATOMIC);
-    }
-    // Apple Music distributes every tab evenly across the platter. UIKit's default proportional layout widens tabs
-    // with longer titles (e.g. "Made For You"), which cramps neighboring tabs (Library & Search). Enforce equal slots.
-    // Use CALayer position to update the layout and hit test without marking the superview dirty (which causes
-    // an infinite layout recursion loop with UIKit's layout pass).
-    if (!sg_minimized && buttons.count >= 2) {
-        UIView *platter = platterIn(self);
-        if (platter && platter.bounds.size.width > 100.0) {
-            CGFloat totalWidth = platter.bounds.size.width;
-            CGFloat slotWidth = totalWidth / buttons.count;
-            for (NSUInteger i = 0; i < buttons.count; i++) {
-                CGFloat targetX = (i + 0.5) * slotWidth;
-                CGPoint centerInPlatter = CGPointMake(targetX, 0);
-                UIView *b = buttons[i];
-                CGPoint c = [b.superview convertPoint:centerInPlatter fromView:platter];
-                if (fabs(b.layer.position.x - c.x) > 0.5) {
-                    b.layer.position = CGPointMake(c.x, b.layer.position.y);
-                }
-                if (i < litButtons.count) {
-                    UIView *lb = litButtons[i];
-                    CGPoint lc = [lb.superview convertPoint:centerInPlatter fromView:platter];
-                    if (fabs(lb.layer.position.x - lc.x) > 0.5) {
-                        lb.layer.position = CGPointMake(lc.x, lb.layer.position.y);
-                    }
-                }
-            }
-        }
     }
     if (sg_minimized && SGRIsBarCompact()) {
         UIView *platter = platterIn(self);
@@ -458,6 +424,7 @@ static SGRSystemTabBar *makeBar(UIView *stockBar) {
     bar.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
     bar.delegate = bar;
     bar.stockBar = stockBar;
+    bar.itemPositioning = UITabBarItemPositioningFill;
     UILongPressGestureRecognizer *hold = [[UILongPressGestureRecognizer alloc] initWithTarget:bar action:@selector(held:)];
     hold.delegate = bar;
     [bar addGestureRecognizer:hold];
