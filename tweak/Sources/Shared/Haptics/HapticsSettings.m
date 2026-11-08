@@ -7,6 +7,7 @@
 // what iOS's own is doing under it, or, while Music Haptics is off in Settings > Accessibility, a row saying so.
 // The rows under a switch stay where they are, grayed, while it is off. Each strength's slider plays a tap at the
 // new strength with each step, and the preview ripples with it.
+#import <objc/message.h>
 #import "Core/SGCore.h"
 #import "Settings/SGModPage.h"
 #import "Settings/SGPageStyle.h"
@@ -28,7 +29,9 @@ NSString *SGMusicHapticsStatus(void) {
 }
 
 void SGSetMusicHapticsStatus(NSString *status) {
+    if (status == sg_status || [status isEqualToString:sg_status]) return;
     sg_status = [status copy];
+    [NSNotificationCenter.defaultCenter postNotificationName:SGSystemMusicHapticsChangedNotification object:nil];
 }
 
 BOOL SGSystemMusicHapticsOn(void) {
@@ -48,6 +51,24 @@ static BOOL backgroundAvailable(void) {
 
 BOOL SGMusicHapticsOn(void) {
     return SGFlag(SGKeyMusicHaptics, NO);
+}
+
+// LiveContainer swaps NSBundle.mainBundle for Spotify's bundle and keeps its own in +[NSBundle lcMainBundle].
+// iOS checks the installed host app's Info.plist, not the guest's, before playing system Music Haptics.
+static NSBundle *liveContainerBundle(void) {
+    SEL sel = NSSelectorFromString(@"lcMainBundle");
+    for (Class cls in @[NSBundle.class, NSUserDefaults.class]) {
+        if (![cls respondsToSelector:sel]) continue;
+        id bundle = ((id (*)(id, SEL))objc_msgSend)(cls, sel);
+        if ([bundle isKindOfClass:NSBundle.class]) return bundle;
+    }
+    return nil;
+}
+
+BOOL SGMusicHapticsInLiveContainer(void) {
+    NSBundle *host = liveContainerBundle();
+    if (host) return ![[host objectForInfoDictionaryKey:@"MusicHapticsSupported"] boolValue];
+    return getenv("LC_HOME_PATH") != NULL;
 }
 
 BOOL SGMusicHapticsListedByInstall(void) {
@@ -180,12 +201,13 @@ static NSArray<SGModSection *> *sections(SGVibrationsPreview *preview, void (^ex
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.tableView.tableHeaderView = self.preview;
-    // Music Haptics turned on or off in Accessibility while the page is open, or before coming back to it.
+    // Music Haptics turned on or off in Accessibility, or its status updated, while the page is open.
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(systemMusicHapticsChanged:) name:SGSystemMusicHapticsChangedNotification object:nil];
 }
 
 - (void)systemMusicHapticsChanged:(NSNotification *)note {
     [self refreshVisibility];
+    [self.tableView reloadData];
 }
 
 // The header keeps the height it is given, so it is sized here and handed back to the table only when that
@@ -222,6 +244,7 @@ static NSArray<SGModSection *> *sections(SGVibrationsPreview *preview, void (^ex
     // message gives the path from there.
     NSString *message = @"In the Background needs iOS's Music Haptics. Settings opens on Spotify's page: go back to Settings, then Accessibility > Music Haptics, and turn it on.";
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Turn On Music Haptics" message:message preferredStyle:UIAlertControllerStyleAlert];
+    alert.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
     [alert addAction:[UIAlertAction actionWithTitle:@"Not Now" style:UIAlertActionStyleCancel handler:nil]];
     UIAlertAction *open = [UIAlertAction actionWithTitle:@"Open Settings" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         [UIApplication.sharedApplication openURL:[NSURL URLWithString:UIApplicationOpenSettingsURLString] options:@{} completionHandler:nil];
@@ -242,4 +265,3 @@ UIViewController *SGVibrationsSettingsPage(void) {
     weakPage = page;
     return page;
 }
-

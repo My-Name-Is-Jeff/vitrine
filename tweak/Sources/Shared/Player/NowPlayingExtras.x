@@ -5,8 +5,8 @@
 
 // Read on whatever thread Spotify sets the info from, written on the main one.
 static NSObject *sg_lock;
-static NSMutableDictionary<NSString *, NSDictionary *> *sg_extras;   // by owner
-static NSMutableDictionary<NSString *, NSString *> *sg_titles;       // by owner
+static NSMutableDictionary<NSString *, NSDictionary *> *sg_extras;  // by owner
+static NSMutableDictionary<NSString *, NSString *> *sg_titles;    // by owner
 static double sg_elapsed, sg_rate;
 static CFAbsoluteTime sg_clockAt;
 
@@ -57,7 +57,11 @@ void SGNowPlayingSetExtras(NSString *owner, NSDictionary *extras, NSString *titl
         }
         id title = info[MPMediaItemPropertyTitle];
         for (NSString *owner in sg_extras) {
-            if (![title isEqual:sg_titles[owner]]) continue;
+            NSString *expected = sg_titles[owner];
+            if (expected.length && ![title isEqual:expected]) continue;
+            if (!expected.length && [title isKindOfClass:NSString.class] && [title length]) {
+                sg_titles[owner] = [title copy];
+            }
             if (!added) added = [NSMutableDictionary dictionary];
             [added addEntriesFromDictionary:sg_extras[owner]];
         }
