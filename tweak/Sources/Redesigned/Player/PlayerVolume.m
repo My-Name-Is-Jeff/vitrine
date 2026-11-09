@@ -139,6 +139,8 @@ static UIImageView *glyph(NSString *symbol) {
     UIView *_track, *_fill;
     UIImageView *_quiet, *_loud;
     CGFloat _value, _startValue, _startX, _trackMin, _trackMax;
+    // Last system outputVolume seen from KVO, for deriving hardware-button deltas on Connect.
+    CGFloat _priorSystemVolume;
     BOOL _held;
     CFTimeInterval _lastPush;
     NSHashTable<UIGestureRecognizer *> *_suspended;
@@ -175,6 +177,7 @@ static UIImageView *glyph(NSString *symbol) {
 
     CGFloat remote;
     _value = readConnectVolume(&remote) ? remote : AVAudioSession.sharedInstance.outputVolume;
+    _priorSystemVolume = AVAudioSession.sharedInstance.outputVolume;
     [AVAudioSession.sharedInstance addObserver:self forKeyPath:@"outputVolume" options:NSKeyValueObservingOptionNew
                                        context:&kSessionContext];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(refreshFromSystem)
@@ -216,7 +219,21 @@ static UIImageView *glyph(NSString *symbol) {
         [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
         return;
     }
-    dispatch_async(dispatch_get_main_queue(), ^{ [self refreshFromSystem]; });
+    // Hardware volume buttons fire this. On a Connect device the system volume is not what the row
+    // shows, so read the button's delta from the new system level and apply it to Connect instead.
+    NSNumber *newValue = change[NSKeyValueChangeNewKey];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (!_held && CACurrentMediaTime() - _lastPush >= 0.6 && activeConnectEntity() && newValue) {
+            CGFloat sysVolume = newValue.floatValue;
+            CGFloat delta = sysVolume - _priorSystemVolume;
+            _priorSystemVolume = sysVolume;
+            if (fabs(delta) > 0.001) {
+                [self setValue:MIN(1, MAX(0, _value + delta)) fromUser:YES];
+                return;
+            }
+        }
+        [self refreshFromSystem];
+    });
 }
 
 // Our own pushVolume sets the slider too, and refreshFromSystem skips that echo.
