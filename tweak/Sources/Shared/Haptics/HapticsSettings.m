@@ -86,10 +86,10 @@ BOOL SGIsLiveContainer(void) {
 }
 
 BOOL SGMusicHapticsListedByInstall(void) {
-    NSBundle *host = SGHostBundle();
-    if (host) {
+    if (SGIsLiveContainer()) {
+        NSBundle *host = SGHostBundle();
         id val = [host objectForInfoDictionaryKey:@"MusicHapticsSupported"];
-        if (val) return [val boolValue];
+        return [val boolValue];
     }
     return [[NSBundle.mainBundle objectForInfoDictionaryKey:@"MusicHapticsSupported"] boolValue];
 }
@@ -192,8 +192,11 @@ static NSArray<SGModSection *> *sections(SGVibrationsPreview *preview, void (^ex
     status.visible = ^BOOL { return SGMusicHapticsInBackground() && SGSystemMusicHapticsOn(); };
     // Under In the Background while the install lacks the key iOS lists apps for Music Haptics by.
     SGModRow *unlisted = SGWarningRow(@"In the Background is missing from this install", @"Tap for why", ^{
+        NSString *message = SGIsLiveContainer()
+            ? @"iOS plays Music Haptics only for apps that say they support it. Under LiveContainer, the host app (LiveContainer) must have MusicHapticsSupported in its Info.plist. Re-sign or install LiveContainer with MusicHapticsSupported enabled to play vibrations in the background. Music Haptics above still works while Spotify is open."
+            : @"iOS plays Music Haptics only for apps that say they support it, and only Vitrine's IPA build writes that into Spotify. This Spotify was put together another way, such as with Vitrine's .deb injected by hand, so the vibrations stop when Spotify leaves the screen. Music Haptics above still works while Spotify is open. Build the IPA with Vitrine to get both.";
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"In the Background is missing"
-            message:@"iOS plays Music Haptics only for apps that say they support it, and only Vitrine's IPA build writes that into Spotify. This Spotify was put together another way, such as with Vitrine's .deb injected by hand, so the vibrations stop when Spotify leaves the screen. Music Haptics above still works while Spotify is open. Build the IPA with Vitrine to get both."
+            message:message
             preferredStyle:UIAlertControllerStyleAlert];
         alert.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
         [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];
