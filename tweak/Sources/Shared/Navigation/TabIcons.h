@@ -14,6 +14,10 @@ UIView *SGTabIconView(NSString *name, BOOL symbol, UIColor *color);
 // itself (the redesign's UITabBar) takes it from here, so UIKit sizes it as it sizes every app's tab symbols.
 NSString *SGTabIconSymbolName(UIView *icon);
 
+// Resolves an SF Symbol by name, querying standard public symbols, UIKit's private symbol SPI,
+// and CoreGlyphsPrivate.bundle via _UIAssetManager. Falls back to nil if not found on this OS.
+UIImage *SGSymbolImage(NSString *name);
+
 // Every glyph SPTEncoreIcon has, sorted case-insensitively, asked of the class once; empty if it is gone.
 NSArray<NSString *> *SGEncoreGlyphNames(void);
 // A few glyphs and symbols a tab is likely to want, in that order, kept to the ones that draw here.
