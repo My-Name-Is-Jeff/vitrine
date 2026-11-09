@@ -223,14 +223,14 @@ static UIImageView *glyph(NSString *symbol) {
     // shows, so read the button's delta from the new system level and apply it to Connect instead.
     NSNumber *newValue = change[NSKeyValueChangeNewKey];
     dispatch_async(dispatch_get_main_queue(), ^{
-        if (!_held && CACurrentMediaTime() - _lastPush >= 0.6 && activeConnectEntity() && newValue) {
-            CGFloat sysVolume = newValue.floatValue;
-            CGFloat delta = sysVolume - _priorSystemVolume;
-            _priorSystemVolume = sysVolume;
-            if (fabs(delta) > 0.001) {
-                [self setValue:MIN(1, MAX(0, _value + delta)) fromUser:YES];
-                return;
-            }
+        CGFloat sysVolume = newValue ? newValue.floatValue : AVAudioSession.sharedInstance.outputVolume;
+        CGFloat delta = sysVolume - _priorSystemVolume;
+        // Always keep prior in sync so a device switch never fires a stale delta.
+        _priorSystemVolume = sysVolume;
+        if (!_held && CACurrentMediaTime() - _lastPush >= 0.6 && activeConnectEntity()
+                && fabs(delta) > 0.001) {
+            [self setValue:MIN(1, MAX(0, _value + delta)) fromUser:YES];
+            return;
         }
         [self refreshFromSystem];
     });
@@ -262,6 +262,7 @@ static UIImageView *glyph(NSString *symbol) {
 
 - (void)connectEntityChanged {
     _lastPush = 0;
+    _priorSystemVolume = AVAudioSession.sharedInstance.outputVolume;
     if (_held) [self setHeld:NO];
     [self refreshFromSystem];
 }
