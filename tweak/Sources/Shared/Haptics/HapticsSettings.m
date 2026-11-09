@@ -55,28 +55,58 @@ BOOL SGMusicHapticsOn(void) {
 
 // LiveContainer swaps NSBundle.mainBundle for Spotify's bundle and keeps its own in +[NSBundle lcMainBundle].
 // iOS checks the installed host app's Info.plist, not the guest's, before playing system Music Haptics.
-static NSBundle *liveContainerBundle(void) {
-    SEL sel = NSSelectorFromString(@"lcMainBundle");
-    for (Class cls in @[NSBundle.class, NSUserDefaults.class]) {
-        if (![cls respondsToSelector:sel]) continue;
-        id bundle = ((id (*)(id, SEL))objc_msgSend)(cls, sel);
-        if ([bundle isKindOfClass:NSBundle.class]) return bundle;
-    }
-    return nil;
+NSBundle *SGHostBundle(void) {
+    static NSBundle *host;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        SEL sel = NSSelectorFromString(@"lcMainBundle");
+        for (Class cls in @[NSBundle.class, NSUserDefaults.class]) {
+            if (![cls respondsToSelector:sel]) continue;
+            id bundle = ((id (*)(id, SEL))objc_msgSend)(cls, sel);
+            if ([bundle isKindOfClass:NSBundle.class]) {
+                host = bundle;
+                return;
+            }
+        }
+        if (getenv("LC_HOME_PATH") != NULL) {
+            NSString *execPath = NSProcessInfo.processInfo.arguments.firstObject;
+            if (execPath.length) {
+                NSString *bundlePath = execPath.stringByDeletingLastPathComponent;
+                if ([bundlePath.pathExtension isEqualToString:@"app"]) {
+                    host = [NSBundle bundleWithPath:bundlePath];
+                }
+            }
+        }
+    });
+    return host;
+}
+
+BOOL SGIsLiveContainer(void) {
+    return SGHostBundle() != nil || getenv("LC_HOME_PATH") != NULL;
 }
 
 BOOL SGMusicHapticsInLiveContainer(void) {
-    NSBundle *host = liveContainerBundle();
+    NSBundle *host = SGHostBundle();
     if (host) return ![[host objectForInfoDictionaryKey:@"MusicHapticsSupported"] boolValue];
     return getenv("LC_HOME_PATH") != NULL;
 }
 
 BOOL SGMusicHapticsListedByInstall(void) {
+    NSBundle *host = SGHostBundle();
+    if (host) {
+        id val = [host objectForInfoDictionaryKey:@"MusicHapticsSupported"];
+        if (val) return [val boolValue];
+    }
     return [[NSBundle.mainBundle objectForInfoDictionaryKey:@"MusicHapticsSupported"] boolValue];
 }
 
 BOOL SGMusicHapticsInBackground(void) {
-    return backgroundAvailable() && SGFlag(SGKeyMusicHapticsBackground, NO);
+    if (!backgroundAvailable()) return NO;
+    NSUserDefaults *store = NSUserDefaults.standardUserDefaults;
+    if ([store objectForKey:SGKeyMusicHapticsBackground] != nil) {
+        return [store boolForKey:SGKeyMusicHapticsBackground];
+    }
+    return SGMusicHapticsListedByInstall() && SGMusicHapticsOn();
 }
 
 void SGMigrateMusicHaptics(void) {

@@ -114,6 +114,7 @@ static NSString *storeIDKey(void) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         void *slot = dlsym(RTLD_DEFAULT, "_MPNowPlayingInfoPropertyiTunesStoreIdentifier");
+        if (!slot) slot = dlsym(RTLD_DEFAULT, "MPNowPlayingInfoPropertyiTunesStoreIdentifier");
         id value = slot ? (__bridge id)*(void **)slot : nil;
         key = [value isKindOfClass:NSString.class] ? value : nil;
         if (!key) SGLog(@"music haptics: MediaPlayer has no iTunes Store identifier key, the ISRC is named instead");

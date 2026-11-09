@@ -77,6 +77,10 @@ BOOL SGMusicHapticsInBackground(void);
 // Whether iOS lists this install for Music Haptics: MusicHapticsSupported, which only Vitrine's IPA build writes
 // into Info.plist. Without it In the Background has nothing to hand the song to.
 BOOL SGMusicHapticsListedByInstall(void);
+// The LiveContainer host bundle, if running under LiveContainer.
+NSBundle *SGHostBundle(void);
+// Whether running inside LiveContainer.
+BOOL SGIsLiveContainer(void);
 // Whether Spotify is running inside a LiveContainer host whose own Info.plist lacks MusicHapticsSupported.
 BOOL SGMusicHapticsInLiveContainer(void);
 // Whether the mod's own audio-driven haptics engine is ready to cover In the Background when iOS does not.
