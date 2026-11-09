@@ -162,6 +162,10 @@ NSArray<NSString *> *SGCommonTabGlyphs(void) {
 }
 
 NSArray<NSString *> *SGCommonTabSymbols(void) {
+    // Private symbols that may not resolve through SGSymbolImage at load time are always kept.
+    NSSet<NSString *> *alwaysKeep = [NSSet setWithArray:@[
+        @"music.note.square.stack.fill", @"music.note.square.stack"
+    ]];
     NSMutableArray<NSString *> *kept = [NSMutableArray array];
     for (NSString *name in @[@"house.fill", @"magnifyingglass", @"books.vertical.fill", @"heart.fill", @"music.note.list",
                              @"square.stack.fill", @"square.stack", @"music.note.square.stack.fill", @"music.note.square.stack",
@@ -170,7 +174,7 @@ NSArray<NSString *> *SGCommonTabSymbols(void) {
                              @"star.fill", @"clock.fill", @"arrow.down.circle.fill", @"bookmark.fill", @"person.crop.circle.fill",
                              @"sparkles", @"flame.fill", @"chart.bar.fill", @"waveform", @"calendar", @"ticket.fill",
                              @"list.bullet", @"plus"]) {
-        if (SGSymbolImage(name)) [kept addObject:name];
+        if ([alwaysKeep containsObject:name] || SGSymbolImage(name)) [kept addObject:name];
     }
     return kept;
 }
@@ -253,12 +257,27 @@ void SGLoadSymbolNames(void (^done)(NSArray<NSString *> *names)) {
     if (!first) return;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         NSArray *names = systemSymbolNames();
+        // Curated private/internal symbols are always included regardless of whether SGSymbolImage
+        // can resolve them at load time — they may be in a bundle that isn't searched yet.
+        NSSet<NSString *> *curatedSet = [NSSet setWithArray:@[
+            @"music.note.square.stack.fill", @"music.note.square.stack",
+            @"apple.podcasts.square.stack.fill", @"apple.podcasts.square.stack",
+            @"apple.music", @"apple.music.fill",
+            @"apple.news", @"apple.news.fill",
+            @"apple.tv", @"apple.tv.fill",
+            @"homepod.2.fill", @"homepod.2",
+            @"homepodmini.2.fill", @"homepodmini.2",
+            @"visionpro.fill", @"visionpro",
+            @"airplayaudio", @"airplayvideo",
+            @"faceid", @"touchid"
+        ]];
         // Each name is asked of UIKit, 8,500 of them on iOS 27, so the asking is spread over the cores.
         NSUInteger count = names.count;
         BOOL *draws = calloc(count ?: 1, sizeof(BOOL));
         dispatch_apply(count, DISPATCH_APPLY_AUTO, ^(size_t i) {
             id name = names[i];
-            draws[i] = [name isKindOfClass:NSString.class] && !scriptVariant(name) && SGSymbolImage(name);
+            draws[i] = [name isKindOfClass:NSString.class] && !scriptVariant(name)
+                       && ([curatedSet containsObject:name] || SGSymbolImage(name));
         });
         NSMutableArray<NSString *> *kept = [NSMutableArray array];
         for (NSUInteger i = 0; i < count; i++) if (draws[i]) [kept addObject:names[i]];
