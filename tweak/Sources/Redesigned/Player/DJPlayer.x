@@ -50,7 +50,7 @@ BOOL SGRPlayerDJAvailable(void) {
     UIView *dj = findDJButton();
     if (dj && dj.window && !dj.hidden && dj.alpha > 0.01) return YES;
     SPTPlayerState *state = SGPlayerState();
-    if (state && [state.contextURI containsString:@"37i9dQZF1EYkqdzj48dyYq"]) {
+    if (state && [SGURIString(state.contextURI) containsString:@"37i9dQZF1EYkqdzj48dyYq"]) {
         return dj != nil;
     }
     return NO;
