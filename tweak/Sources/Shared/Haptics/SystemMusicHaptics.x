@@ -194,10 +194,12 @@ API_AVAILABLE(ios(18.0))
 // Every change ends here: the status, and whether the mod's own stands down.
 - (void)showStatus {
     // follow: leaves Waiting only with In the Background on, iOS's switch on and a track playing.
+    BOOL listed = SGMusicHapticsListedByInstall();
     BOOL starting = _phase == SGNativeChecking || (_phase == SGNativeReady && !_graceOver);
-    SGMusicHapticsSetSystemCovers(SGMusicHapticsListedByInstall() && _enabled && _active && ([self iOSPlays] || starting));
+    SGMusicHapticsSetSystemCovers(listed && _enabled && _active && ([self iOSPlays] || starting));
     NSString *status;
     if (!_enabled) status = @"Off in iOS";
+    else if (!listed) status = @"Missing from install";
     else if (!_active) status = @"Paused in Control Center";
     else if (_phase == SGNativeChecking) status = @"Checking";
     else if (_phase == SGNativeUnavailable) status = @"Unavailable";
