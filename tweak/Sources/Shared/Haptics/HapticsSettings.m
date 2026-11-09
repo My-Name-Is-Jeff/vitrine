@@ -193,8 +193,8 @@ static NSArray<SGModSection *> *sections(SGVibrationsPreview *preview, void (^ex
     // Under In the Background while the install lacks the key iOS lists apps for Music Haptics by.
     SGModRow *unlisted = SGWarningRow(@"Background Haptics Unavailable", @"Tap for why", ^{
         NSString *message = SGIsLiveContainer()
-            ? @"Under LiveContainer, iOS checks LiveContainer itself for Music Haptics, not Spotify inside it. Because this LiveContainer lacks that support, vibrations stop when Spotify leaves the screen.\n\nMusic Haptics above still works while Spotify is open. Install a build of LiveContainer with Music Haptics to get both."
-            : @"iOS plays Music Haptics only for apps that say they support it, which only Vitrine's IPA build adds to Spotify. If Spotify was installed another way—such as injecting the tweak alone—vibrations stop when Spotify leaves the screen.\n\nMusic Haptics above still works while Spotify is open. Build the IPA with Vitrine to get both.";
+            ? @"Under LiveContainer, iOS checks LiveContainer itself for Music Haptics, not Spotify inside it. Because this LiveContainer lacks that support, vibrations stop when Spotify leaves the screen.\n\nMusic Haptics above still work while Spotify is open. Install a build of LiveContainer with Music Haptics to get both."
+            : @"iOS plays Music Haptics only for apps that say they support it, which only Vitrine's IPA build adds to Spotify. If Spotify was installed another way—such as injecting the tweak alone—vibrations stop when Spotify leaves the screen.\n\nMusic Haptics above still work while Spotify is open. Build the IPA with Vitrine to get both.";
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Background Haptics Unavailable"
             message:message
             preferredStyle:UIAlertControllerStyleAlert];
