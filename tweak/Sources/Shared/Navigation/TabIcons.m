@@ -80,7 +80,6 @@ UIImage *SGSymbolImage(NSString *name) {
 NSString *SGTabIconSymbolName(UIView *icon) {
     return icon ? objc_getAssociatedObject(icon, &kSymbolNameKey) : nil;
 }
-}
 
 // SPTEncoreIcon exposes one class method per glyph ("podcasts", "heart"), 538 of them in 9.1.78.
 static UIView *encoreView(NSString *name, UIColor *color) {

@@ -7,7 +7,7 @@
 extern NSString *const SGTabIconSetSymbols;
 
 // The icon drawn the way the bar draws Spotify's own: an Encore glyph by its SPTEncoreIcon class method,
-// or an SF Symbol at Encore's visual size (19 pt semibold) in `color`. A symbol name that does not
+// or an SF Symbol at Encore's visual size (17.5 pt medium) in `color`. A symbol name that does not
 // resolve tries Encore, and a glyph name Encore does not have ends in star.fill.
 UIView *SGTabIconView(NSString *name, BOOL symbol, UIColor *color);
 // The SF Symbol an SGTabIconView draws, nil for an Encore glyph or any other view. A bar that draws the symbol
@@ -17,6 +17,10 @@ NSString *SGTabIconSymbolName(UIView *icon);
 // Resolves an SF Symbol by name, querying standard public symbols, UIKit's private symbol SPI,
 // and CoreGlyphsPrivate.bundle via _UIAssetManager. Falls back to nil if not found on this OS.
 UIImage *SGSymbolImage(NSString *name);
+
+// The SF Symbol an SGTabIconView draws, nil for an Encore glyph or any other view. A bar that draws the symbol
+// itself (the redesign's UITabBar) takes it from here, so UIKit sizes it as it sizes every app's tab symbols.
+NSString *SGTabIconSymbolName(UIView *icon);
 
 // Every glyph SPTEncoreIcon has, sorted case-insensitively, asked of the class once; empty if it is gone.
 NSArray<NSString *> *SGEncoreGlyphNames(void);

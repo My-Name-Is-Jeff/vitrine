@@ -81,6 +81,28 @@ static id activeVariantOf(id icon) {
     return name && [name isEqualToString:iconName(variant)] ? nil : variant;
 }
 
+// A tab of the mod's own that wears an SF Symbol hands UIKit the symbol itself, with no size of its own, so the
+// bar sizes it the way UIKit sizes every app's tab symbols, the Music app's included. One object per name, so
+// setGlyphs sees the same image again and leaves the item alone.
+static UIImage *symbolGlyph(NSString *name) {
+    static NSCache<NSString *, UIImage *> *cache;
+    if (!cache) cache = [NSCache new];
+    UIImage *image = [cache objectForKey:name];
+    if (image) return image;
+    image = [UIImage systemImageNamed:name];
+    if (!image) {
+        SEL privateSel = NSSelectorFromString(@"_systemImageNamed:withConfiguration:allowPrivate:");
+        if ([UIImage respondsToSelector:privateSel]) {
+            @try {
+                image = ((UIImage *(*)(id, SEL, NSString *, id, BOOL))objc_msgSend)(UIImage.class, privateSel, name, nil, YES);
+            } @catch (...) {}
+        }
+    }
+    image = [image imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    if (image) [cache setObject:image forKey:name];
+    return image;
+}
+
 // One glyph of a tab: `icon` drawn at the size of `live`, Spotify's icon view it came from. The caller picks the
 // icon, outline or filled, so the cache key names the glyph actually drawn and an outline drawing can never be
 // filed under a filled icon's name or the other way round. isActive only picks the view's colors, white either
@@ -92,19 +114,6 @@ static id activeVariantOf(id icon) {
 // for good (the freeze of c52af73). The glyph grows inside its canvas instead, to the Music app's weight: 1.12
 // on the full bar (Search 21.6 pt against the Music app's 21.7) and 1.22 in a minimized circle.
 static const CGFloat kGlyphCanvas = 24, kGlyphScale = 1.12, kMinimizedGlyphScale = 1.22;
-
-// A tab of the mod's own that wears an SF Symbol hands UIKit the symbol itself, with no size of its own, so the
-// bar sizes it the way UIKit sizes every app's tab symbols, the Music app's included. One object per name, so
-// setGlyphs sees the same image again and leaves the item alone.
-static UIImage *symbolGlyph(NSString *name) {
-    static NSCache<NSString *, UIImage *> *cache;
-    if (!cache) cache = [NSCache new];
-    UIImage *image = [cache objectForKey:name];
-    if (image) return image;
-    image = [[UIImage systemImageNamed:name] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
-    if (image) [cache setObject:image forKey:name];
-    return image;
-}
 
 // The selected tab's glyph on a minimized circle, in the accent (UIKit shows no bubble there): one object per
 // glyph and color, for the same reason.
@@ -139,8 +148,11 @@ static UIImage *renderScaledEncoreView(SPTEncoreIconView *view, CGSize size, CGF
 static UIImage *drawGlyph(UIView *live, id icon, BOOL active, BOOL minimized) {
     if (!live) return nil;
     NSString *symbol = SGTabIconSymbolName(live);
-    UIImage *symbolImage = symbol.length ? symbolGlyph(symbol) : nil;
-    if (symbolImage) return symbolImage;
+    if (symbol.length) {
+        NSString *activeSymbol = active && ![symbol hasSuffix:@".fill"] ? [symbol stringByAppendingString:@".fill"] : symbol;
+        UIImage *glyph = symbolGlyph(activeSymbol) ?: symbolGlyph(symbol);
+        if (glyph) return glyph;
+    }
     CGSize size = live.bounds.size;
     if (size.width < 2 || size.height < 2) size = CGSizeMake(kGlyphCanvas, kGlyphCanvas);
     CGFloat scale = 1;
