@@ -85,12 +85,6 @@ BOOL SGIsLiveContainer(void) {
     return SGHostBundle() != nil || getenv("LC_HOME_PATH") != NULL;
 }
 
-BOOL SGMusicHapticsInLiveContainer(void) {
-    NSBundle *host = SGHostBundle();
-    if (host) return ![[host objectForInfoDictionaryKey:@"MusicHapticsSupported"] boolValue];
-    return getenv("LC_HOME_PATH") != NULL;
-}
-
 BOOL SGMusicHapticsListedByInstall(void) {
     NSBundle *host = SGHostBundle();
     if (host) {
@@ -101,12 +95,7 @@ BOOL SGMusicHapticsListedByInstall(void) {
 }
 
 BOOL SGMusicHapticsInBackground(void) {
-    if (!backgroundAvailable()) return NO;
-    NSUserDefaults *store = NSUserDefaults.standardUserDefaults;
-    if ([store objectForKey:SGKeyMusicHapticsBackground] != nil) {
-        return [store boolForKey:SGKeyMusicHapticsBackground];
-    }
-    return SGMusicHapticsListedByInstall() && SGMusicHapticsOn();
+    return backgroundAvailable() && SGFlag(SGKeyMusicHapticsBackground, NO);
 }
 
 void SGMigrateMusicHaptics(void) {

@@ -81,10 +81,6 @@ BOOL SGMusicHapticsListedByInstall(void);
 NSBundle *SGHostBundle(void);
 // Whether running inside LiveContainer.
 BOOL SGIsLiveContainer(void);
-// Whether Spotify is running inside a LiveContainer host whose own Info.plist lacks MusicHapticsSupported.
-BOOL SGMusicHapticsInLiveContainer(void);
-// Whether the mod's own audio-driven haptics engine is ready to cover In the Background when iOS does not.
-BOOL SGMusicHapticsBackgroundFallbackActive(void);
 // The choice of before moved to the switches, once: Generated turns Music Haptics on, Native iOS In the
 // Background, None neither. Each reader of the switches calls it first, since none can know it runs first.
 void SGMigrateMusicHaptics(void);

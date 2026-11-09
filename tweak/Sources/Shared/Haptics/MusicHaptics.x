@@ -21,9 +21,8 @@
 // engine and strength, and while the page shows, each tap played is handed back to it for its rings.
 //
 // The rebinding and the notify are in place under either look, so the switch works at once; with it
-// off the notify returns straight away. While Spotify is not the active app, it keeps listening when
-// In the Background is on and iOS does not cover the song (or cannot, as under LiveContainer), keeping
-// Core Haptics active across background transitions. Sound that is not Spotify's own output (Connect,
+// off the notify returns straight away. Nothing listens while Spotify is not the active app, since iOS
+// plays no haptics for an app in the background. Sound that is not Spotify's own output (Connect,
 // AirPlay to another device, video) never passes the unit, and plays no haptics.
 // Nothing listens either while In the Background (SystemMusicHaptics.x) is finding out whether iOS has a
 // haptic track for the song, or has one named: iOS plays it in front of Spotify as well as behind it, so
@@ -36,11 +35,7 @@
 #import <AudioToolbox/AudioToolbox.h>
 #import <AVFoundation/AVFoundation.h>
 #import <CoreHaptics/CoreHaptics.h>
-#import <dlfcn.h>
 #import <mach/mach_time.h>
-#import <mach-o/loader.h>
-#import <objc/message.h>
-#import <objc/runtime.h>
 #import <os/lock.h>
 #import <pthread.h>
 #import <stdatomic.h>
@@ -67,9 +62,6 @@ static const NSTimeInterval kRumbleLength = 30;
 static const double kQuietAfter = 0.1, kQuietAfterBuffers = 2.5, kEngineStopAfter = 5;
 // An engine that would not start is not asked again for this long.
 static const double kStartRetryAfter = 2;
-// Taptic Engine fallback actuations if Core Haptics cannot start in the background.
-enum { kTapticPeekSoundID = 1519, kTapticPopSoundID = 1520, kVibrateSoundID = 4095 };
-static const double kBackgroundTapMinInterval = 0.06;
 
 enum { kRingSize = 1024, kMonoFrames = 4096 };
 
@@ -94,42 +86,6 @@ static atomic_uint sg_head, sg_tail;   // head moved by the render thread, tail 
 static dispatch_semaphore_t sg_wake;
 
 static double sg_secondsPerTick;
-static _Thread_local bool sg_onPlayerThread, sg_creatingEngine;
-static uintptr_t sg_coreHapticsStart, sg_coreHapticsEnd;
-static uintptr_t sg_audioToolboxStart, sg_audioToolboxEnd;
-static uintptr_t sg_avfAudioStart, sg_avfAudioEnd;
-
-static inline uintptr_t stripPointer(const void *ptr) {
-    return (uintptr_t)ptr & 0x0000000fffffffffULL;
-}
-
-static void recordFrameworkRange(const void *symbol, uintptr_t *startOut, uintptr_t *endOut) {
-    if (!symbol) return;
-    Dl_info info = {0};
-    if (!dladdr(symbol, &info) || !info.dli_fbase) return;
-    const struct mach_header_64 *header = (const struct mach_header_64 *)info.dli_fbase;
-    if (header->magic != MH_MAGIC_64) return;
-    uintptr_t base = stripPointer(info.dli_fbase);
-    const struct load_command *cmd = (const struct load_command *)(header + 1);
-    for (uint32_t i = 0; i < header->ncmds; i++) {
-        if (cmd->cmd == LC_SEGMENT_64) {
-            const struct segment_command_64 *seg = (const struct segment_command_64 *)cmd;
-            if (strncmp(seg->segname, "__TEXT", 6) == 0 && seg->vmsize > 0) {
-                *startOut = base;
-                *endOut = base + (uintptr_t)seg->vmsize;
-                return;
-            }
-        }
-        cmd = (const struct load_command *)((const uint8_t *)cmd + cmd->cmdsize);
-    }
-}
-
-static inline BOOL isHapticsFrameworkAddress(const void *addr) {
-    uintptr_t p = stripPointer(addr);
-    return (p >= sg_coreHapticsStart && p < sg_coreHapticsEnd) ||
-           (p >= sg_audioToolboxStart && p < sg_audioToolboxEnd) ||
-           (p >= sg_avfAudioStart && p < sg_avfAudioEnd);
-}
 
 static void storeDouble(atomic_uint_fast64_t *slot, double value) {
     uint64_t bits;
@@ -291,7 +247,7 @@ static BOOL sg_engineRunning;
 static atomic_bool sg_engineStopped;
 static id<CHHapticAdvancedPatternPlayer> sg_rumble;
 static BOOL sg_rumbling;
-static double sg_rumbleSentAt, sg_quietSince, sg_lastBackgroundTapAt;
+static double sg_rumbleSentAt, sg_quietSince;
 static float sg_rumbleSent;
 
 typedef struct {
@@ -310,8 +266,7 @@ static float strength(void) {
 
 static BOOL handleEngineStopped(NSError *error) {
     BOOL interrupted = (error && (error.code == CHHapticErrorCodeEngineNotRunning ||
-                                  error.code == CHHapticErrorCodeServerInterrupted ||
-                                  error.code == -4805 || error.code == -4806));
+                                 error.code == CHHapticErrorCodeServerInterrupted));
     BOOL signaled = atomic_exchange(&sg_engineStopped, false);
     if (!interrupted && !signaled) return NO;
     sg_engineRunning = NO;
@@ -329,35 +284,6 @@ static void stopRumble(NSTimeInterval at) {
     sg_rumbling = NO;
 }
 
-static void removeBackgroundLifecycleObserversFromEngine(CHHapticEngine *engine) {
-    if (!engine) return;
-    NSNotificationCenter *nc = NSNotificationCenter.defaultCenter;
-    [nc removeObserver:engine name:UIApplicationWillResignActiveNotification object:nil];
-    [nc removeObserver:engine name:UIApplicationDidEnterBackgroundNotification object:nil];
-    [nc removeObserver:engine name:UISceneWillDeactivateNotification object:nil];
-    [nc removeObserver:engine name:UISceneDidEnterBackgroundNotification object:nil];
-    [nc removeObserver:engine name:@"UIApplicationSuspendedNotification" object:nil];
-    [nc removeObserver:engine name:@"UIApplicationWillSuspendNotification" object:nil];
-}
-
-static void configureEngine(CHHapticEngine *engine) {
-    engine.playsHapticsOnly = YES;
-    engine.autoShutdownEnabled = NO;
-    SEL setHighPriority = NSSelectorFromString(@"setHighPriority:");
-    if ([engine respondsToSelector:setHighPriority]) {
-        ((void (*)(id, SEL, BOOL))objc_msgSend)(engine, setHighPriority, YES);
-    }
-    removeBackgroundLifecycleObserversFromEngine(engine);
-    engine.stoppedHandler = ^(CHHapticEngineStoppedReason reason) {
-        atomic_store(&sg_engineStopped, true);
-        SGLog(@"music haptics: the engine stopped (reason %ld)", (long)reason);
-    };
-    engine.resetHandler = ^{
-        atomic_store(&sg_engineStopped, true);
-        SGLog(@"music haptics: the engine was reset");
-    };
-}
-
 static BOOL startEngine(void) {
     static BOOL supported, checked;
     static double retryAt;
@@ -370,45 +296,32 @@ static BOOL startEngine(void) {
     NSError *error = nil;
     if (!sg_engine) {
         // Spotify's own session rather than a new one, and haptics only, so nothing touches its audio.
-        sg_creatingEngine = true;
         sg_engine = [[CHHapticEngine alloc] initWithAudioSession:AVAudioSession.sharedInstance error:&error];
-        sg_creatingEngine = false;
         if (!sg_engine) {
             SGLog(@"music haptics: no haptic engine: %@", error);
             return NO;
         }
-        configureEngine(sg_engine);
+        sg_engine.playsHapticsOnly = YES;
+        sg_engine.autoShutdownEnabled = NO;
+        sg_engine.stoppedHandler = ^(CHHapticEngineStoppedReason reason) {
+            atomic_store(&sg_engineStopped, true);
+            SGLog(@"music haptics: the engine stopped (reason %ld)", (long)reason);
+        };
+        sg_engine.resetHandler = ^{
+            atomic_store(&sg_engineStopped, true);
+            SGLog(@"music haptics: the engine was reset");
+        };
     }
     handleEngineStopped(nil);
     if (sg_engineRunning) return YES;
     double now = hostSeconds(mach_absolute_time());
     if (now < retryAt) return NO;
-    sg_creatingEngine = true;
-    BOOL started = [sg_engine startAndReturnError:&error];
-    sg_creatingEngine = false;
-    if (!started) {
-        if (!atomic_load(&sg_active)) {
-            NSError *fallbackError = nil;
-            sg_creatingEngine = true;
-            CHHapticEngine *unattached = [[CHHapticEngine alloc] initAndReturnError:&fallbackError];
-            if (unattached) {
-                configureEngine(unattached);
-                if ([unattached startAndReturnError:&fallbackError]) {
-                    sg_creatingEngine = false;
-                    removeBackgroundLifecycleObserversFromEngine(unattached);
-                    sg_engine = unattached;
-                    sg_engineRunning = YES;
-                    return YES;
-                }
-            }
-            sg_creatingEngine = false;
-        }
+    if (![sg_engine startAndReturnError:&error]) {
         retryAt = now + kStartRetryAfter;
         static int logged;
         if (logged++ < 3) SGLog(@"music haptics: the engine did not start: %@", error);
         return NO;
     }
-    removeBackgroundLifecycleObserversFromEngine(sg_engine);
     sg_engineRunning = YES;
     return YES;
 }
@@ -440,53 +353,6 @@ static void tellWatcher(float intensity, double lead) {
     });
 }
 
-typedef void (*SGAudioServicesPlayWithVibrationFunc)(SystemSoundID, id, NSDictionary *);
-
-static void triggerBackgroundActuation(float played, BOOL isKick) {
-    static SGAudioServicesPlayWithVibrationFunc playWithVibration;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        playWithVibration = (SGAudioServicesPlayWithVibrationFunc)dlsym(RTLD_DEFAULT, "AudioServicesPlaySystemSoundWithVibration");
-    });
-    if (playWithVibration) {
-        int durationMs = isKick ? 28 : 18;
-        NSDictionary *pattern = @{
-            @"VibePattern": @[@YES, @(durationMs), @NO, @10],
-            @"Intensity": @(MIN(1.0f, MAX(0.15f, played))),
-        };
-        playWithVibration(kVibrateSoundID, nil, pattern);
-        return;
-    }
-    AudioServicesPlaySystemSound((isKick && played >= 0.55f) ? kTapticPopSoundID : kTapticPeekSoundID);
-}
-
-static void playBackgroundTap(const SGMusicEvent *event) {
-    double now = hostSeconds(mach_absolute_time());
-    double heard = hostSeconds(event->hostTime) + loadDouble(&sg_latencyBits) - kHapticLead;
-    double lead = heard - now;
-    if (lead < -kLatestTap) {
-        sg_stats.late++;
-        return;
-    }
-    if (heard - sg_lastBackgroundTapAt < kBackgroundTapMinInterval) return;
-    float played = MIN(1, event->intensity * kTapGain * strength());
-    if (played < 0.1f) return;
-    sg_lastBackgroundTapAt = heard;
-    BOOL isKick = (event->kind == SGMusicEventKick);
-    if (lead > 0.005) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(lead * NSEC_PER_SEC)),
-            dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^{
-                if (atomic_load_explicit(&sg_listening, memory_order_relaxed)) triggerBackgroundActuation(played, isKick);
-            });
-    } else {
-        triggerBackgroundActuation(played, isKick);
-    }
-    sg_stats.taps++;
-    if (atomic_load_explicit(&sg_watched, memory_order_relaxed)) tellWatcher(event->intensity, lead);
-    sg_stats.leadSum += lead;
-    sg_stats.leadMin = sg_stats.taps == 1 ? lead : MIN(sg_stats.leadMin, lead);
-}
-
 static void playTap(const SGMusicEvent *event) {
     double lead;
     NSTimeInterval at = engineTime(event->hostTime, &lead);
@@ -505,7 +371,6 @@ static void playTap(const SGMusicEvent *event) {
         static int logged;
         if (logged++ < 3) SGLog(@"music haptics: a tap did not play: %@", error);
         handleEngineStopped(error);
-        if (!atomic_load(&sg_active)) playBackgroundTap(event);
         return;
     }
     sg_stats.taps++;
@@ -615,7 +480,6 @@ static double quietAfter(void) {
 
 static void *playerLoop(void *unused) {
     pthread_setname_np("spotifyglass.music-haptics");
-    sg_onPlayerThread = true;
     double lastEvent = 0;
     BOOL idle = YES;
     for (;;) {
@@ -639,29 +503,16 @@ static void *playerLoop(void *unused) {
                 any = YES;
             }
             unsigned head = atomic_load(&sg_head), tail = atomic_load(&sg_tail);
-            if (tail != head) {
-                if (startEngine()) {
-                    for (; tail != head && !handleEngineStopped(nil) && sg_engineRunning; tail++) {
-                        SGMusicEvent event = sg_ring[tail & (kRingSize - 1)];
-                        if (event.kind == SGMusicEventLevel) {
-                            if (rumbles) playLevel(&event);
-                        } else if (event.kind == SGMusicEventKick || snares) {
-                            playTap(&event);
-                        }
+            if (tail != head && startEngine()) {
+                for (; tail != head && !handleEngineStopped(nil) && sg_engineRunning; tail++) {
+                    SGMusicEvent event = sg_ring[tail & (kRingSize - 1)];
+                    if (event.kind == SGMusicEventLevel) {
+                        if (rumbles) playLevel(&event);
+                    } else if (event.kind == SGMusicEventKick || snares) {
+                        playTap(&event);
                     }
-                    any = YES;
                 }
-                if (tail != head && !atomic_load(&sg_active)) {
-                    for (; tail != head; tail++) {
-                        SGMusicEvent event = sg_ring[tail & (kRingSize - 1)];
-                        if (event.kind == SGMusicEventLevel) {
-                            sg_stats.levels++;
-                        } else if (event.kind == SGMusicEventKick || snares) {
-                            playBackgroundTap(&event);
-                        }
-                    }
-                    any = YES;
-                }
+                any = YES;
             }
             atomic_store(&sg_tail, head);
             if (any) {
@@ -680,69 +531,6 @@ static void *playerLoop(void *unused) {
     return NULL;
 }
 
-#pragma mark - keeping Core Haptics alive in the background
-
-static BOOL isBackgroundLifecycleNotification(NSNotificationName name) {
-    if (![name isKindOfClass:NSString.class]) return NO;
-    return [name isEqualToString:UIApplicationWillResignActiveNotification] ||
-           [name isEqualToString:UIApplicationDidEnterBackgroundNotification] ||
-           [name isEqualToString:UISceneWillDeactivateNotification] ||
-           [name isEqualToString:UISceneDidEnterBackgroundNotification] ||
-           [name isEqualToString:@"UIApplicationSuspendedNotification"] ||
-           [name isEqualToString:@"UIApplicationWillSuspendNotification"];
-}
-
-static BOOL isHapticsObserverObject(id observer) {
-    if (!observer) return NO;
-    if (observer == sg_engine || [observer isKindOfClass:CHHapticEngine.class]) return YES;
-    NSString *clsName = NSStringFromClass([observer class]);
-    return clsName && [clsName rangeOfString:@"Haptic" options:NSCaseInsensitiveSearch].location != NSNotFound;
-}
-
-%hook NSNotificationCenter
-- (void)addObserver:(id)observer selector:(SEL)aSelector name:(NSNotificationName)aName object:(id)anObject {
-    if (isBackgroundLifecycleNotification(aName) &&
-        (sg_creatingEngine || isHapticsObserverObject(observer) || isHapticsFrameworkAddress(__builtin_return_address(0)))) {
-        return;
-    }
-    %orig;
-}
-
-- (id<NSObject>)addObserverForName:(NSNotificationName)name object:(id)obj queue:(NSOperationQueue *)queue usingBlock:(void (^)(NSNotification *))block {
-    if (block && isBackgroundLifecycleNotification(name) &&
-        (sg_creatingEngine || isHapticsFrameworkAddress(__builtin_return_address(0)))) {
-        void (^wrapped)(NSNotification *) = ^(NSNotification *note) {
-            if (atomic_load_explicit(&sg_listening, memory_order_relaxed) && SGMusicHapticsInBackground()) return;
-            block(note);
-        };
-        return %orig(name, obj, queue, wrapped);
-    }
-    return %orig;
-}
-%end
-
-%hook UIApplication
-- (UIApplicationState)applicationState {
-    if (atomic_load_explicit(&sg_listening, memory_order_relaxed) && !atomic_load_explicit(&sg_active, memory_order_relaxed)) {
-        if (sg_onPlayerThread || sg_creatingEngine || isHapticsFrameworkAddress(__builtin_return_address(0))) {
-            return UIApplicationStateActive;
-        }
-    }
-    return %orig;
-}
-%end
-
-%hook UIScene
-- (UISceneActivationState)activationState {
-    if (atomic_load_explicit(&sg_listening, memory_order_relaxed) && !atomic_load_explicit(&sg_active, memory_order_relaxed)) {
-        if (sg_onPlayerThread || sg_creatingEngine || isHapticsFrameworkAddress(__builtin_return_address(0))) {
-            return UISceneActivationStateForegroundActive;
-        }
-    }
-    return %orig;
-}
-%end
-
 #pragma mark - the switch and the app
 
 static void readLatency(void) {
@@ -753,10 +541,7 @@ static void readLatency(void) {
 }
 
 static void updateListening(void) {
-    BOOL inFront = atomic_load(&sg_active);
-    BOOL want = inFront ? (SGMusicHapticsOn() || (SGMusicHapticsInBackground() && SGMusicHapticsInLiveContainer()))
-                        : SGMusicHapticsInBackground();
-    BOOL listening = want && !atomic_load(&sg_systemCovers);
+    BOOL listening = SGMusicHapticsOn() && atomic_load(&sg_active) && !atomic_load(&sg_systemCovers);
     if (atomic_exchange(&sg_listening, listening) == listening) return;
     if (listening) {
         atomic_fetch_add(&sg_generation, 1);
@@ -774,15 +559,9 @@ static void updateListening(void) {
     dispatch_semaphore_signal(sg_wake);
 }
 
-BOOL SGMusicHapticsBackgroundFallbackActive(void) {
-    return sg_wake != nil && SGMusicHapticsInBackground();
-}
-
 void SGMusicHapticsSetSystemCovers(BOOL covers) {
     if (atomic_exchange(&sg_systemCovers, covers) == covers || !sg_wake) return;
-    if (SGMusicHapticsOn() || SGMusicHapticsInBackground()) {
-        SGLog(@"music haptics: %@", covers ? @"iOS's own covers this song, standing down" : @"iOS's own does not play this song, playing along");
-    }
+    if (SGMusicHapticsOn()) SGLog(@"music haptics: %@", covers ? @"iOS's own covers this song, standing down" : @"iOS's own does not play this song, playing along");
     updateListening();
 }
 
@@ -816,12 +595,6 @@ void SGMusicHapticsWatchTaps(void (^watcher)(float intensity)) {
     mach_timebase_info_data_t timebase;
     mach_timebase_info(&timebase);
     sg_secondsPerTick = (double)timebase.numer / timebase.denom / 1e9;
-    Method startMethod = class_getInstanceMethod(CHHapticEngine.class, @selector(startAndReturnError:));
-    if (startMethod) recordFrameworkRange((const void *)method_getImplementation(startMethod), &sg_coreHapticsStart, &sg_coreHapticsEnd);
-    Method sessionMethod = class_getInstanceMethod(AVAudioSession.class, @selector(setActive:error:));
-    if (sessionMethod) recordFrameworkRange((const void *)method_getImplementation(sessionMethod), &sg_avfAudioStart, &sg_avfAudioEnd);
-    recordFrameworkRange((const void *)&AudioServicesPlaySystemSound, &sg_audioToolboxStart, &sg_audioToolboxEnd);
-    %init;
     if (!SGPlayerWatchMusicOutput(listenTo)) {
         SGLog(@"music haptics: Spotify's output cannot be reached, Music Haptics is inactive");
         return;
@@ -846,8 +619,4 @@ void SGMusicHapticsWatchTaps(void (^watcher)(float intensity)) {
             if (atomic_load(&sg_listening)) readLatency();
         });
     }];
-    dispatch_async(dispatch_get_main_queue(), ^{
-        atomic_store(&sg_active, UIApplication.sharedApplication.applicationState == UIApplicationStateActive);
-        updateListening();
-    });
 }

@@ -83,11 +83,7 @@ void SGNowPlayingSetExtras(NSString *owner, NSDictionary *extras, NSString *titl
         }
         id title = info[MPMediaItemPropertyTitle];
         for (NSString *owner in sg_extras) {
-            NSString *expected = sg_titles[owner];
-            if (expected.length && ![title isEqual:expected]) continue;
-            if (!expected.length && [title isKindOfClass:NSString.class] && [title length]) {
-                sg_titles[owner] = [title copy];
-            }
+            if (![title isEqual:sg_titles[owner]]) continue;
             if (!added) added = [NSMutableDictionary dictionary];
             [added addEntriesFromDictionary:sg_extras[owner]];
         }
