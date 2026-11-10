@@ -36,3 +36,13 @@ void SGRNavbarForgetTab(void) {
 void SGOpenModSettings(UIView *source) {}
 // Shared/Player/PlayerEvents.x, which TabBarMinimize.x listens to.
 NSString *const SGPlayerTransitionNotification = @"spotifyglass.playerTransition";
+// Native redesign's tab bar (Redesigned/Navbar/SystemTabs.x) is not built here: off, so the harness keeps the glass bar.
+BOOL SGRSystemTabsOn(void) { return NO; }
+void SGRSystemTabsSync(UIViewController *container, UIView *stockBar, NSArray<UIView *> *sources, UIView *active) {}
+void SGRSystemTabsFollowScroll(UIScrollView *scrollView) {}
+BOOL SGRSystemTabsCanMinimize(void) { return NO; }
+BOOL SGRSystemTabsMinimized(void) { return NO; }
+void SGRSystemTabsSetMinimized(BOOL minimized) {}
+void SGRRefreshTabBar(void) {}
+// A tab of the mod's own's icon (Navbar.x), which this harness does not build: none known.
+BOOL SGRTabItemIcon(UIView *item, NSString **name, BOOL *symbol) { return NO; }

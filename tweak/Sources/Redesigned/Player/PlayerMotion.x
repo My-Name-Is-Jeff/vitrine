@@ -43,6 +43,8 @@
 #import "Shared/Player/SGLastTrack.h"
 #import "Shared/Player/SpeedPitch.h"
 #import "Player.h"
+#import "Redesigned/Navbar/SystemPlayer.h"
+#import "Redesigned/Navbar/Navbar.h"
 
 // Where the clip starts dissolving into its foot, as a share of its height.
 static const CGFloat kFootFrom = 0.9;
@@ -552,6 +554,8 @@ BOOL SGRPlayerMotionShowing(void) {
 }
 
 static UIView *previewOf(NSURL *file, UIImage *poster) {
+    // Native redesign's player page draws the clip its own way (Redesigned/Navbar/SystemMotion.m).
+    if (SGRSystemTabsOn()) return SGRSystemMotionPreviewOf(file, poster);
     static __weak SGRPlayerMotionView *sg_preview;
     SGRPlayerMotionView *preview = sg_preview;
     BOOL fresh = !preview;
@@ -572,15 +576,43 @@ static NSString *sg_previewTrack;
 static NSURL *sg_previewFile;
 static UIImage *sg_previewPoster;
 static void (^sg_previewArrived)(void);
+// The last track the page's walk found no clip for, and when: asked again within kNoneKept, it is not walked again.
+static NSString *sg_noneTrack;
+static CFTimeInterval sg_noneAt;
+static const CFTimeInterval kNoneKept = 30;
+
+BOOL SGRPlayerMotionFile(NSURL **file, UIImage **poster) {
+    NSString *track = SGShownTrackNow().uri;
+    NSURL *found = nil;
+    UIImage *picture = nil;
+    if (sg_motionFile && (!track || [track isEqualToString:sg_shown])) {
+        found = sg_motionFile;
+        picture = sg_motionPoster;
+    } else if (sg_previewFile && track && [track isEqualToString:sg_previewTrack]) {
+        found = sg_previewFile;
+        picture = sg_previewPoster;
+    }
+    if (file) *file = found;
+    if (poster) *poster = picture;
+    return found != nil;
+}
+
+BOOL SGRPlayerMotionNoneFor(NSString *track) {
+    return SGRSystemTabsOn() && track && [track isEqualToString:sg_noneTrack] && CACurrentMediaTime() - sg_noneAt < kNoneKept;
+}
 
 UIView *SGRPlayerMotionPreview(void (^arrived)(void)) {
-    if (sg_motionFile) return previewOf(sg_motionFile, sg_motionPoster);
     SGShownTrack *shown = SGShownTrackNow();
     NSString *track = shown.uri;
+    // Under Native redesign, the player's clip only while it is the shown track's: asked right after a skip, before the
+    // player's follower has heard of it, the last track's clip was handed out and stayed on the page for the new track
+    // (its owner, 2026-11-01).
+    if (sg_motionFile && (!SGRSystemTabsOn() || !track || [track isEqualToString:sg_shown])) return previewOf(sg_motionFile, sg_motionPoster);
     if (!track) return nil;
     BOOL asked = [track isEqualToString:sg_previewTrack];
     if (asked && sg_previewFile) return previewOf(sg_previewFile, sg_previewPoster);
     if (!arrived) return nil;
+    if (SGRPlayerMotionNoneFor(track)) return nil;
     // The newest page's to be told; a walk already out for this track is waited on rather than asked again.
     sg_previewArrived = [arrived copy];
     if (asked) return nil;
@@ -591,10 +623,16 @@ UIView *SGRPlayerMotionPreview(void (^arrived)(void)) {
     SGMotionClipFor(track, shown.canvasURL, shown.artist, shown.album, SGMotionTall, SGMotionPixels(),
                     ^(NSURL *file, NSString *source) {
         if (![track isEqualToString:sg_previewTrack]) return;
-        // Nothing found is not kept: the page asks again the next time it shows Animated.
+        // Nothing found is kept a little while (SGRPlayerMotionNoneFor), and the page told, so it shows Fluid at once
+        // rather than waiting out its hold (its owner, 2026-11-02: Animated to Fluid lagged).
+        // Native redesign's alone: the redesigned player's page keeps main's way (nothing kept, nobody told).
         if (!file) {
+            void (^done)(void) = SGRSystemTabsOn() ? sg_previewArrived : nil;
             sg_previewTrack = nil;
             sg_previewArrived = nil;
+            sg_noneTrack = track;
+            sg_noneAt = CACurrentMediaTime();
+            if (done) done();
             return;
         }
         SGMotionPoster(file, ^(UIImage *poster) {
@@ -633,6 +671,13 @@ static BOOL seen(UIView *view) {
     return view.window && UIApplication.sharedApplication.applicationState == UIApplicationStateActive;
 }
 
+NSNotificationName const SGRPlayerMotionDidChangeNotification = @"spotifyglass.redesign.playerMotionDidChange";
+
+// For Native redesign's player page, which shows the same clip (SGRPlayerMotionPreview).
+static void postMotionChanged(void) {
+    [NSNotificationCenter.defaultCenter postNotificationName:SGRPlayerMotionDidChangeNotification object:nil];
+}
+
 // The clip fades out over the cover coming back where the player is seen, and goes at once where not.
 static void clear(BOOL animated) {
     SGRPlayerMotionView *old = sg_motion;
@@ -647,6 +692,7 @@ static void clear(BOOL animated) {
     setCoverShown(YES, animated);
     if (animated) [old disappear:^{ [old removeFromSuperview]; }];
     else [old removeFromSuperview];
+    if (old) postMotionChanged();
 }
 
 static void show(NSString *track, NSURL *file) {
@@ -676,6 +722,7 @@ static void show(NSString *track, NSURL *file) {
         }];
         setCoverShown(NO, animated);
         SGLog(@"redesign player: animated artwork %@, %.0fx%.0f", file.lastPathComponent, poster.size.width, poster.size.height);
+        postMotionChanged();
     });
 }
 

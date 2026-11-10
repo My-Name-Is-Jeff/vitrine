@@ -202,8 +202,10 @@ static UIAction *lyricsSourceItem(void) {
     return open;
 }
 
-static NSArray<UIMenuElement *> *playerItems(void) {
-    NSMutableArray<UIMenuElement *> *items = [NSMutableArray arrayWithObject:soundMenu()];
+// Buttons for the backgrounds the ⋯ switches between at once, while the background is one of them; `changed` runs after
+// a switch.
+static NSArray<UIMenuElement *> *backgroundItems(void (^changed)(void)) {
+    NSMutableArray<UIMenuElement *> *items = [NSMutableArray array];
     if (SGPlayerMenuOffersAnimatedArtwork()) {
         // Buttons named for what they do, not checkmarks: the HIG's changeable label for a toggled item.
         NSArray<NSArray *> *backgrounds = @[
@@ -215,10 +217,18 @@ static NSArray<UIMenuElement *> *playerItems(void) {
         for (NSArray *background in backgrounds) {
             SGRPlayerBackgroundKind kind = [background[0] integerValue];
             if (kind == current) continue;
-            [items addObject:[UIAction actionWithTitle:background[1] image:symbol(background[2]) identifier:nil
-                                               handler:^(UIAction *action) { SGRPlayerMenuSetBackground(kind); }]];
+            [items addObject:[UIAction actionWithTitle:background[1] image:symbol(background[2]) identifier:nil handler:^(UIAction *action) {
+                SGRPlayerMenuSetBackground(kind);
+                if (changed) changed();
+            }]];
         }
     }
+    return items;
+}
+
+static NSArray<UIMenuElement *> *playerItems(void) {
+    NSMutableArray<UIMenuElement *> *items = [NSMutableArray arrayWithObject:soundMenu()];
+    [items addObjectsFromArray:backgroundItems(nil)];
     UIAction *lyrics = lyricsSourceItem();
     if (lyrics) [items addObject:lyrics];
     return items;
@@ -229,6 +239,41 @@ static NSArray<UIMenuElement *> *playerItems(void) {
 static NSString *sheetKind(void) {
     NSArray<NSString *> *parts = [SGURIString(SGPlayerState().track.URI) componentsSeparatedByString:@":"];
     return parts.count > 2 ? parts[1] : @"";
+}
+
+NSArray<UIMenuElement *> *SGRPlayerMenuPageItems(UIView *anchor, void (^changed)(void)) {
+    sg_moreButton = anchor;
+    NSMutableArray<UIMenuElement *> *items = [NSMutableArray arrayWithObject:soundMenu()];
+    UIAction *lyrics = lyricsSourceItem();
+    if (lyrics) [items addObject:lyrics];
+    return items;
+}
+
+UIMenu *SGRPlayerMenuArtwork(void (^changed)(void)) {
+    if (!SGPlayerMenuOffersAnimatedArtwork()) return nil;
+    NSArray<NSArray *> *backgrounds = @[
+        @[@(SGRPlayerBackgroundFluid), @"Fluid", @"drop"],
+        @[@(SGRPlayerBackgroundVisualiser), @"Visualizer", @"waveform"],
+        @[@(SGRPlayerBackgroundAnimated), @"Animated", @"play.rectangle.on.rectangle"],
+    ];
+    SGRPlayerBackgroundKind current = SGRPlayerBackground();
+    NSMutableArray<UIMenuElement *> *items = [NSMutableArray array];
+    NSString *currentName = nil;
+    for (NSArray *background in backgrounds) {
+        SGRPlayerBackgroundKind kind = [background[0] integerValue];
+        UIAction *pick = [UIAction actionWithTitle:background[1] image:symbol(background[2]) identifier:nil handler:^(UIAction *action) {
+            SGRPlayerMenuSetBackground(kind);
+            if (changed) changed();
+        }];
+        if (kind == current) {
+            pick.state = UIMenuElementStateOn;
+            currentName = background[1];
+        }
+        [items addObject:pick];
+    }
+    UIMenu *menu = [UIMenu menuWithTitle:@"Artwork" image:symbol(@"photo") identifier:nil options:0 children:items];
+    menu.subtitle = currentName;
+    return menu;
 }
 
 void SGRPlayerMenuWatch(UIView *button) {

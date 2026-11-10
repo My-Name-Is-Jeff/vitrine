@@ -1357,6 +1357,10 @@ typedef struct {
     NSArray<SGKaraokeLine *> *_translating;   // the lines a translator is translating, nil while it is not
     SGRSingButton *_sing;   // across from _extras
     CGFloat _builtWidth, _placedHeight;
+    CGFloat _placedScreenTop;   // where the view's top was on screen at the last layout, NAN before one
+    // How far the sung line's place is moved from kAnchor, so it keeps its place on screen as the view grows and shrinks
+    // with the page's controls going and coming back (restingAnchor).
+    CGFloat _anchorShift;
     BOOL _showing;
     CAGradientLayer *_fade;
     SGRCreditLabel *_credit;
@@ -1382,6 +1386,7 @@ typedef struct {
     self = [super initWithFrame:frame];
     if (!self) return nil;
     self.hidden = YES;
+    _placedScreenTop = NAN;
     _focus = _openBreak = -1;
     _margin = kMargin;
     [self takeLook];
@@ -1479,12 +1484,19 @@ typedef struct {
 // and the wave every held word's, so a change is the song measured again in it and crossfaded over.
 - (void)takeLook {
     SGRLyricsLook look = SGRLyricsLookNow();
-    _fontSize = look.size;
-    _lineGap = look.spacing;
+    CGFloat scale = _lookScale > 0 ? _lookScale : 1;
+    _fontSize = round(look.size * scale);
+    _lineGap = round(look.spacing * scale);
     _blurPerLine = kBlurPerLine * look.blur;
     _maxBlur = kMaxBlur * look.blur;
     sgr_glowScale = look.glow;
     sgr_waveScale = look.wave;
+}
+
+- (void)setLookScale:(CGFloat)lookScale {
+    if (lookScale == _lookScale) return;
+    _lookScale = lookScale;
+    [self lookChanged];
 }
 
 - (void)lookChanged {
@@ -1602,7 +1614,7 @@ typedef struct {
     [self stir];
     [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(followSong) object:nil];
     if (!_browsing) {
-        _browseAnchor = self.bounds.size.height * kAnchor;
+        _browseAnchor = [self restingAnchor];
         _browseBreak = _openBreak;
     }
     _browsing = YES;
@@ -1778,9 +1790,30 @@ typedef struct {
         SGRShowGlass(SGRGlassInside(_extrasBox, &kExtrasGlassKey, kExtrasSide), !_extrasHidden);
     }
     [self clearBottomRow];
+    // The page's controls going or coming back move and resize this view (the lines alone and back): the sung line keeps
+    // its place on screen, and the room the view gains or loses is above and below it, rather than every line sliding to a
+    // new anchor; scrolled by hand, the lines stay under the finger the same way (its owner, 2026-11-06: "the lyrics move
+    // up and down when hiding and unhiding").
+    CGFloat screenTop = self.window ? [self convertPoint:CGPointZero toView:nil].y : NAN;
+    CGFloat height = self.bounds.size.height;
+    BOOL moved = NO;
+    if (!SGNativeRedesign()) {
+        // The redesigned Spotify player's lines as they were: a new height moves the anchor.
+        _anchorShift = 0;
+        moved = fabs(height - _placedHeight) > 0.5;
+    } else if (isnan(screenTop) || isnan(_placedScreenTop) || self.bounds.size.width != _builtWidth) {
+        _anchorShift = 0;
+    } else if (fabs(screenTop - _placedScreenTop) > 0.5 || fabs(height - _placedHeight) > 0.5) {
+        // The anchor's place on screen before, kept: its place in the view now is that less the view's new top.
+        CGFloat before = _placedScreenTop + _placedHeight * kAnchor + _anchorShift;
+        _anchorShift = MIN(height * 0.6, MAX(height * 0.1, before - screenTop)) - height * kAnchor;
+        if (_browsing) _browseAnchor -= screenTop - _placedScreenTop;
+        moved = YES;
+    }
+    _placedScreenTop = screenTop;
     if (_lines && self.bounds.size.width != _builtWidth) {
         [self rebuild];
-    } else if (_tops && self.bounds.size.height != _placedHeight) {
+    } else if (_tops && moved) {
         // A new height moves the anchor (the player's lines going alone and back): the stack is placed for it
         // here, inside whatever animation resized the page, so the sung line rides along with it rather than
         // springing to the new anchor at the next line, and the band the height opens is filled in.
@@ -1790,13 +1823,23 @@ typedef struct {
     _placedHeight = self.bounds.size.height;
 }
 
+// Where the sung line rests in the view: kAnchor of the height, moved by however far the view has moved under it.
+- (CGFloat)restingAnchor {
+    return self.bounds.size.height * kAnchor + _anchorShift;
+}
+
+- (void)setRowOverLines:(BOOL)over {
+    _rowOverLines = over;
+    [self clearBottomRow];
+}
+
 // The lines fade out above the bottom row (the mic and the extras button) and stay clear under
 // it, so none is read through the credit; with nothing there they fade out at the bottom edge.
 - (void)clearBottomRow {
     CGFloat height = self.bounds.size.height;
     if (height <= 0) return;
     CGFloat floor = height;
-    for (UIView *view in @[_sing ?: NSNull.null, _extrasBox ?: NSNull.null]) {
+    for (UIView *view in _rowOverLines ? @[] : @[_sing ?: NSNull.null, _extrasBox ?: NSNull.null]) {
         if ([view isKindOfClass:UIView.class] && !view.hidden && view.superview) floor = MIN(floor, CGRectGetMinY(view.frame) - 8);
     }
     CGFloat clear = MAX(0, MIN(1, (height - floor) / height));
@@ -2176,7 +2219,7 @@ static BOOL anyUntranslated(NSArray<SGKaraokeLine *> *lines) {
 // and a break can open or close, and a line made for the view then went by the new anchor while the
 // lines beside it kept the old one, the two running into each other.
 - (CGFloat)topOfLine:(NSInteger)index {
-    CGFloat anchor = _browsing ? _browseAnchor : self.bounds.size.height * kAnchor;
+    CGFloat anchor = _browsing ? _browseAnchor : [self restingAnchor];
     NSInteger openBreak = _browsing ? _browseBreak : _openBreak;
     CGFloat top = anchor + _tops[index].doubleValue - _focusTop;
     return openBreak >= 0 && index >= openBreak ? top + [self breakRoom] : top;
@@ -2328,7 +2371,7 @@ static BOOL anyUntranslated(NSArray<SGKaraokeLine *> *lines) {
 // song's end or scrolled to, rather than over every line.
 - (void)placeCreditAnimated:(BOOL)animated {
     if (!_tops.count || !_credit.text.length) return;
-    CGFloat anchor = _browsing ? _browseAnchor : self.bounds.size.height * kAnchor;
+    CGFloat anchor = _browsing ? _browseAnchor : [self restingAnchor];
     NSInteger openBreak = _browsing ? _browseBreak : _openBreak;
     CGFloat width = MAX(self.bounds.size.width - 2 * _margin, 0);
     CGSize size = [_credit sizeThatFits:CGSizeMake(width, CGFLOAT_MAX)];

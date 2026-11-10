@@ -86,6 +86,12 @@ static void needReader(BOOL need) {
     }
 }
 
+// For other readers of the spectrum (Native redesign's DJ ring, Redesigned/Navbar/SystemDJRing.m): the same count, so
+// neither takes the other's off.
+void SGRSpectrumNeedReader(BOOL need) {
+    needReader(need);
+}
+
 static NSDictionary *noActions(void) {
     static NSDictionary *none;
     static dispatch_once_t once;
@@ -293,6 +299,13 @@ static UIColor *lit(UIColor *color, CGFloat luminance) {
     [self updateMotion];
 }
 
+// Hidden counts as out of the window: the player page hides it under its landscape player.
+- (void)setHidden:(BOOL)hidden {
+    BOOL changed = hidden != self.hidden;
+    [super setHidden:hidden];
+    if (changed) [self updateMotion];
+}
+
 // The power state is reported off the main thread.
 - (void)updateMotionSoon {
     dispatch_async(dispatch_get_main_queue(), ^{ [self updateMotion]; });
@@ -308,7 +321,7 @@ static UIColor *lit(UIColor *color, CGFloat luminance) {
 - (void)updateMotion {
     [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(updateMotion) object:nil];
     BOOL front = UIApplication.sharedApplication.applicationState == UIApplicationStateActive;
-    BOOL may = self.window && front && !NSProcessInfo.processInfo.lowPowerModeEnabled;
+    BOOL may = self.window && !self.hidden && front && !NSProcessInfo.processInfo.lowPowerModeEnabled;
     NSTimeInterval wait = SGPlayerTransitionEnds() - CACurrentMediaTime();
     if (may && (wait > 0 || SGRPlayerIsTransitioning())) {
         may = NO;

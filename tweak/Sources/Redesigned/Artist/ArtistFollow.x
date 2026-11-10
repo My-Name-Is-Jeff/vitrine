@@ -1,9 +1,11 @@
 // Whether the user follows the page's artist, read from Spotify's collection state (following saves the
 // artist to the collection) rather than the Follow button, whose only state is its localized title.
 // The provider is the one Spotify's own code uses, kept weakly.
+#import <objc/message.h>
 #import <os/lock.h>
 #import "Core/SGCore.h"
 #import "Artist.h"
+#import "Shared/HeadGestures/HeadGestures.h"
 
 @protocol SGRCollectionState <NSObject>
 + (id)saved;
@@ -41,12 +43,23 @@ static void keepProvider(id provider) {
 
 static __weak id sg_platform;
 
+// The platform that saves to Liked Songs, from whichever of Spotify's four the app last reached for, as
+// Shared/HeadGestures/HeadGestures.x keeps it: 9.1.90 may never make SPTCollectionPlatformImplementation, whose init was
+// the only place it was kept, and the player page's star did nothing (its owner, 2026-11-06). Asked for from any thread.
+static void keepPlatform(id platform) {
+    if (![platform respondsToSelector:NSSelectorFromString(@"addURL:showUIConfirmation:completion:")]) return;
+    os_unfair_lock_lock(&sg_providerLock);
+    sg_platform = platform;
+    os_unfair_lock_unlock(&sg_providerLock);
+}
+
 static id currentProvider(void) {
     os_unfair_lock_lock(&sg_providerLock);
     id provider = sg_provider;
     os_unfair_lock_unlock(&sg_providerLock);
-    if (!provider && [sg_platform respondsToSelector:@selector(stateProvider)]) {
-        provider = [sg_platform performSelector:@selector(stateProvider)];
+    id platform = sg_platform ?: SGCollectionPlatformKept();
+    if (!provider && [platform respondsToSelector:@selector(stateProvider)]) {
+        provider = [platform performSelector:@selector(stateProvider)];
         keepProvider(provider);
     }
     return provider;
@@ -61,6 +74,7 @@ static id currentProvider(void) {
 - (id)stateProvider {
     id provider = %orig;
     keepProvider(provider);
+    keepPlatform(self);
     return provider;
 }
 %end
@@ -69,6 +83,7 @@ static id currentProvider(void) {
 - (id)stateProvider {
     id provider = %orig;
     keepProvider(provider);
+    keepPlatform(self);
     return provider;
 }
 %end
@@ -77,6 +92,7 @@ static id currentProvider(void) {
 - (id)stateProvider {
     id provider = %orig;
     keepProvider(provider);
+    keepPlatform(self);
     return provider;
 }
 %end
@@ -85,6 +101,7 @@ static id currentProvider(void) {
 - (id)stateProvider {
     id provider = %orig;
     keepProvider(provider);
+    keepPlatform(self);
     return provider;
 }
 %end
@@ -178,18 +195,12 @@ static void subscribe(SGRFollowWatch *watch, id provider) {
     __weak SGRFollowWatch *weakWatch = watch;
     NSURL *uri = watch.uri;
     watch.subscribed = YES;
-    SGLog(@"redesign artist: follow subscribes for %@ on %@", uri.absoluteString, NSStringFromClass([provider class]));
     watch.token = [(id<SGRCollectionStateProvider>)provider subscribeCollectionStateForURL:uri completion:^(id state, NSError *error) {
-        if (error || ![state respondsToSelector:@selector(contains:)]) {
-            SGLog(@"redesign artist: follow state for %@ unreadable: %@ %@", uri.absoluteString, [state class], error);
-            return;
-        }
-        NSInteger raw = [state respondsToSelector:@selector(rawValue)] ? [(id<SGRCollectionState>)state rawValue] : -1;
+        if (error || ![state respondsToSelector:@selector(contains:)]) return;
         BOOL following = [(id<SGRCollectionState>)state contains:saved];
         dispatch_async(dispatch_get_main_queue(), ^{
             SGRFollowWatch *current = weakWatch;
             if (!current || current.following == following) return;
-            SGLog(@"redesign kit: follow state %ld for %@", (long)raw, uri.absoluteString);
             current.following = following;
             if (current.changed) current.changed();
         });
@@ -219,6 +230,42 @@ BOOL SGRArtistFollowing(UIView *page, NSString *moreIdentifier, BOOL *following,
     if (provider) subscribe(watch, provider);
     if (watch.following < 0) return NO;
     if (following) *following = watch.following == 1;
+    return YES;
+}
+
+id SGRCollectionWatchURI(NSURL *uri, void (^changed)(void)) {
+    if (!uri) return nil;
+    SGRFollowWatch *watch = [SGRFollowWatch new];
+    watch.uri = uri;
+    watch.following = -1;
+    watch.changed = changed;
+    id provider = currentProvider();
+    if (provider) subscribe(watch, provider);
+    return watch;
+}
+
+BOOL SGRCollectionWatchSaved(id watch, BOOL *saved) {
+    if (![watch isKindOfClass:SGRFollowWatch.class]) return NO;
+    SGRFollowWatch *follow = watch;
+    id provider = follow.subscribed ? nil : currentProvider();
+    if (provider) subscribe(follow, provider);
+    if (follow.following < 0) return NO;
+    if (saved) *saved = follow.following == 1;
+    return YES;
+}
+
+BOOL SGRCollectionSetSaved(NSURL *uri, BOOL saved) {
+    os_unfair_lock_lock(&sg_providerLock);
+    id platform = sg_platform;
+    os_unfair_lock_unlock(&sg_providerLock);
+    // Head Gestures keeps one from the same classes from launch, whatever look: the one it has, should none have come here.
+    if (!platform) platform = SGCollectionPlatformKept();
+    SEL selector = saved ? NSSelectorFromString(@"addURL:showUIConfirmation:completion:") : NSSelectorFromString(@"removeURL:showUIConfirmation:completion:");
+    if (!uri || ![platform respondsToSelector:selector]) return NO;
+    // Spotify's own confirmation ("Added to Liked Songs"), as a tap on its add button gives; a completion that reads no
+    // arguments, as HeadGestures.x passes, is safe whatever it is called with.
+    void (^done)(void) = ^{};
+    ((void (*)(id, SEL, NSURL *, BOOL, id))objc_msgSend)(platform, selector, uri, YES, done);
     return YES;
 }
 

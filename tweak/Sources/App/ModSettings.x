@@ -64,6 +64,7 @@ static UIViewController *modSettingsPage(void) {
     // The tile colors are the system palette's, in dark mode except where SGColorRGB gives a lighter or deeper shade.
     [sections addObject:SGNotedSection(nil, @[
         SGRedesignedUIRow(),
+        SGNativeRedesignRow(),
         pageRow(@"Appearance", @"paintpalette.fill", UIColor.systemPurpleColor, ^UIViewController *{ return SGAppearancePage(); }),
         pageRow(@"Tab bar", @"rectangle.bottomthird.inset.filled", UIColor.systemGrayColor, ^UIViewController *{ return SGNavbarPage(); }),
     ], SGRestartNote)];
@@ -109,7 +110,7 @@ static UIViewController *modSettingsPage(void) {
     [sections addObject:SGSection(nil, features)];
 
     SGModRow *mod = pageRow(@"Mod", @"info.circle", SGColorRGB(0x7D7D81), ^UIViewController *{ return SGAboutPage(); });
-    mod.value = ^NSString *{ return @(SG_VERSION); };
+    mod.value = ^NSString *{ return SGVersionWithBuild(); };
     [sections addObjectsFromArray:@[
         SGSection(nil, @[
             pageRow(@"Lock screen", @"lock.iphone", SGColorRGB(0x32ADE6), ^UIViewController *{ return SGLockScreenWidgetPage(); }),

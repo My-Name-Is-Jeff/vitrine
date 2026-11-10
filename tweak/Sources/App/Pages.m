@@ -87,6 +87,21 @@ SGModRow *SGRedesignedUIRow(void) {
     return SGWithTile(redesign, @"sparkles", UIColor.systemIndigoColor);
 }
 
+// Under Redesigned UI, while it is on and on iOS 26 and up: the system tab bar, the mod's mini player and its player page.
+SGModRow *SGNativeRedesignRow(void) {
+    SGModRow *row = SGOptionRow(@"Native redesign", @"iOS's tab bar, a mini player and a player page of the mod's", SGKeyNativeRedesign);
+    row.visible = ^BOOL { return SGRedesignAvailable() && SGRedesignedUIStored(); };
+    row.changed = ^(BOOL on) {
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Restart Spotify"
+            message:on ? @"The native redesign takes over when Spotify starts again." : @"The redesign's glass bar and Spotify's player come back when Spotify starts again."
+            preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"Later" style:UIAlertActionStyleCancel handler:nil]];
+        [alert addAction:[UIAlertAction actionWithTitle:@"Restart now" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { SGRestartSpotify(); }]];
+        [SGTopController() presentViewController:alert animated:YES completion:nil];
+    };
+    return SGWithTile(row, @"iphone.gen3", UIColor.systemBlueColor);
+}
+
 // The stored look's own rows, then the font and the app icon, which work under either look on any iOS.
 // Redesigned UI itself leads Mod Settings' main page.
 UIViewController *SGAppearancePage(void) {
@@ -116,9 +131,10 @@ static UIViewController *lyricsPage(void) {
         @"Every line shows this much later than the song, for Bluetooth headphones that play a little behind the lyrics. Applies at once.");
     if (redesigned) {
         [sections addObjectsFromArray:@[
-            SGSection(@"Display", @[SGRLyricsTextSizesRow(), SGLyricsWordTimingRow(), SGLyricsRomanisedRow(), SGLyricsRomanisedReplaceRow(),
-                SGRLyricsHideRow(),
-                SGSwitchRow(@"Landscape lyrics", @"Turn the phone with the lyrics open", SGRKeyLyricsLandscape)]),
+            // Native redesign turns the player page instead, from the Player page's Landscape.
+            SGSection(@"Display", [@[SGRLyricsTextSizesRow(), SGLyricsWordTimingRow(), SGLyricsRomanisedRow(), SGLyricsRomanisedReplaceRow(),
+                SGRLyricsHideRow()] arrayByAddingObjectsFromArray:SGNativeRedesignStored() ? @[]
+                : @[SGSwitchRow(@"Landscape lyrics", @"Turn the phone with the lyrics open", SGRKeyLyricsLandscape)]]),
             timing,
             SGSection(@"Translation", [[[@[SGLyricsTranslationLanguageRow(), SGTranslateEverySongRow()] arrayByAddingObjectsFromArray:SGOnDeviceTranslatorRows()]
                                           arrayByAddingObjectsFromArray:SGAITranslatorRows()] arrayByAddingObject:SGSavedTranslationsRow()]),
@@ -144,12 +160,18 @@ UIViewController *SGPlayerSettingsPage(void) {
         return SGFlag(SGKeyArtistBlock, NO) ? @(SGBlockedArtists().count).stringValue : @"Off";
     };
     BOOL native = !SGRedesignedUIStored();
+    // Native redesign's player page is the mod's own: Spotify's cover, which Gestures and Full screen cover act on, is not
+    // up under it.
+    BOOL nativeRedesign = SGNativeRedesignStored();
 
     // AirPods gestures, the lock screen widget and Vibrations have rows of their own on Mod Settings' main page.
-    NSMutableArray<SGModSection *> *sections = [NSMutableArray arrayWithObject:SGSection(nil, @[
-        SGWithTile(SGPageRow(@"Gestures", ^UIViewController *{ return SGGesturesSettingsPage(); }), @"hand.tap", UIColor.systemBlueColor),
-        SGWithTile(blocked, @"person.crop.circle.badge.xmark", UIColor.systemRedColor),
-    ])];
+    NSMutableArray<SGModRow *> *pages = [NSMutableArray array];
+    if (!nativeRedesign) [pages addObject:SGWithTile(SGPageRow(@"Gestures", ^UIViewController *{ return SGGesturesSettingsPage(); }), @"hand.tap", UIColor.systemBlueColor)];
+    // Native redesign's mini player has a page of its own, in place of the glass bar's Mini player section.
+    if (nativeRedesign) [pages addObject:SGWithTile(SGPageRow(@"Mini player", ^UIViewController *{ return SGRMiniPlayerSettingsPage(); }),
+                                                    @"rectangle.bottomthird.inset.filled", UIColor.systemPinkColor)];
+    [pages addObject:SGWithTile(blocked, @"person.crop.circle.badge.xmark", UIColor.systemRedColor)];
+    NSMutableArray<SGModSection *> *sections = [NSMutableArray arrayWithObject:SGSection(nil, pages)];
     if (native) {
         [sections addObject:SGSection(nil, @[
             SGWithTile(SGPageRow(@"Now playing bar", ^UIViewController *{ return SGNowPlayingBarSettingsPage(); }), @"rectangle.bottomthird.inset.filled", UIColor.systemPinkColor),
@@ -163,8 +185,20 @@ UIViewController *SGPlayerSettingsPage(void) {
     SGModRow *tilt = SGHideRow(@"Full screen cover", @"What a tap on the cover opens", SGKeyHideFullScreenCover);
     // The native look's Shuffle and Repeat rows are in its Hide on the player section, with their own keys.
     NSArray<SGModRow *> *hidden = native ? @[video, tilt]
+        : nativeRedesign ? @[SGHideRow(@"Shuffle", nil, SGRKeyPlayerHideShuffle), SGHideRow(@"Repeat", nil, SGRKeyPlayerHideRepeat), video]
         : @[SGHideRow(@"Shuffle", nil, SGRKeyPlayerHideShuffle), SGHideRow(@"Repeat", nil, SGRKeyPlayerHideRepeat), video, tilt];
-    [sections addObject:SGSection(native ? nil : @"Hide on the player", hidden)];
+    // Native redesign puts these in the player page's Controls section, as switches that show them (Redesigned/Player/
+    // PlayerSettings.m), so the section is not repeated here.
+    if (!nativeRedesign) [sections addObject:SGSection(native ? nil : @"Hide on the player", hidden)];
+    // Native redesign's landscape (Redesigned/Navbar/SystemTurn.m): the player page turns to its landscape player, and with
+    // Whole app, off until switched on, every screen turns with the phone. The redesigned player's Landscape lyrics stays on
+    // the Lyrics page.
+    if (nativeRedesign) {
+        [sections addObject:SGSection(@"Landscape", @[
+            SGSwitchRow(@"Landscape player", @"Turn the player page with the phone", SGRKeyLyricsLandscape),
+            SGOptionRow(@"Whole app", @"Home, Search, Library and every page turn too", SGRKeyLandscapeEverywhere),
+        ])];
+    }
 
     [sections addObject:SGNotedSection(@"Lossless", @[
         SGOptionRow(@"Lossless files", @"Your own FLACs in place of Spotify's stream", SGKeyLossless),

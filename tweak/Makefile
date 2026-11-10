@@ -20,6 +20,19 @@ ifneq ($(wildcard ../scripts/whats-new.sh),)
 $(shell ../scripts/whats-new.sh $(SG_VERSION) ../CHANGELOG.md Sources/App/Onboarding/SGWhatsNewNotes.h)
 endif
 
+# Which build this is (the commit, plus the build time when there are uncommitted changes), as a gitignored
+# source that Mod Settings shows beside the version. A copy of tweak/ without the scripts falls back to none.
+# The time is taken once and passed down, so Theos's own makes, which read this file again, write the same stamp.
+ifndef SG_BUILD_TIME
+SG_BUILD_TIME := $(shell date +%m%d.%H%M)
+endif
+export SG_BUILD_TIME
+ifneq ($(wildcard ../scripts/build-stamp.sh),)
+$(shell SG_BUILD_TIME=$(SG_BUILD_TIME) sh ../scripts/build-stamp.sh Sources/App/About/SGBuildStamp.m)
+else
+$(shell [ -f Sources/App/About/SGBuildStamp.m ] || echo 'const char *SGBuildStamp(void) { return ""; }' > Sources/App/About/SGBuildStamp.m)
+endif
+
 TWEAK_NAME := spotifyglass
 
 # Every source under Sources/, so a new feature needs no Makefile edit. Shared/Flags/SGFlagList.m
@@ -30,7 +43,7 @@ spotifyglass_CFLAGS := -fobjc-arc -ISources -DSG_VERSION=\"$(SG_VERSION)\"
 # SG_DRIVER=1 for those, and every other build (make release, the release workflow's .deb) leaves it out.
 SG_DRIVER ?= 0
 spotifyglass_CFLAGS += -DSG_DRIVER=$(SG_DRIVER)
-spotifyglass_FRAMEWORKS := UIKit QuartzCore UniformTypeIdentifiers MediaPlayer CoreImage AudioToolbox AVFoundation CoreHaptics Accelerate CoreMotion CoreML CoreText OSLog
+spotifyglass_FRAMEWORKS := UIKit QuartzCore UniformTypeIdentifiers MediaPlayer CoreImage AudioToolbox AVFoundation AVKit CoreHaptics Accelerate CoreMotion CoreML CoreText OSLog
 # zlib unpacks KuGou's KRC lyrics (Shared/LyricsSources/KuGou.m).
 spotifyglass_LIBRARIES := z
 # Runtime swizzling instead of Substrate so the dylib has no extra dependency inside the IPA.

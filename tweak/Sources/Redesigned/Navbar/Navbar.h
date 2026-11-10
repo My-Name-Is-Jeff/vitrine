@@ -77,3 +77,52 @@ void SGRShrinkTabTitles(UIView *bar);
 
 UIViewController *SGRNavbarSettingsPage(void);   // the tab editor, in Mod Settings
 UIViewController *SGRNavbarEditorPage(void);     // the tab editor alone, for the welcome tour
+
+// Native redesign's tab bar (SystemTabs.x). A UITabBarController over Spotify's tab area, its tabs Spotify's own and
+// the mod's mini player in its bottomAccessory, so UIKit minimizes the bar and moves the mini player into its row as the
+// Music app does. On with Native redesign (Core/SGUIMode.h's SGNativeRedesign), read once at launch.
+BOOL SGRSystemTabsOn(void);
+// A sideways swipe on the system tab bar's mini player pages to the next or previous track (SystemTabs.x). On until
+// switched off on the Mini player page, read at each swipe.
+#define SGRKeyMiniPlayerSwipe @"spotifyglass.redesign.navbar.miniPlayerSwipe"
+// The next button beside play on the system tab bar's mini player (SystemTabs.x). On until switched off on the Mini player
+// page, read at each of its layouts.
+#define SGRKeyMiniPlayerNext @"spotifyglass.redesign.navbar.miniPlayerNext"
+// The AirPlay button beside play on the system tab bar's mini player (SystemTabs.x), over the bar and in its row while the
+// title keeps room. On until switched off on the Mini player page; its own key, apart from the glass bar's device button.
+#define SGRKeyMiniPlayerAirPlay @"spotifyglass.redesign.navbar.miniPlayerAirPlay"
+// The star beside play on the system tab bar's mini player (SystemTabs.x), saving the song to Liked Songs as the player's
+// does, over the bar while the title keeps room. Off until switched on on the Mini player page (its owner, 2026-11-06).
+#define SGRKeyMiniPlayerLike @"spotifyglass.redesign.navbar.miniPlayerLike"
+// The mini player's buttons, left to right, as keys of SGRMiniPlayerButtons below: those on, in their order (the Mini player
+// page's Buttons, its owner, 2026-11-06). Play is always on.
+#define SGRKeyMiniPlayerOrder @"spotifyglass.redesign.navbar.miniPlayerOrder"
+#define SGRMiniButtonAirPlay @"airplay"
+#define SGRMiniButtonStar @"star"
+#define SGRMiniButtonPlay @"play"
+#define SGRMiniButtonNext @"next"
+NSArray<NSString *> *SGRMiniPlayerButtons(void);
+void SGRSetMiniPlayerButtons(NSArray<NSString *> *keys);
+// Lays the system tab bar's mini player out again, for a setting of the Mini player page that changed; nothing without it.
+void SGRRefreshMiniPlayer(void);
+// TabBar.x hands it Spotify's tab items and the one on screen at each of Spotify's bar passes.
+void SGRSystemTabsSync(UIViewController *container, UIView *stockBar, NSArray<UIView *> *sources, UIView *active);
+// TabBarMinimize.x hands it the page's scroll view as it scrolls, for UIKit's minimize on scroll.
+void SGRSystemTabsFollowScroll(UIScrollView *scrollView);
+// TabBar.x's tab items, for SystemTabs.x: an item's glyph (filled when active), its name, and a tap passed on to it.
+UIImage *SGRTabSourceGlyph(UIView *source, BOOL active);
+// One of Spotify's tabs drawn from Spotify's Encore glyphs, its outline and its filled (-active) glyph, from the first
+// launch; NO for a tab not known (one of the mod's own), which the bar draws from its item as it stands.
+BOOL SGRTabSourceEncoreGlyphs(UIView *source, UIImage **outline, UIImage **filled);
+// A tab of the mod's own's icon as its entry names it, an Encore glyph or an SF Symbol (Navbar.x); NO for Spotify's.
+BOOL SGRTabItemIcon(UIView *item, NSString **name, BOOL *symbol);
+NSString *SGRTabSourceTitle(UIView *source);
+// Whether Spotify's item is the active tab now, read off its own label as the glass bar reads it: Spotify swaps the item's
+// icon to the filled one while it is, so the glyph read then is the filled one.
+BOOL SGRTabSourceIsActive(UIView *source);
+void SGRForwardTabTap(UIView *source);
+// The system bar minimized and expanded by the mod's own rule (TabBarMinimize.x) through the controller's own setter,
+// when this iOS has one (SGRSystemTabsCanMinimize); else UIKit's minimize on scroll stays.
+BOOL SGRSystemTabsCanMinimize(void);
+BOOL SGRSystemTabsMinimized(void);
+void SGRSystemTabsSetMinimized(BOOL minimized);

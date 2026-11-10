@@ -18,6 +18,7 @@
 #import "Shared/Lyrics/Lyrics.h"
 #import "Shared/Player/PlayerState.h"
 #import "Player.h"
+#import "Redesigned/Navbar/SystemPlayer.h"
 
 static const CGFloat kSide = 32, kCoverGap = 16, kControlSide = 44, kColumnShare = 0.38;
 // The title and the controls beside the cover of a track without lines.
@@ -387,6 +388,8 @@ static void requestOrientations(UIWindowScene *scene, UIInterfaceOrientationMask
 void SGRPlayerLandscapeLinesChanged(void) {
     id screen = sg_window.rootViewController;
     if ([screen isKindOfClass:SGRLandscapeLyricsController.class]) [screen updateBare:YES];
+    // The system tab bar's player page turns onto a landscape player of its own (Redesigned/Navbar/SystemTurn.m).
+    SGRSystemTurnLinesChanged();
 }
 
 void SGRPlayerShowLandscape(BOOL show) {

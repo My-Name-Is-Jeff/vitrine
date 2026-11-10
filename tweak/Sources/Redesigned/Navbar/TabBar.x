@@ -130,6 +130,82 @@ UIImage *SGRNavbarGlyph(NSDictionary *entry, BOOL active) {
     return nil;
 }
 
+// For Native redesign's tab bar (SystemTabs.x): Spotify's items read and tapped as the glass bar reads and taps them.
+UIImage *SGRTabSourceGlyph(UIView *source, BOOL active) {
+    return glyphOf(source, active);
+}
+
+// For Native redesign's tab bar: one of Spotify's tabs drawn from Spotify's own Encore glyphs, as the Tab bar page's
+// Spotify Encore list draws them (Shared/Navigation/TabIcons.m), outline and filled (the glyph's -active variant), so both
+// are there from the first launch. Spotify 9.1.90's icon view keeps its icon as a Swift value the mod cannot read (the
+// phone's log, 2026-11-02), so the tab is told by its name, or failing that by its place in Spotify's own order. NO for a
+// tab not known here (one of the mod's own, or one Spotify adds), which the bar draws as it stands.
+static NSArray<NSString *> *encoreCandidates(UIView *source) {
+    NSString *label = labelIn(source).text.lowercaseString ?: @"";
+    static NSArray<NSArray<NSString *> *> *byPlace;
+    if (!byPlace) byPlace = @[@[@"home"], @[@"search"], @[@"library", @"yourLibrary", @"collection"], @[@"plus", @"create"]];
+    if ([label containsString:@"home"]) return byPlace[0];
+    if ([label containsString:@"search"]) return byPlace[1];
+    if ([label containsString:@"librar"]) return byPlace[2];
+    if ([label containsString:@"create"]) return byPlace[3];
+    NSUInteger place = [SGRNavbarStock() indexOfObject:labelIn(source).text ?: @""];
+    return place < byPlace.count ? byPlace[place] : nil;
+}
+
+// An SF Symbol as the tab editor draws one (19 pt semibold), a template for the bar to tint.
+static UIImage *tabSymbol(NSString *name) {
+    UIImage *image = name.length ? [UIImage systemImageNamed:name withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:19 weight:UIImageSymbolWeightSemibold]] : nil;
+    return [image imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+}
+
+BOOL SGRTabSourceEncoreGlyphs(UIView *source, UIImage **outline, UIImage **filled) {
+    UIView *live = iconIn(source);
+    if (!live) return NO;
+    // A tab of the mod's own: the icon its entry names. A symbol's outline is the name without ".fill" and its filled one
+    // the name with it, where this iOS has both; an Encore glyph's filled one is its -active variant.
+    NSString *entryName = nil;
+    BOOL entrySymbol = NO;
+    NSArray<NSString *> *candidates = encoreCandidates(source);
+    if (SGRTabItemIcon(source, &entryName, &entrySymbol)) {
+        if (entrySymbol) {
+            NSString *base = [entryName hasSuffix:@".fill"] ? [entryName substringToIndex:entryName.length - 5] : entryName;
+            UIImage *line = tabSymbol(base) ?: tabSymbol(entryName), *solid = tabSymbol([base stringByAppendingString:@".fill"]) ?: line;
+            if (!line) return NO;
+            if (outline) *outline = line;
+            if (filled) *filled = solid;
+            return YES;
+        }
+        candidates = @[entryName];
+    }
+    NSArray<NSString *> *names = SGEncoreGlyphNames();
+    Class iconClass = NSClassFromString(@"SPTEncoreIcon");
+    id icon = nil;
+    for (NSString *name in candidates) {
+        if (![names containsObject:name]) continue;
+        @try { icon = ((id (*)(id, SEL))objc_msgSend)(iconClass, NSSelectorFromString(name)); } @catch (NSException *e) { icon = nil; }
+        if (icon) break;
+    }
+    if (!icon) return NO;
+    id variant = activeVariantOf(icon);
+    UIImage *drawnOutline = drawGlyph(live, icon, NO), *drawnFilled = drawGlyph(live, variant ?: icon, YES);
+    if (!drawnOutline || !drawnFilled) return NO;
+    if (outline) *outline = drawnOutline;
+    if (filled) *filled = drawnFilled;
+    return YES;
+}
+
+BOOL SGRTabSourceIsActive(UIView *source) {
+    return isActive(source);
+}
+
+NSString *SGRTabSourceTitle(UIView *source) {
+    return labelIn(source).text ?: @"";
+}
+
+void SGRForwardTabTap(UIView *source) {
+    forwardTap(source);
+}
+
 #pragma mark - the system bar
 
 // A name too long for its tab (one of the user's own, a split tab's circle) shrinks a little before UIKit cuts
@@ -393,6 +469,26 @@ static const CGFloat kPlatterInset = 21, kApartItemWidth = 62, kPlatterGap = 12;
 
 static void syncBar(UIView *stockBar) {
     sg_stockBar = stockBar;
+
+    // Native redesign draws the bar instead (SystemTabs.x): Spotify's own stays as the source of its tabs, unseen.
+    if (SGRSystemTabsOn()) {
+        for (UIView *sub in stockBar.subviews) {
+            if (sub.alpha > 0) sub.alpha = 0;
+            sub.userInteractionEnabled = NO;
+        }
+        // The bar and what holds it take no touches either: left on, they stood unseen at the foot of the screen over the
+        // page, under the system bar (its owner, 2026-10-31). Its taps are passed on to its items in code (forwardTap).
+        for (UIView *v = stockBar; v && ![v.nextResponder isKindOfClass:UIViewController.class]; v = v.superview) {
+            if (v.userInteractionEnabled) v.userInteractionEnabled = NO;
+        }
+        NSArray<UIView *> *sources = tabItems(stockBar);
+        if (!sources.count) return;
+        UIView *active = SGRNavbarLitTab();
+        if (![sources containsObject:active]) active = nil;
+        for (UIView *source in sources) if (!active && isActive(source)) active = source;
+        SGRSystemTabsSync(containerOf(stockBar), stockBar, sources, active);
+        return;
+    }
 
     SGRSystemTabBar *bar = objc_getAssociatedObject(stockBar, &kBarKey);
     if (!bar) {
@@ -825,7 +921,7 @@ static void itemDidLayOut(UIView *item) {
     %orig;
     dispatch_async(dispatch_get_main_queue(), ^{
         // Another tab brings the minimized bar back (HIG, Tab bars).
-        SGRSetTabBarMinimized(NO, YES);
+        if (!SGRSystemTabsOn()) SGRSetTabBarMinimized(NO, YES);
         UIView *bar = sg_stockBar;
         if (bar) syncBar(bar);
     });
