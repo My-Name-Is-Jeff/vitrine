@@ -836,13 +836,18 @@ static NSArray<NSString *> *quickTitles(void) {
                 pick(@"Sleep timer");
                 waitFor(^BOOL { return menuShows(@"5 minutes"); }, 6, ^{
                     check(self.sheetGone, @"Spotify took its card down for the timer's sheet");
-                    pick(@"Back");
-                    waitFor(^BOOL { return menuShows(@"More") && !menuShows(@"5 minutes"); }, 5, ^{
-                        check(menuShows(@"More"), @"Back opens the menu again though the card is gone");
-                        check(!self.sleepSheet.viewIfLoaded.window, @"and the timer's sheet went");
-                        waitFor(^BOOL { return sg_spotifyTaps == 2; }, 4, ^{
-                            check(sg_spotifyTaps == 2, [NSString stringWithFormat:@"a fresh card was asked for (%lu taps)", (unsigned long)sg_spotifyTaps]);
-                            finish();
+                    // Back once the times have been read, as a person does: past kPageWait (4 s), when nothing of the
+                    // pick holds the menu's session any more. Picked at once, the pick's own wait held it alive and hid
+                    // that the menu then never came back (Spotify 9.1.90, iOS 26.3 simulator).
+                    after(4.5, ^{
+                        pick(@"Back");
+                        waitFor(^BOOL { return menuShows(@"More") && !menuShows(@"5 minutes"); }, 5, ^{
+                            check(menuShows(@"More"), @"Back, 4.5 s after the times came, opens the menu again though the card is gone");
+                            check(!self.sleepSheet.viewIfLoaded.window, @"and the timer's sheet went");
+                            waitFor(^BOOL { return sg_spotifyTaps == 2; }, 4, ^{
+                                check(sg_spotifyTaps == 2, [NSString stringWithFormat:@"a fresh card was asked for (%lu taps)", (unsigned long)sg_spotifyTaps]);
+                                finish();
+                            });
                         });
                     });
                 });

@@ -57,8 +57,9 @@ sheet is the player's, and that the sheet is in the mod's window under the app's
 - `sleepwrapped`: the same, with the sleep timer's sheet inside a container that puts it in only as it appears
   (NavigationUI_SheetImpl.ContainerViewController on the phone), and Spotify's card taken down before it, as on
   the phone: it is still kept hidden and fills the menu, which opens though the card is gone.
-- `sleepback`: as `sleepwrapped`, then Back: the menu opens again though Spotify's card is gone, from a fresh session
-  that asks for a card of its own, and the timer's sheet goes.
+- `sleepback`: as `sleepwrapped`, then Back 4.5 s after the times came (past `kPageWait`, when nothing of the pick holds
+  the menu's session): the menu opens again though Spotify's card is gone, from a fresh session that asks for a card of
+  its own, and the timer's sheet goes.
 - `pagepopup`: Voice language (item 0), a row the mod does not know, pushes a page: its rows open as a menu of their
   own, under its heading, with Back and the picked row checked, and the row is kept as one that opens a page; Back pops
   the page and opens the menu again; Voice language is then a submenu of the page's stored rows, opened at once, and

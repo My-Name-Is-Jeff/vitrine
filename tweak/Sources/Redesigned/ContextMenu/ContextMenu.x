@@ -1213,12 +1213,14 @@ static NSString *pageMenuKey(NSString *kind, NSString *title) {
 }
 
 // Back from a page's own menu: the page closed and the menu opened again, once the page's menu has gone.
+// The session is held strongly until then. Where Spotify took its card down (Sleep timer's, which held it), only the
+// pick's own wait (fire:, kPageWait) holds it once the menu has ended, so a Back more than 4 s after the times came found
+// it gone and the menu never came back (9.1.90, iOS 26.3 simulator). The blocks are UIKit's and the queue's, let go once
+// they have run, so nothing is kept alive after.
 - (void)backFromPage {
-    __weak SGRMenuSession *weakSelf = self;
+    SGRMenuSession *session = self;
     [self closePage:^{
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            SGRMenuSession *session = weakSelf;
-            if (!session) return;
             // Spotify took its card down for the page (Sleep timer's): the menu opens as a tap on the ⋯ opens it, on
             // the rows stored, with a card asked for afresh.
             if (!session.presented.presentingViewController && session.front) openFreshMenu((SGRMenuFront *)session.front);
