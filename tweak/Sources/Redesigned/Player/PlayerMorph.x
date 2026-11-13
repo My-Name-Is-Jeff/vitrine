@@ -347,7 +347,9 @@ static SGRPlayerMorph *morphFor(SPTBarOverlayPresentationTransition *transition,
     %orig;
     SGRPlayerMorph *morph = morphFor(self, YES);
     [morph apply:[self progress]];
-    if (morph) [self tabBarSnapshotView].alpha = 0;
+    // Below iOS 26 with legacy glass BarTransition.x hides the real tab bar for the whole transition, so this
+    // stand-in is the only tab bar on screen and has to stay.
+    if (morph && !SGUseLegacyGlass()) [self tabBarSnapshotView].alpha = 0;
 }
 
 - (void)destroyTransitioningContext {
@@ -484,7 +486,7 @@ static void followTransition(id transition, id<UIViewControllerContextTransition
     SGRPlayerMorph *morph = [[SGRPlayerMorph alloc] initWithContainer:container overlay:overlay bar:ivarOf(transition, "npbSnapshotView") barRest:CGRectZero];
     if (!morph) return;
     [morph followFrom:ivarOf(transition, "npbView")];
-    ((UIView *)ivarOf(transition, "tabBarSnapshotView")).alpha = 0;
+    if (!SGUseLegacyGlass()) ((UIView *)ivarOf(transition, "tabBarSnapshotView")).alpha = 0;
     SGRMorphFollower *follower = [SGRMorphFollower new];
     follower.morph = morph;
     follower.container = container;
