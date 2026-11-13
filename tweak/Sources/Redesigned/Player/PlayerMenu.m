@@ -109,6 +109,17 @@ static const CGFloat kSourcePanelWidth = 300, kSourcePanelMaxHeight = 440;
     [self rebuild];
 }
 
+// Below iOS 26 the popover's blur gives way to the ⋯ menu's glass, as Speed, Pitch & Reverb's does (PlayerPanelGlass.m).
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    SGPlayerStylePanel(self.view);
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+    [super viewDidAppear:animated];
+    SGPlayerStylePanel(self.view);
+}
+
 - (void)offersChanged:(NSNotification *)note {
     if ([note.object isEqual:_track]) [self rebuild];
 }
