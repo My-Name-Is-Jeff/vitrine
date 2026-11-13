@@ -51,6 +51,13 @@ UIColor *SGRSolidGlassFill(void) {
     return [UIColor colorWithWhite:1 alpha:0.16];
 }
 
+UIColor *SGRGlassFilmColor(void) {
+    static UIColor *color;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ color = [UIColor colorWithWhite:1 alpha:0.16]; });
+    return color;
+}
+
 UIColor *SGRHairline(void) {
     return [UIColor colorWithWhite:1 alpha:SGRIncreaseContrast() ? 0.20 : 0.12];
 }

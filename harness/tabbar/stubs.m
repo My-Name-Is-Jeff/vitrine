@@ -36,3 +36,11 @@ void SGRNavbarForgetTab(void) {
 void SGOpenModSettings(UIView *source) {}
 // Shared/Player/PlayerEvents.x, which TabBarMinimize.x listens to.
 NSString *const SGPlayerTransitionNotification = @"spotifyglass.playerTransition";
+NSString *const SGPlayerTransitionEndedNotification = @"spotifyglass.playerTransitionEnded";
+// Navbar.x refreshes the bar once its settings change; the harness changes none.
+void SGRRefreshTabBar(void) {}
+// TabBarLegacy.x, the bar below iOS 26 with Legacy Liquid Glass: the harness drives the bar main has, so it is off.
+BOOL SGRLegacyTabBarOn(void) { return NO; }
+BOOL SGRLegacyTabBarMinimized(void) { return NO; }
+void SGRLegacyApplyTabBarMinimized(BOOL minimized, BOOL animated) {}
+CGRect SGRLegacyTabBarInlineSlot(UIView *host, CGFloat height) { return CGRectNull; }
