@@ -31,6 +31,8 @@ UIColor *SGRAccent(void);       // the accent color of Appearance, else Spotify'
 UIColor *SGRNeutralField(void); // #121212, the field before a color arrives; SGRAmoled.x turns it black
 // Where glass cannot be (Reduce Transparency), the shape it would have had: white 16% over the field.
 UIColor *SGRSolidGlassFill(void);
+// The faint white film over glass below iOS 26 (a floating bar's, a prominent shape's): white 16%, one instance.
+UIColor *SGRGlassFilmColor(void);
 // A content surface on the field (a card), a step lighter than the field it sits on.
 UIColor *SGRElevated(UIColor *field);
 // The line between two rows of a list, drawn a pixel thick from the text's leading edge: white 12%, 20% with

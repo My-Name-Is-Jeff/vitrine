@@ -15,6 +15,7 @@
 //     SGRRestyle.h   keeping Spotify's views restyled: suppress, digits, lookups, shadows, firing
 //                    controls, taking a list cell's paint off the field, a hard top edge (SGREdgeEffect.x)
 //     SGRBridges.h   player state, now playing artwork, the player's open and close
+//     SGRPass.h      passes over Spotify's controllers and views, repeated as they settle
 //     SGRRepaint.h   the areas the redesign keeps transparent when Spotify repaints them
 //     SGRAccent.h    the redesign's accent color; its AMOLED black is SGRAmoled.x, always on
 //     Settings/SGMarquee.h  a title that glides when it is too long, every layer's, imported here for the screens
@@ -34,6 +35,7 @@
 #import "SGRStretchHero.h"
 #import "SGRRestyle.h"
 #import "SGRBridges.h"
+#import "SGRPass.h"
 #import "SGRRepaint.h"
 #import "SGRAccent.h"
 #import "Settings/SGMarquee.h"
