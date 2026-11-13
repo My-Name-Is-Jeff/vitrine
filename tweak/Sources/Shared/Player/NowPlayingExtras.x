@@ -98,9 +98,11 @@ void SGNowPlayingSetExtras(NSString *owner, NSDictionary *extras, NSString *titl
 }
 %end
 
+// Installed only under LiveContainer (%ctor): every other install keeps NSBundle and MediaRemote's clients as they are.
+%group SGLiveContainerHooks
 %hook NSBundle
 - (NSString *)bundleIdentifier {
-    if (self == NSBundle.mainBundle && SGIsLiveContainer()) {
+    if (self == NSBundle.mainBundle) {
         Dl_info info = {0};
         if (dladdr(__builtin_return_address(0), &info) && info.dli_fbase) {
             const char *fname = info.dli_fname;
@@ -118,24 +120,21 @@ void SGNowPlayingSetExtras(NSString *owner, NSDictionary *extras, NSString *titl
     return %orig;
 }
 %end
+%end
 
 %group SGHostClientHooks
 %hook MRClient
 - (NSString *)bundleIdentifier {
-    if (SGIsLiveContainer()) {
-        NSBundle *host = SGHostBundle();
-        if (host.bundleIdentifier.length) return host.bundleIdentifier;
-    }
+    NSBundle *host = SGHostBundle();
+    if (host.bundleIdentifier.length) return host.bundleIdentifier;
     return %orig;
 }
 %end
 
 %hook MRNowPlayingClient
 - (NSString *)bundleIdentifier {
-    if (SGIsLiveContainer()) {
-        NSBundle *host = SGHostBundle();
-        if (host.bundleIdentifier.length) return host.bundleIdentifier;
-    }
+    NSBundle *host = SGHostBundle();
+    if (host.bundleIdentifier.length) return host.bundleIdentifier;
     return %orig;
 }
 %end
@@ -146,6 +145,8 @@ void SGNowPlayingSetExtras(NSString *owner, NSDictionary *extras, NSString *titl
     sg_extras = [NSMutableDictionary dictionary];
     sg_titles = [NSMutableDictionary dictionary];
     %init;
+    if (!SGIsLiveContainer()) return;
+    %init(SGLiveContainerHooks);
     if (objc_getClass("MRClient") || objc_getClass("MRNowPlayingClient")) {
         %init(SGHostClientHooks);
     }
