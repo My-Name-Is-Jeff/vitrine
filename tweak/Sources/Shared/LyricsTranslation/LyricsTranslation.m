@@ -1306,11 +1306,10 @@ static void processFetchedGeminiModels(NSArray *models, const SGAIProvider *p) {
             [lower containsString:@"realtime"]) continue;
         // Hide defunct (404) models permanently unavailable to users:
         if ([lower containsString:@"2.5"]) continue;
+        // model() puts a stored 3.8 Flash back to the default, so a pick of it would not hold: it is not offered.
+        if ([name isEqualToString:@"gemini-3.8-flash"]) continue;
         id rawDisp = m[@"displayName"];
         NSString *disp = [rawDisp isKindOfClass:NSString.class] && ((NSString *)rawDisp).length ? rawDisp : name;
-        if ([name isEqualToString:@"gemini-3.8-flash"]) {
-            disp = [disp stringByAppendingString:@" (Hangs)"];
-        }
         if ([name isEqualToString:p->models[0]]) {
             if (![disp containsString:@"Recommended"]) {
                 disp = [disp stringByAppendingString:@" (Recommended)"];
