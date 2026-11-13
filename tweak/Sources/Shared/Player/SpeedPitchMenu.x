@@ -300,6 +300,8 @@ static void placeTick(UISlider *slider) {
         line[2].frame = CGRectMake(side, y + 30, width - 2 * side, 36);
         [line[2] layoutIfNeeded];
         placeTick((UISlider *)line[2]);
+        // The redesign's thumb below iOS 26: a white capsule that swells into glass while it is dragged.
+        if (SGRedesignedUI()) SGGlassThumbAttach((UISlider *)line[2], CGSizeMake(34, 22));
         y += kSliderBlockHeight;
     }
     CGSize toggle = [_follows sizeThatFits:CGSizeZero];
@@ -534,6 +536,7 @@ static NSString *pitchText(float pitch) {
     block.panelOnly = YES;
     self.view = block;
 }
+
 @end
 
 void SGPlayerShowSpeedPitchPanel(UIView *from) {
