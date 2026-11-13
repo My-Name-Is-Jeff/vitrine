@@ -156,6 +156,7 @@ static UIFont *capsuleFont(void) {
 }
 
 - (void)sgr_down {
+    if (SGUseLegacyGlass() && objc_getAssociatedObject(self, &kCapsuleGlassKey)) return;    // the glass answers the press itself
     SGRAnimate(SGRMotionPress, ^{ self.transform = CGAffineTransformMakeScale(0.94, 0.94); }, nil);
 }
 
@@ -414,6 +415,7 @@ static BOOL indicatorOn(UIView *button, BOOL *found) {
 }
 
 - (void)sgr_down {
+    if (SGUseLegacyGlass() && objc_getAssociatedObject(self, &kMirrorGlassKey)) return;    // the glass answers the press itself
     SGRAnimate(SGRMotionPress, ^{ self.transform = CGAffineTransformMakeScale(0.92, 0.92); }, nil);
 }
 

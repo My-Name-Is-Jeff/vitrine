@@ -54,6 +54,10 @@ void SGOpenURL(NSString *url);
 extern NSString *const SGRepoURL;
 // The controller on top of the key window, through whatever is presented over it.
 UIViewController *SGTopController(void);
+// "Restart Spotify" with `message`, Later and Restart now: for a switch that only takes effect at launch and changes
+// enough of the app that it should not be left half in the old state.
+void SGOfferRestart(NSString *message);
+
 // `panel` as a dark popover from `from`, at its preferredContentSize, a popover on iPhone too. Picked from a
 // system menu, which is still going away, it waits for the menu.
 void SGPresentPopover(UIViewController *panel, UIView *from);

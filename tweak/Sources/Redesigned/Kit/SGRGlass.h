@@ -29,3 +29,4 @@ UIView *SGRGlassCapsuleInside(UIView *control, const void *key, CGSize size, BOO
 // The solid shape Reduce Transparency puts in its place has no effect and fades by its own alpha. Animates
 // in the caller's animation.
 void SGRShowGlass(UIView *shape, BOOL shown);
+

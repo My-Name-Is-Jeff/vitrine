@@ -38,7 +38,7 @@ static CGRect sg_stripFrame;
 // The track's glass frame in the container's view as the bar was last styled, the strip cut off: the row
 // takes the card's height and middle from it, never the bar's, which in a Jam has the strip on top.
 static CGRect sg_trackFrame = {{INFINITY, INFINITY}, {0, 0}};
-static __weak UIVisualEffectView *sg_cardGlass;
+static __weak UIView *sg_cardGlass;
 static __weak UIView *sg_cardArtwork;
 static __weak UIView *sg_progress;
 static __weak UIViewController *sg_container;
@@ -46,7 +46,7 @@ static __weak UIViewController *sg_container;
 static __weak UIView *sg_inline;
 
 CGRect SGRNowPlayingCardFrameIn(UIView *host, CGFloat *radius) {
-    UIVisualEffectView *glass = sg_cardGlass;
+    UIView *glass = sg_cardGlass;
     if (!glass.superview || !glass.window || !host) return CGRectNull;
     if (radius) *radius = MIN(kCardRadius, glass.bounds.size.height / 2);
     return [host convertRect:glass.bounds fromView:glass];
@@ -182,23 +182,31 @@ static void restyleCardContent(UIView *card) {
 // the card's settled frame and the strip's height, not from the strip's frame: Spotify animates the strip
 // in, and a pane taken from it mid-way sat about 12pt off and cut its ⋯ button. The glass comes in and goes
 // by its effect, never by alpha (SGRGlass.h).
+// Whether a pane is showing: a UIVisualEffectView by its effect, an SGLegacyGlassView (below iOS 26) by its alpha,
+// the two ways SGRShowGlass hides one.
+static BOOL paneShown(UIView *pane) {
+    if ([pane isKindOfClass:UIVisualEffectView.class]) return ((UIVisualEffectView *)pane).effect != nil;
+    return pane.alpha > 0;
+}
+
 static void placeStripGlass(UIView *host, UIView *strip, CGRect card, BOOL above) {
-    UIVisualEffectView *pane = objc_getAssociatedObject(host, &kStripGlassKey);
+    UIView *pane = objc_getAssociatedObject(host, &kStripGlassKey);
     if (!strip) {
-        if (pane.effect) SGRAnimate(SGRMotionExit, ^{ SGRShowGlass(pane, NO); }, nil);
+        if (pane && paneShown(pane)) SGRAnimate(SGRMotionExit, ^{ SGRShowGlass(pane, NO); }, nil);
         return;
     }
     BOOL made = pane != nil;
     pane = SGGlassFor(host, &kStripGlassKey);
     if (!made) {
-        pane.effect = nil;
+        if ([pane isKindOfClass:UIVisualEffectView.class]) ((UIVisualEffectView *)pane).effect = nil;
+        else pane.alpha = 0;
         pane.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
     }
     CGFloat height = strip.bounds.size.height;
     CGRect frame = CGRectMake(card.origin.x, above ? CGRectGetMinY(card) - height : CGRectGetMaxY(card), card.size.width, height);
     pane.frame = CGRectInset(frame, 0, kStripInset);
     SGShapeGlass(pane, MIN(kCardRadius, pane.bounds.size.height / 2), NO);
-    if (!pane.effect) SGRAnimate(SGRMotionRespond, ^{ SGRShowGlass(pane, YES); }, nil);
+    if (!paneShown(pane)) SGRAnimate(SGRMotionRespond, ^{ SGRShowGlass(pane, YES); }, nil);
 }
 
 // The bar's left and right edges in its superview, set through the constants of the constraints that hold
@@ -621,7 +629,7 @@ static void styleNowPlayingBar(UIViewController *container) {
         restyleCardContent(card);
     }
 
-    UIVisualEffectView *glass = SGGlassFor(container.view, &kGlassKey);
+    UIView *glass = SGGlassFor(container.view, &kGlassKey);
     // Dark whatever the system is set to: the bar is outside the navigation stacks Spotify makes dark, and
     // took the system's light glass on a phone in light mode (TabBar.x).
     if (glass.overrideUserInterfaceStyle != UIUserInterfaceStyleDark) glass.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
