@@ -10,6 +10,7 @@
 //     PlayerHeader.x     glass behind the close and more buttons
 //     PlayerControls.x   previous, play and next as bare glyphs, shuffle and repeat hidden on request, monospaced times
 //     PlayerFooter.x     share gone, lyrics, Connect and queue as one row of three glyphs
+//     PlayerVolume.m     the volume slider between the controls and the footer: this iPhone's, or the Connect device's
 //     DJPlayer.x         the AI DJ's player (its own units): skip glyphs, a four glyph footer row, over the shared
 //                        play glyph, lowered row and Connect of PlayerControls.x and PlayerFooter.x
 //     PlayerCards.x      every card under the player collapsed, so the list closes up
@@ -96,6 +97,54 @@ void SGRPlayerLyricsChanged(void);
 // SGRPlayerLyricsChanged, which is the footer on screen: each layout of a footer asks again.
 @class SGRGlyphButton;
 SGRGlyphButton *SGRPlayerLyricsGlyphIn(UIView *host);
+
+#pragma mark - the queue in the player (PlayerLyrics.x / PlayerFooter.x)
+
+// Whether the player is showing the inline Up Next queue.
+BOOL SGRPlayerQueueOpen(void);
+
+// Toggles the inline queue on and off; transitions directly between lyrics and queue when lyrics are open.
+void SGRPlayerToggleQueue(void);
+
+// Notifies footer and visual components that queue state changed.
+void SGRPlayerQueueChanged(void);
+
+// Hides or restores shuffle and repeat on the main transport controls row when the inline queue opens or closes.
+void SGRPlayerControlsQueueChanged(void);
+
+// Re-applies the footer, controls, and volume vertical layout when the inline queue opens or closes.
+void SGRPlayerLayoutFooterForQueue(void);
+
+// The queue glyph of the footer, made on first ask in `host`.
+SGRGlyphButton *SGRPlayerQueueGlyphIn(UIView *host);
+// Renders the 38x38 active knockout circle icon for the queue glyph.
+UIImage *SGRPlayerQueueActiveIcon(CGSize size);
+// Triggers Spotify's Connect output switcher sheet from custom surfaces (such as the landscape queue footer).
+void SGRPlayerTriggerConnect(void);
+
+// Live context title displayed at the top of Now Playing (HeaderElementsUnit), nil/empty when unavailable.
+NSString *SGRPlayerHeaderContextTitle(void);
+// Minimizes the fullscreen Now Playing sheet so an entity page opened beneath it is visible.
+void SGRPlayerMinimizeIfOpen(void);
+
+// Configurable 4-slot playback pill bar at the top of Continue Playing in Queue.
+#define SGRKeyQueuePill1 @"spotifyglass.redesign.queue.pill1"
+#define SGRKeyQueuePill2 @"spotifyglass.redesign.queue.pill2"
+#define SGRKeyQueuePill3 @"spotifyglass.redesign.queue.pill3"
+#define SGRKeyQueuePill4 @"spotifyglass.redesign.queue.pill4"
+typedef NS_ENUM(NSInteger, SGRQueuePillKind) {
+    SGRQueuePillShuffle = 0,
+    SGRQueuePillRepeat = 1,
+    SGRQueuePillAutoplay = 2,
+    SGRQueuePillTransitions = 3,
+    SGRQueuePillSleepTimer = 4,
+    SGRQueuePillSpeedPitch = 5,
+    SGRQueuePillLyricsSource = 6,
+    SGRQueuePillNone = 7,
+};
+NSArray<NSString *> *SGRQueuePillNames(void);
+SGRQueuePillKind SGRQueuePillKindForSlot(NSUInteger slot);
+void SGRSetQueuePillKindForSlot(NSUInteger slot, SGRQueuePillKind kind);
 // An Endless_DJMusicImpl class of the AI DJ's player by its Swift name, under the mangled spelling or the
 // dotted one the trees print; nil when the app has neither.
 static inline Class SGRDJClass(NSString *name) {
@@ -123,12 +172,20 @@ BOOL SGRPlayerVolumeOn(void);
 BOOL SGRPlayerPlaceVolume(UIView *stack, UIView *controls, UIView *row, CGFloat margin);
 // Called after any slider's setValue:animated: (PlayerFooter.x), so the row follows its hidden system slider.
 void SGRPlayerVolumeSliderSet(UISlider *slider);
+// Spotify's Connect volume service (`_TtC18Connect_VolumeImpl10VolumeImpl`) and aggregator
+// (`_TtC22Connect_AggregatorImpl24ConnectAggregatorManager`), handed over from PlayerFooter.x so the row
+// shows and moves the Connect device's volume while one plays.
+void SGRPlayerConnectVolumeProvided(id volume);
+void SGRPlayerConnectAggregatorProvided(id aggregator);
+void SGRPlayerConnectEntityChanged(id aggregator, id entity);
 
 // Follow the cover (PlayerCoverAccent.x): the player's lit controls painted in the cover's color instead of the accent.
 // Off until switched on, read at launch. The cover's color (a gray one gives the accent back), and a paint of Spotify's
 // bottom stack, which the footer's layout asks for.
 #define SGRKeyPlayerFollowsCover @"spotifyglass.redesign.player.followsCover"
+#define SGRPlayerCoverAccentDidChangeNotification @"SGRPlayerCoverAccentDidChangeNotification"
 BOOL SGRPlayerFollowsCover(void);
+UIColor *SGRPlayerCurrentAccent(void);
 void SGRPlayerSetCoverAccent(UIColor *cover);
 void SGRPlayerPaintCover(UIView *stack);
 
@@ -148,12 +205,25 @@ BOOL SGRPlayerSpotifyIcons(void);
 // symbol, which is hidden; kept on the button, so a second call hands back the same view. Nil if Spotify has none.
 UIView *SGRPlayerEncoreGlyphIn(SGRGlyphButton *button, NSString *name);
 
-// The lyrics turn sideways with the phone onto a landscape screen of their own (PlayerLandscape.x). On
+// The lyrics or the queue turn sideways with the phone onto a landscape screen of their own (PlayerLandscape.x). On
 // until switched off. Shown or put away by hand for the harness.
 #define SGRKeyLyricsLandscape @"spotifyglass.redesign.lyrics.landscape"
+#define SGRKeyQueueLandscape @"spotifyglass.redesign.queue.landscape"
 void SGRPlayerShowLandscape(BOOL show);
 // The playing track's lines came in, or turned out to be none: the landscape screen lays out for it.
 void SGRPlayerLandscapeLinesChanged(void);
+// Notifies the landscape screen when inline Lyrics or Queue mode changes.
+void SGRPlayerLandscapeModeChanged(void);
+// Reads or restores the inline Queue's vertical scroll offset across Portrait <-> Landscape rotation.
+CGFloat SGRPlayerQueueScrollOffset(void);
+void SGRPlayerSetQueueScrollOffset(CGFloat offset);
+// Snapshots the portrait Queue bottom transport chrome (progress bar, playback controls, volume slider) for rotation.
+UIView *SGRPlayerSnapshotQueueTransport(void);
+// AI DJ availability and activation across portrait and landscape screens.
+BOOL SGRPlayerDJAvailable(void);
+void SGRPlayerTriggerDJ(void);
+UIView *SGRPlayerFooterRow(void);
+UIView *SGRPlayerHost(void);
 
 // The animated artwork follows the lyrics: blurred behind them (PlayerMotion.x).
 void SGRPlayerMotionLyricsChanged(void);
@@ -235,3 +305,11 @@ CGFloat SGRSeekShareAt(UISlider *slider, CGPoint point);
 // The more button's menu opens as the system menu with the player's own items (PlayerMenu.m). Called from
 // PlayerHeader.x with Spotify's more button on every pass; watching it again changes nothing.
 void SGRPlayerMenuWatch(UIView *button);
+// Watches a proxy ⋯ button (Queue's Now Playing mini-card ⋯) so tapping it opens the exact same system menu.
+void SGRPlayerMenuWatchProxy(UIView *button);
+// Opens the Lyrics Source popover anchored to `from`.
+void SGRPlayerShowLyricsSourcePanel(UIView *from);
+// Current Sleep Timer status summary ("Off", "15 min left", "End of Track"...) and whether a timer is active.
+NSString *SGRPlayerSleepTimerSummary(BOOL *activeOut);
+// Builds the Sleep Timer UIMenu (with optional submenu title and post-selection callback).
+UIMenu *SGRPlayerSleepTimerMenu(NSString *title, void (^onChange)(void));

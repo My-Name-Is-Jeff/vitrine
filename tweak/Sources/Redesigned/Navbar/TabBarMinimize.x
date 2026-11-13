@@ -16,6 +16,10 @@ static Class sg_containerClass;
 static __weak UIScrollView *sg_page, *sg_other;
 static SGRMinimizeTrack sg_track;
 static BOOL sg_waitForTouch;
+// Set while the bar answers a scroll. Whatever that change does to a page's offset (its inset moving, a layout
+// pass) comes back through -setContentOffset: and is not a scroll of the user's: answered, it could turn the bar
+// straight back and round again inside the one call, which is a hang.
+static BOOL sg_answering;
 
 static BOOL inContainer(UIView *view) {
     for (UIResponder *r = view.nextResponder; r; r = r.nextResponder) if ([r isKindOfClass:sg_containerClass]) return YES;
@@ -24,33 +28,69 @@ static BOOL inContainer(UIView *view) {
 
 static void scrolled(UIScrollView *scrollView) {
     if ((!scrollView.isTracking && !scrollView.isDecelerating) || scrollView == sg_other) return;
+    if (SGRTabBarIsTransitioning()) return;
     CGFloat offset = scrollView.contentOffset.y;
+    BOOL currentMinimized = SGRTabBarMinimizedTarget();
     if (scrollView != sg_page) {
         if (!inContainer(scrollView)) {
             sg_other = scrollView;
             return;
         }
         sg_page = scrollView;
-        sg_track = (SGRMinimizeTrack){offset, SGRTabBarMinimized()};
+        sg_track = (SGRMinimizeTrack){offset, currentMinimized};
     }
     // The bar changed some other way (a tab, the player): the scroll counts from here.
-    if (sg_track.minimized != SGRTabBarMinimized()) {
-        sg_track = (SGRMinimizeTrack){offset, SGRTabBarMinimized()};
+    if (sg_track.minimized != currentMinimized) {
+        sg_track = (SGRMinimizeTrack){offset, currentMinimized};
         sg_waitForTouch = YES;
     }
     if (scrollView.isTracking) sg_waitForTouch = NO;
     UIEdgeInsets inset = scrollView.adjustedContentInset;
     CGFloat top = -inset.top, bottom = scrollView.contentSize.height + inset.bottom - scrollView.bounds.size.height;
+    BOOL allowMinimize = SGEnabled(SGRKeyNavbarMinimize) && !sg_waitForTouch;
+    CGFloat progress = allowMinimize ? SGRMinimizeProgress(&sg_track, offset, top, bottom) : 0;
     BOOL minimized = SGRMinimizeStep(&sg_track, offset, top, bottom);
-    if (minimized == SGRTabBarMinimized() || (minimized && !SGEnabled(SGRKeyNavbarMinimize))) return;
-    if (minimized && sg_waitForTouch) return;
+    if (minimized == currentMinimized || (minimized && !allowMinimize)) {
+        if (minimized && !allowMinimize) sg_track.minimized = currentMinimized;
+        sg_answering = YES;
+        SGRSetTabBarScrollSquish(minimized ? 0 : progress, NO);
+        sg_answering = NO;
+        return;
+    }
+    sg_answering = YES;
     SGRSetTabBarMinimized(minimized, YES);
+    sg_answering = NO;
 }
 
 %hook UIScrollView
 - (void)setContentOffset:(CGPoint)offset {
     %orig;
-    scrolled(self);
+    if (!sg_answering && !SGRTabBarIsTransitioning()) scrolled(self);
+}
+%end
+
+%hook UIPanGestureRecognizer
+- (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    %orig;
+    if (self.view == sg_page) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (!sg_page.isTracking && !sg_page.isDecelerating && !SGRTabBarMinimizedTarget()) {
+                sg_track.turn = sg_page.contentOffset.y;
+                SGRSetTabBarScrollSquish(0, YES);
+            }
+        });
+    }
+}
+- (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    %orig;
+    if (self.view == sg_page) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (!sg_page.isTracking && !sg_page.isDecelerating && !SGRTabBarMinimizedTarget()) {
+                sg_track.turn = sg_page.contentOffset.y;
+                SGRSetTabBarScrollSquish(0, YES);
+            }
+        });
+    }
 }
 %end
 
@@ -60,5 +100,8 @@ static void scrolled(UIScrollView *scrollView) {
     if (!sg_containerClass) return;
     %init;
     [NSNotificationCenter.defaultCenter addObserverForName:SGPlayerTransitionNotification object:nil queue:nil
-                                                usingBlock:^(NSNotification *note) { SGRSetTabBarMinimized(NO, NO); }];
+                                                usingBlock:^(NSNotification *note) {
+        if (NSThread.isMainThread) SGRSetTabBarMinimized(NO, NO);
+        else dispatch_async(dispatch_get_main_queue(), ^{ SGRSetTabBarMinimized(NO, NO); });
+    }];
 }
