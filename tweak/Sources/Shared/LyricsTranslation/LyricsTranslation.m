@@ -83,7 +83,7 @@ static NSDictionary *linesSchema(void) {
 }
 
 static NSString *geminiThinkingLevel(void) {
-    // Only the menu's levels: a stored "minimal" from an early build of this row would make 3.8 Flash answer 400 every ask.
+    // Only the menu's levels: a stored "minimal" from an early build of this row would make Gemini 3/4 answer 400 every ask.
     NSString *level = [NSUserDefaults.standardUserDefaults stringForKey:SGKeyAIThinking];
     return [@[@"medium", @"high"] containsObject:level] ? level : @"low";
 }
@@ -217,8 +217,9 @@ static const SGAIProvider kProviders[] = {
     {@"gemini", @"Gemini", @"Google", @"Vitrine.Gemini",
      @"Translate with Gemini sends the song's lyrics to Google, on your own key from Google AI Studio. The key stays on this iPhone.",
      @"Answer with a JSON array of the {count} translations as strings.",
-     // A pinned id first, the one users report working (3.5 Flash).
-     {@"gemini-3.5-flash", @"gemini-3-flash-preview", @"gemini-3.5-flash-lite", @"gemini-3.6-flash"}, {@"3.5 Flash (Recommended)", @"3 Flash Preview", @"3.5 Flash Lite", @"3.6 Flash"},
+     // Default to Gemini 4 Hydrogen (highest lyric/idiom accuracy on free-tier keys with thinkingLevel=low),
+     // followed by 3.6 Flash (fastest reliable GA Flash), 3 Flash Preview, and 3.5 Flash Lite (fastest overall).
+     {@"gemini-4-hydrogen", @"gemini-3.6-flash", @"gemini-3-flash-preview", @"gemini-3.5-flash-lite"}, {@"4 Hydrogen (Recommended)", @"3.6 Flash", @"3 Flash Preview", @"3.5 Flash Lite"},
      YES, {@"thinking"}, geminiRequest, geminiAnswer},
     {@"openai", @"OpenAI-compatible", nil, @"Vitrine.OpenAI",
      @"Sends the song's lyrics to the server below: OpenAI's own unless you name another, such as OpenRouter, or an "
@@ -540,23 +541,27 @@ NSArray<NSString *> *SGAITranslationsIn(NSString *provider, id root, NSInteger s
 NSString *SGLyricsErrorTitle(NSString *error) {
     if (!error.length) return @"Translation Failed";
     if ([error hasPrefix:@"Download "]) return @"Language Not Downloaded";
-    if ([error containsString:@"rate limit"] || [error containsString:@"limit for this key"] || [error containsString:@"quota"] || [error containsString:@"429"]) {
+    if ([error localizedCaseInsensitiveContainsString:@"rate limit"] || [error localizedCaseInsensitiveContainsString:@"limit for this key"] ||
+        [error localizedCaseInsensitiveContainsString:@"quota"] || [error containsString:@"429"]) {
         return @"Rate Limit Exceeded";
     }
-    if ([error containsString:@"turned the key down"] || [error containsString:@"rejected API key"] ||
-        [error containsString:@"API key"] || [error containsString:@"invalid x-api-key"] || [error containsString:@"401"] || [error containsString:@"403"]) {
+    if ([error localizedCaseInsensitiveContainsString:@"turned the key down"] || [error localizedCaseInsensitiveContainsString:@"rejected API key"] ||
+        [error localizedCaseInsensitiveContainsString:@"API key"] || [error localizedCaseInsensitiveContainsString:@"invalid x-api-key"] ||
+        [error containsString:@"401"] || [error containsString:@"403"]) {
         return @"Invalid API Key";
     }
-    if ([error containsString:@"not found"] || [error containsString:@"retired"] || [error containsString:@"404"]) {
+    if ([error localizedCaseInsensitiveContainsString:@"not found"] || [error localizedCaseInsensitiveContainsString:@"retired"] || [error containsString:@"404"]) {
         return @"Model Unavailable";
     }
-    if ([error containsString:@"busy"] || [error containsString:@"demand"] || [error containsString:@"503"] || [error containsString:@"500"]) {
+    if ([error localizedCaseInsensitiveContainsString:@"busy"] || [error localizedCaseInsensitiveContainsString:@"demand"] ||
+        [error containsString:@"503"] || [error containsString:@"500"]) {
         return @"Service Busy";
     }
-    if ([error containsString:@"timed out"] || [error containsString:@"timeout"] || [error containsString:@"408"]) {
+    if ([error localizedCaseInsensitiveContainsString:@"timed out"] || [error localizedCaseInsensitiveContainsString:@"timeout"] || [error containsString:@"408"]) {
         return @"Request Timed Out";
     }
-    if ([error containsString:@"could not be reached"] || [error containsString:@"Could not reach"] || [error containsString:@"connection"]) {
+    if ([error localizedCaseInsensitiveContainsString:@"could not be reached"] || [error localizedCaseInsensitiveContainsString:@"Could not reach"] ||
+        [error localizedCaseInsensitiveContainsString:@"connection"]) {
         return @"Connection Error";
     }
     return @"Translation Failed";
@@ -1258,20 +1263,20 @@ static NSInteger geminiModelWeightRank(NSString *modelID) {
     static NSArray<NSString *> *ordered;
     static dispatch_once_t once;
     dispatch_once(&once, ^{
-        // Quality & accuracy first (full Flash models for lyric/idiom nuance), followed by speed/lite alternatives:
+        // Quality & reliability first from live lyric benchmarks:
+        // 4 Hydrogen leads idiom/poetic nuance (30/30 lines, free-tier compatible); 3 Flash Preview closely follows
+        // on idioms; 3.6 Flash is the fastest reliable GA Flash (30/30 in ~2.2s); then 3.5 Flash, Lite, and stalling models.
         ordered = @[
-            @"gemini-3.5-flash",
+            @"gemini-4-hydrogen",
             @"gemini-3-flash-preview",
-            @"gemini-3.5-flash-lite",
             @"gemini-3.6-flash",
+            @"gemini-3.5-flash",
+            @"gemini-3.5-flash-lite",
             @"gemini-3.1-flash-lite",
             @"gemini-3.1-flash-lite-preview",
             @"gemini-flash-lite-latest",
-            @"gemini-3.8-flash",
             @"gemini-3.7-flash",
-            @"gemini-flash-latest",
-            @"gemini-2.5-flash",
-            @"gemini-2.5-flash-lite"
+            @"gemini-flash-latest"
         ];
     });
     NSString *lower = modelID.lowercaseString;
@@ -1284,8 +1289,6 @@ static NSInteger geminiModelWeightRank(NSString *modelID) {
     if (!isLite && isPreview) return 300;
     return 400;
 }
-
-static NSArray<NSString *> *modelMenu(const SGAIProvider *p);
 
 static void processFetchedGeminiModels(NSArray *models, const SGAIProvider *p) {
     NSMutableArray<NSDictionary *> *pairs = [NSMutableArray array];
@@ -1300,7 +1303,7 @@ static void processFetchedGeminiModels(NSArray *models, const SGAIProvider *p) {
         if ([seen containsObject:name]) continue;
         [seen addObject:name];
         NSString *lower = name.lowercaseString;
-        if (![lower containsString:@"flash"]) continue;
+        if (![lower containsString:@"flash"] && ![lower containsString:@"hydrogen"]) continue;
         if ([lower containsString:@"tts"] || [lower containsString:@"image"] || [lower containsString:@"banana"] ||
             [lower containsString:@"audio"] || [lower containsString:@"omni"] || [lower containsString:@"transcribe"] ||
             [lower containsString:@"realtime"]) continue;
@@ -1329,7 +1332,9 @@ static void processFetchedGeminiModels(NSArray *models, const SGAIProvider *p) {
         [discoveredIDs addObject:pair[@"id"]];
         [discoveredNames addObject:pair[@"name"]];
     }
-    if (discoveredIDs.count > 0) {
+    if (!discoveredIDs.count) return;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (!storedSecret(p, kKeyAccount).length) return;
         NSArray *oldIDs = [NSUserDefaults.standardUserDefaults stringArrayForKey:@"spotifyglass.lyrics.gemini.polled_ids"];
         NSArray *oldNames = [NSUserDefaults.standardUserDefaults stringArrayForKey:@"spotifyglass.lyrics.gemini.polled_names"];
         if ([discoveredIDs isEqualToArray:oldIDs] && [discoveredNames isEqualToArray:oldNames]) {
@@ -1337,14 +1342,56 @@ static void processFetchedGeminiModels(NSArray *models, const SGAIProvider *p) {
         }
         [NSUserDefaults.standardUserDefaults setObject:discoveredIDs forKey:@"spotifyglass.lyrics.gemini.polled_ids"];
         [NSUserDefaults.standardUserDefaults setObject:discoveredNames forKey:@"spotifyglass.lyrics.gemini.polled_names"];
-        dispatch_async(dispatch_get_main_queue(), ^{
-            UIViewController *top = SGTopController();
-            if ([top isKindOfClass:UITableViewController.class]) {
-                [((UITableViewController *)top).tableView reloadData];
-            }
-            translatorChanged();
-        });
+        UIViewController *top = SGTopController();
+        if ([top isKindOfClass:UITableViewController.class]) {
+            [((UITableViewController *)top).tableView reloadData];
+        }
+        translatorChanged();
+    });
+}
+
+static void fetchGeminiModelsPage(NSString *key, NSString *pageToken, NSUInteger page, NSMutableArray *allModels, void (^finish)(BOOL)) {
+    NSURLComponents *components = [NSURLComponents componentsWithString:@"https://generativelanguage.googleapis.com/v1beta/models"];
+    NSMutableArray<NSURLQueryItem *> *items = [NSMutableArray arrayWithObject:[NSURLQueryItem queryItemWithName:@"pageSize" value:@"50"]];
+    if (pageToken.length) {
+        [items addObject:[NSURLQueryItem queryItemWithName:@"pageToken" value:pageToken]];
     }
+    components.queryItems = items;
+    NSURL *url = components.URL;
+    if (!url) {
+        finish(NO);
+        return;
+    }
+    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
+    [req setValue:key forHTTPHeaderField:@"x-goog-api-key"];
+    req.timeoutInterval = 8.0;
+
+    [[NSURLSession.sharedSession dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        if (!data || error) {
+            finish(NO);
+            return;
+        }
+        NSInteger status = [response isKindOfClass:NSHTTPURLResponse.class] ? ((NSHTTPURLResponse *)response).statusCode : 0;
+        if (status != 200) {
+            finish(NO);
+            return;
+        }
+        id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+        if (![json isKindOfClass:NSDictionary.class]) {
+            finish(NO);
+            return;
+        }
+        NSArray *models = json[@"models"];
+        if ([models isKindOfClass:NSArray.class]) {
+            [allModels addObjectsFromArray:models];
+        }
+        NSString *nextToken = json[@"nextPageToken"];
+        if ([nextToken isKindOfClass:NSString.class] && nextToken.length > 0 && page < 10) {
+            fetchGeminiModelsPage(key, nextToken, page + 1, allModels, finish);
+            return;
+        }
+        finish(YES);
+    }] resume];
 }
 
 static void fetchGeminiModels(void) {
@@ -1352,56 +1399,20 @@ static void fetchGeminiModels(void) {
     if (!p) return;
     NSString *key = storedSecret(p, kKeyAccount);
     if (!key.length) return;
-    static BOOL inFlight = NO;
-    if (inFlight) return;
-    inFlight = YES;
+    static NSUInteger fetchGen = 0;
+    NSUInteger gen = ++fetchGen;
 
     NSMutableArray *allModels = [NSMutableArray array];
-    NSUInteger maxPages = 10;
-    void (^__block fetchPage)(NSString *, NSUInteger);
-    fetchPage = ^(NSString *pageToken, NSUInteger page) {
-        NSString *urlString = @"https://generativelanguage.googleapis.com/v1beta/models?pageSize=50";
-        if (pageToken.length) {
-            urlString = [urlString stringByAppendingFormat:@"&pageToken=%@", [pageToken stringByAddingPercentEncodingWithAllowedCharacters:NSCharacterSet.URLQueryAllowedCharacterSet]];
-        }
-        NSURL *url = [NSURL URLWithString:urlString];
-        NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
-        [req setValue:key forHTTPHeaderField:@"x-goog-api-key"];
-        req.timeoutInterval = 8.0;
-
-        [[NSURLSession.sharedSession dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-            if (!data || error) {
-                inFlight = NO;
-                fetchPage = nil;
-                return;
-            }
-            NSInteger status = [response isKindOfClass:NSHTTPURLResponse.class] ? ((NSHTTPURLResponse *)response).statusCode : 0;
-            if (status != 200) {
-                inFlight = NO;
-                fetchPage = nil;
-                return;
-            }
-            id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-            if (![json isKindOfClass:NSDictionary.class]) {
-                inFlight = NO;
-                fetchPage = nil;
-                return;
-            }
-            NSArray *models = json[@"models"];
-            if ([models isKindOfClass:NSArray.class]) {
-                [allModels addObjectsFromArray:models];
-            }
-            NSString *nextToken = json[@"nextPageToken"];
-            if ([nextToken isKindOfClass:NSString.class] && nextToken.length > 0 && page < maxPages) {
-                fetchPage(nextToken, page + 1);
-                return;
-            }
-            inFlight = NO;
-            fetchPage = nil;
-            processFetchedGeminiModels(allModels, p);
-        }] resume];
+    void (^finish)(BOOL) = ^(BOOL success) {
+        if (!success) return;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (gen != fetchGen) return;
+            dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+                processFetchedGeminiModels(allModels, p);
+            });
+        });
     };
-    fetchPage(nil, 1);
+    fetchGeminiModelsPage(key, nil, 1, allModels, finish);
 }
 
 static void askForModel(void) {

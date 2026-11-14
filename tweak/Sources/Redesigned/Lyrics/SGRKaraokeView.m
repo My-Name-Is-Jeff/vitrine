@@ -974,7 +974,8 @@ static BOOL anyUntranslated(NSArray<SGKaraokeLine *> *lines) {
             NSString *title = translations ? @"Partly Translated" : SGLyricsErrorTitle(error);
             UIAlertController *alert = [UIAlertController alertControllerWithTitle:title
                                                                            message:error preferredStyle:UIAlertControllerStyleAlert];
-            alert.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+            // Over the player, which is dark whatever the system's appearance.
+            SGPresentDark(alert);
             if (needsDownload) {
                 [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
                 UIAlertAction *open = [UIAlertAction actionWithTitle:@"Open Settings" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {

@@ -311,7 +311,7 @@ static void showBatchErrorAlert(NSString *error) {
         NSString *title = SGLyricsErrorTitle(error);
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:title
                                                                        message:error preferredStyle:UIAlertControllerStyleAlert];
-        alert.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+        SGPresentDark(alert);
         if ([error hasPrefix:@"Download "]) {
             [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
             UIAlertAction *open = [UIAlertAction actionWithTitle:@"Open Settings" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
