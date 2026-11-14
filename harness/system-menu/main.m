@@ -21,6 +21,8 @@
 // player-menu fixtures do not provide an album page or the shared album footer.
 void SGAlbumQueueInstall(UIViewController *menu) {}
 void SGBatchTranslationInstall(UIViewController *menu) {}
+BOOL SGIsAlertController(UIViewController *controller) { return [controller isKindOfClass:UIAlertController.class]; }
+void SGPlayerStylePanel(UIView *content) {}
 
 void SGRPlayerMenuWatch(UIView *button);
 // touch.m: a finger's touches, through UIKit's own recognizers.
