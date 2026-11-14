@@ -109,7 +109,6 @@ void SGNowPlayingSetExtras(NSString *owner, NSDictionary *extras, NSString *titl
             if (fname && (strstr(fname, "MediaRemote") ||
                           strstr(fname, "MediaPlayer") ||
                           strstr(fname, "MediaAccessibility") ||
-                          strstr(fname, "Accessibility") ||
                           strstr(fname, "AVFAudio") ||
                           strstr(fname, "AudioToolbox"))) {
                 NSBundle *host = SGHostBundle();
@@ -122,7 +121,7 @@ void SGNowPlayingSetExtras(NSString *owner, NSDictionary *extras, NSString *titl
 %end
 %end
 
-%group SGHostClientHooks
+%group SGMRClientHooks
 %hook MRClient
 - (NSString *)bundleIdentifier {
     NSBundle *host = SGHostBundle();
@@ -130,7 +129,9 @@ void SGNowPlayingSetExtras(NSString *owner, NSDictionary *extras, NSString *titl
     return %orig;
 }
 %end
+%end
 
+%group SGMRNowPlayingClientHooks
 %hook MRNowPlayingClient
 - (NSString *)bundleIdentifier {
     NSBundle *host = SGHostBundle();
@@ -147,7 +148,6 @@ void SGNowPlayingSetExtras(NSString *owner, NSDictionary *extras, NSString *titl
     %init;
     if (!SGIsLiveContainer()) return;
     %init(SGLiveContainerHooks);
-    if (objc_getClass("MRClient") || objc_getClass("MRNowPlayingClient")) {
-        %init(SGHostClientHooks);
-    }
+    if (objc_getClass("MRClient")) %init(SGMRClientHooks);
+    if (objc_getClass("MRNowPlayingClient")) %init(SGMRNowPlayingClientHooks);
 }

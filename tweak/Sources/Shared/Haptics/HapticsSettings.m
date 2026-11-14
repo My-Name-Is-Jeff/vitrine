@@ -230,7 +230,7 @@ static NSArray<SGModSection *> *sections(SGVibrationsPreview *preview, void (^ex
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Background Haptics Unavailable"
             message:message
             preferredStyle:UIAlertControllerStyleAlert];
-        alert.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+        SGPresentDark(alert);
         [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];
         [SGTopController() presentViewController:alert animated:YES completion:nil];
     });
@@ -300,7 +300,7 @@ static NSArray<SGModSection *> *sections(SGVibrationsPreview *preview, void (^ex
     // message gives the path from there.
     NSString *message = @"In the Background needs iOS's Music Haptics. Settings opens on Spotify's page: go back to Settings, then Accessibility > Music Haptics, and turn it on.";
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Turn On Music Haptics" message:message preferredStyle:UIAlertControllerStyleAlert];
-    alert.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+    SGPresentDark(alert);
     [alert addAction:[UIAlertAction actionWithTitle:@"Not Now" style:UIAlertActionStyleCancel handler:nil]];
     UIAlertAction *open = [UIAlertAction actionWithTitle:@"Open Settings" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         [UIApplication.sharedApplication openURL:[NSURL URLWithString:UIApplicationOpenSettingsURLString] options:@{} completionHandler:nil];

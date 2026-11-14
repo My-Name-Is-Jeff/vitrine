@@ -226,7 +226,7 @@ API_AVAILABLE(ios(18.0))
     _graceOver = NO;
     // Off before anything is asked, so no answer can arrive while the last track's is still named.
     SGNowPlayingSetExtras(@"haptics", nil, nil);
-    if (!SGMusicHapticsInBackground() || !SGMusicHapticsListedByInstall() || !_enabled || !track) {
+    if (!SGMusicHapticsInBackground() || (SGIsLiveContainer() && !SGMusicHapticsListedByInstall()) || !_enabled || !track) {
         self.phase = SGNativeWaiting;
         return;
     }
@@ -268,7 +268,7 @@ API_AVAILABLE(ios(18.0))
 // addStatusObserver: can answer nil while the switch in Accessibility is off, so it is asked again whenever
 // iOS's state or the app's comes back.
 - (void)observe {
-    if (_observer || !_enabled || !SGMusicHapticsListedByInstall()) return;
+    if (_observer || !_enabled || (SGIsLiveContainer() && !SGMusicHapticsListedByInstall())) return;
     __weak SGNativeMusicHaptics *weakSelf = self;
     _observer = [MAMusicHapticsManager.sharedManager addStatusObserver:^(NSString *code, BOOL active) {
         dispatch_async(dispatch_get_main_queue(), ^{
