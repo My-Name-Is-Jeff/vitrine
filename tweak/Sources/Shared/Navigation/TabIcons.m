@@ -6,6 +6,8 @@
 
 NSString *const SGTabIconSetSymbols = @"symbols";
 
+static char kSymbolNameKey;
+
 static NSBundle *privateGlyphsBundle(void) {
     static NSBundle *bundle;
     static dispatch_once_t once;
@@ -62,6 +64,10 @@ UIImage *SGSymbolImage(NSString *name) {
     return image;
 }
 
+NSString *SGTabIconSymbolName(UIView *icon) {
+    return icon ? objc_getAssociatedObject(icon, &kSymbolNameKey) : nil;
+}
+
 // SPTEncoreIcon exposes one class method per glyph ("podcasts", "heart"), 538 of them in 9.1.78.
 static UIView *encoreView(NSString *name, UIColor *color) {
     Class icon = NSClassFromString(@"SPTEncoreIcon");
@@ -83,8 +89,14 @@ static UIView *symbolView(UIImage *image, UIColor *color) {
 
 UIView *SGTabIconView(NSString *name, BOOL symbol, UIColor *color) {
     UIImage *image = symbol ? SGSymbolImage(name) : nil;
-    if (image) return symbolView(image, color);
-    return encoreView(name, color) ?: symbolView(SGSymbolImage(@"star.fill"), color);
+    UIView *view = image ? symbolView(image, color) : encoreView(name, color);
+    if (view) {
+        if (image) objc_setAssociatedObject(view, &kSymbolNameKey, name, OBJC_ASSOCIATION_COPY_NONATOMIC);
+        return view;
+    }
+    view = symbolView(SGSymbolImage(@"star.fill"), color);
+    objc_setAssociatedObject(view, &kSymbolNameKey, @"star.fill", OBJC_ASSOCIATION_COPY_NONATOMIC);
+    return view;
 }
 
 #pragma mark - the catalogs
