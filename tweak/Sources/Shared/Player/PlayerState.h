@@ -27,3 +27,10 @@ void SGAddPlayerStateObserver(id<SGPlayerStateObserver> observer);
 SPTPlayerState *SGPlayerState(void);
 // The SPTEsperantoPlayer the mod observes, nil until the app has added its first observer.
 id SGPlayer(void);
+// What Spotify's now playing platform is told of each state, in place of the state itself: one lens (the DJ queue's
+// order, Shared/Player/DJQueue.x). It runs on the thread the state comes on and returns the state when it has nothing
+// to change. The mod's own observers still hear the state as the core reported it.
+void SGSetPlayerStateLens(SPTPlayerState *(*lens)(SPTPlayerState *state));
+// Tells the now playing platform the last state again, through the lens, when what the lens shows has changed with no
+// new state from the core (the DJ's rows dragged). Main thread.
+void SGRetellPlayerState(void);

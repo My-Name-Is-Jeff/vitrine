@@ -778,6 +778,136 @@ Documents/Lossless folder (Files app › Spotify › Lossless) plays in place of
   design only: [Lossless sources](lossless-sources.md), [addons](lossless-addons.md),
   [playback investigation](lossless-playback.md), [prototype history](lossless-prototype.md).
 
+## DJ queue
+
+The queue implementation is organized as internal model/order (`DJQueueState.inc`),
+core commands (`DJQueuePlayback.inc`), transition handling (`DJQueueTransitions.inc`),
+history/lens (`DJQueueHistory.inc`) and the Spotify Logos page hooks (`DJQueue.x`).
+The `.inc` files are compiled into the DJQueue translation unit: this preserves the
+existing session-scoped statics and cross-hook ordering rather than introducing a
+second mutable copy of DJ queue state. Native and Redesigned implement their own
+`DJQueueButton.m` files; Shared only supplies action/state callbacks.
+
+On until switched off (`spotifyglass.djqueue`, Player › DJ, read at launch; `Shared/Player/DJQueue.x`). In the AI DJ's
+session (its playlist, `spotify:playlist:37i9dQZF1EYkqdzj48dyYq`) Spotify's queue page shows the DJ's tracks to come,
+each "Up next" card as a row of its own before the track it introduces. In any other context every hook passes
+Spotify's own through.
+
+- **How many:** the DJ's segment, about five tracks. The player's state subscription asks for two tracks to come and
+  two behind; both caps are raised to 16 for the one launch-time subscription, before a context is known.
+  A global subscription cannot be changed per context without safely resubscribing Spotify's player observers, so
+  no state-based conditional is used
+  (doing so loses the next DJ tracks on a later DJ launch). The simulator A/B
+  comparison found +14 future and +10 previous track references in ordinary
+  playback. See `docs/pr227-getstate-cap-measurement.md`; this is **not** a CPU,
+  memory-byte or network-traffic measurement. (With two previous tracks,
+  stepping back across segments previously found only spent ones.) With a
+  cap of 80 the core still gave one segment (9.1.90): the next is made when the core comes to the last track of this
+  one. The core asks for it itself, with no context page from the app (no `play`, `updateContext` or
+  `updateContextPage`), so it cannot be asked for earlier. With nothing of a segment left but removed or played
+  tracks, the output is muted 0.7 s before the end while the player skips to the segment's last item, then to the
+  next segment's first once it has come (up to 6 s). These internal skips do not issue Pause/Play commands, so the
+  transport stays playing; audio may still be briefly silent while the next DJ page loads. Next pressed then does the same at
+  once, and a tap on the segment's last row with removed or played tracks after it in the core's order plays that
+  track from the core's queue once the next segment has come (gone to directly, the core made no next segment). The future is read only up to
+  `spotify:delimiter`: past it the core repeats the session with other uids.
+- **Removing:** a swipe or Edit hides the row, and the player passes the track when the core comes to it. In Edit a
+  tap on a row ticks it and plays nothing. Edit is told by its close button: the table is always editing, as that is
+  how it shows the reorder handles. Spotify keeps the ticks itself (the table has one row selected at a time),
+  so they are followed tap by tap. Remove and Move up act on the ticked rows when the button is pressed: Spotify's
+  Remove sends the core only its own queue, and nothing when that is empty. Move up puts the ticked rows first in the
+  user's order, below the "Up next" card on top. Spotify 9.1.90 does not show an Undo toast for
+  Vitrine's synthetic DJ rows removed in Edit; the tweak deliberately does not intercept other snackbar buttons
+  (their Undo continues to belong to Spotify). The X button clears the ticks.
+- **Back:** follows the session's logical track history, including the rows passed by tapping a later song.
+  For example, tapping through 1, 3 and 5 preserves 5–4–3–2–1 on Previous. A track played from a queue copy
+  has its original DJ identity in that history, and the core's retained instance is used when available.
+  An internal muted landing used to load the next segment is not a listened-to track. A step back is not overridden
+  by reorder enforcement; after it, Next walks forwards through the same history. Past the first three seconds,
+  Spotify's restart-current-track behavior is retained. Checked by `harness/dj-queue/check.py`.
+- **Segment transitions:** a spent context track is skipped before its audio starts, including when the next
+  segment's card is already available in the user's order. When the core must land on the segment's last item
+  to load more, the local music output is gated independently of the sleep timer's gain. No explicit pause is sent
+  for these reordered-track handovers: the final destination is acknowledged before the gate opens; Spotify's skip
+  itself can resume playback. The anchor
+  is not put in the logical history. A song and its outro can share a UID: confirmation checks the physical URI,
+  so a song cannot open the output gate as if it were its voice. The player's song and clock retain the last
+  real snapshot while the core visits an internal anchor. `harness/dj-queue/check.py` exercises delayed command acknowledgements,
+  Spotify's automatic resume on skip, and zeroing/releasing the independent output gate.
+- **Logical last song:** before entering a reordered final song whose physical context still has spent items
+  after it, the context visits its anchor and obtains the next segment. An existing owned queued copy is
+  reused, and the same preparation runs for Next and automatic playback. The session's clock watcher remains
+  active when future/order updates arrive after the track callback, so an empty transient snapshot does not
+  disable automatic advancement. The player retains its pre-handover state through the muted skips,
+  then the queue and player are refreshed with the confirmed destination.
+- **Next DJ Set:** the DJ queue and its `Next DJ Set` button beside Edit are both **on by default**
+  (Player › DJ: `DJ queue` and `Next DJ Set button`). The nested `Next DJ Set action`
+  choice appears only when the queue and button are enabled. Its exclusive choices are
+  **Skip to next DJ segment** (default) and **Let DJ pick (request)**. The queue switch
+  needs a Spotify restart; button visibility and action selection take effect immediately.
+  Skip mode physically advances the current DJ set without making a request: it quietly
+  visits the last item to trigger the core's next DJ page, waits for new `page_instance_id`
+  / UIDs, and moves to its first item. If the next page is not yet published, a bounded
+  physical Next advances past old anchors but not manual queue tracks. A 22-second
+  timeout restores playback and keeps the old order if no new page arrives.
+  Request mode now sends exactly **one** native-format suggested `prompt` signal immediately,
+  using Spotify's English text “Surprise me with a new mix based on my taste.” (protobuf
+  field 1; field 2 = 3, base64). There is **no preliminary native `jump`** and no
+  independent fallback toggle. The code **does not hook the native Let DJ pick button**:
+  Spotify's own behavior is unchanged. `DJPick.x` waits for an actual new page/intro
+  instead of treating the signal call as success; after 20 seconds without a landing it
+  reports an error and preserves the old custom order. Pausing or leaving the DJ session
+  cancels tracking. The custom queue's owned prefetch is removed before the request and
+  the old user order is discarded only on confirmed landing. Checks:
+  `harness/dj-pick/` and `harness/dj-next-segment/` (live playback must be verified).
+- **Artwork:** Home and Recents use the DJ's public cover (the DJ card's recorded `image_url`), cached locally.
+  Each look owns its drawing hooks. Reused Library cells are never a source of another item's artwork.
+  Spotify 9.1.90 can expose its official DJ as an ordinary `DJ, Playlist` card without a model URI in the
+  accessible hierarchy. A title alone is **not** enough to override an image: a playlist owned by the
+  user can have the same name. As a compatibility fallback, the mod fills a known Home/Recents card only
+  when its Encore bitmap is still absent, its PlaceholderView remains visible after 0.8 s, and no native
+  artwork has appeared. Any original loaded bitmap wins. This fallback still needs device validation and
+  can match an unrelated playlist named DJ if its artwork is also permanently missing; reliable identity
+  needs the card model URI from Spotify, not merely accessibility text. `artwork.placeholder` traces record
+  which case occurred without recording names or URIs.
+- **Reordering:** the core takes no other order for the DJ's tracks (a `setQueue` with them rearranged leaves its
+  future as it was), so the order is kept here and the player is held to it. A track the core would come to first is
+  skipped to. Any other is queued (the core's own copy) and played from the queue, so the core keeps its place before
+  the tracks it has not come to, and a card moved down still has its voice when its turn comes. The core is never
+  stepped back to a DJ track: the now playing screens draw a step back backwards, and it lands after the voice.
+  The core does not take a voice (`spotify:media:`) into its queue (asked to, it answers and leaves it out), so a
+  track whose card has not played is never queued, and loses its card if it is ever played from the queue.
+- **The copies:** a track played from the core's queue is a copy (a `q…` uid, `is_queued` and `queued_by` in its
+  metadata), which Spotify draws as queued by hand: the queue badge, "Playing Queue". The now playing screens are shown
+  it as the DJ's track it stands for (its uid, provider and metadata provider, the queue keys taken out), and so is the
+  queue page, which draws its now playing row from the queue's own `track`. A skip of ours that the core takes to a copy
+  of the track in its queue (put in before a launch) is taken as that track too. Back from a
+  copy goes to the track before it and puts the copy's track first in the order again. A copy that is no longer
+  wanted is taken out with a `setQueue` of the core's whole `nextTracks` without it (one of only the queued tracks is
+  ignored). That list is the one the readers were told last, which can be from before the player moved on, and the core
+  then keeps the copy: a second later the core's future is looked at, and the copy is taken out again (up to 3 times).
+  After a launch the core can go back to a track before ones that played from its queue: a DJ track that played before
+  the launch is no row, as the next put in ahead passes it.
+- **Ahead of its turn:** the user's next (or, with no order, the core's next that was not removed or played) is put
+  in the core's queue as the track before it starts, so a track that ends by itself goes on to it, not to the core's
+  own for a moment. A track whose card has not played is left to the core, so the voice plays. The card is looked for
+  anywhere in the core's future: its next item may be the DJ's words after the track playing. The track put in ahead
+  is kept over a launch: still wanted, it is taken up; not wanted, it is taken out of the core's queue, instead of
+  showing as a track queued by hand above its own card. A queued copy is looked for anywhere in the core's future, not
+  only at its front: after a step back, the core has the track it left before its queue.
+- **A tap** on a row passes the rows before it, as Spotify's queue does: the core goes to it in one skip when nothing
+  the user put after it is before it in the core's order, and a copy put in ahead of anything else is taken out first.
+  Nothing is put in ahead until the tap has been carried out.
+- **The DJ's voice** sometimes plays with its cell's circle missing (only the blue backing): 0.8 and 1.6 s after
+  the player comes to a voice, the cover list is reloaded if the centered `DJMContentLayerCell` has no
+  `VisualizationView` showing.
+- **The now playing screens** are told the state with its future in the user's order (`SGSetPlayerStateLens`,
+  `Shared/Player/PlayerState.h`), so the cover list moves forward to the track the player goes to.
+- **Over a launch:** the order, the hidden tracks, what has played, the voices heard and which copy stands for which
+  DJ track are kept
+  (`spotifyglass.djqueue.session`) and taken back when the launch goes on in the DJ's session. The first state of a
+  launch is not taken for the player coming to its track.
+
 ## Make targets
 
     make build      # out/vitrine-<version>.ipa with FLEX in it
@@ -792,6 +922,24 @@ Documents/Lossless folder (Files app › Spotify › Lossless) plays in place of
     make flags      # regenerate the flag table from the IPA
 
 ## Diagnostics
+
+### DJ state subscription caps (PR #227 review)
+
+Spotify 9.1.90 subscribes to `ESPGetStateRequest` **before** it chooses the
+playback context, and the subscription persists when it switches to DJ. That
+request has no context URI, so checking `SGPlayerState()` at subscription time
+would cap DJ to two upcoming tracks forever. Requests that *do* carry a known
+non-DJ context retain Spotify's native cap. The context-free long-lived
+subscription must still ask for 16 future and 16 previous tracks if DJ Queue is
+on. Lowering it without a supported subscription refresh causes missing DJ
+queue rows. This is a known outside-DJ exception, **not** a claim of zero cost.
+
+The simulator A/B run on 20 November 2026 found 16 versus 2 future
+references and 10 additional previous references in an ordinary playback
+state (**+24 track references**) over a stable one-minute sample. These were
+one distinct sampled state per run; network bytes, CPU and heap were **not**
+measured. The compatibility trade-off and details for review are in
+`docs/pr227-getstate-cap-measurement.md`.
 
 A build with FLEX in it (`make build`, `make install FLEX=1`) runs `Diagnostics/`: the tree server, the hang
 sampler, and the phone driver, which lets an agent on the Mac work the app without anyone touching the phone.

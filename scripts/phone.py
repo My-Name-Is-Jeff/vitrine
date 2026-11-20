@@ -8,6 +8,7 @@
     scripts/phone.py longpress --id X [--duration 1]
     scripts/phone.py swipe --from X,Y --to X,Y [--duration 0.2]     # or a view and --by DX,DY; a quick one flings
     scripts/phone.py swipe --id X --by 0,-300 --drag 1              # a slow drag held still before letting go
+    scripts/phone.py swipe --from X,Y --to X,Y --drag 1 --press 0.6 # held still first: a table row's reorder handle
     scripts/phone.py scroll [--id X | --at X,Y] --by 0,400 [--animated 1]   # the page's list when no view is named
     scripts/phone.py type "some text"                  # into the first responder (tap a field first)
     scripts/phone.py player.open | player.close | player.more

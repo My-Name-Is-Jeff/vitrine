@@ -169,6 +169,8 @@ UIViewController *SGPlayerSettingsPage(void) {
        @"streams its own copy, at its lowest quality while the next song has a file. Karaoke and speeds other than "
        @"1x keep Spotify's sound. Applies after you restart Spotify.")];
 
+    [sections addObject:SGDJSettingsSection()];
+
     // The redesign's page leads with a card of its player and the background's control, the background's
     // rows and the Mini player section under it.
     if (!native) return SGRPlayerSettingsPage(sections);

@@ -35,7 +35,7 @@ typedef NS_ENUM(NSInteger, SGRHomeKind) {
     SGRHomeKindDrop,
 };
 
-static char kCollapsedKey, kDroppedKey;
+static char kCollapsedKey, kDroppedKey, kDJRootKey, kDJShapeKey, kDJResultKey, kDJCheckedAtKey;
 
 #pragma mark - the dropped sections' gap
 
@@ -134,6 +134,11 @@ static SGRHomeKind gridKind(UICollectionView *grid) {
 // The previews (a video or a playlist playing as Home scrolls) are medium density cards, on their own or under a
 // heading; the song suggestions are Spotify's content evaluation carousel. Each stays only when asked for.
 static SGRHomeKind optionalKind(NSString *name) {
+    // DJ is its own Home section, even when Spotify exposes its MDC view/element
+    // directly instead of the older Discovery_DJElementKit wrapper. Preview hiding
+    // must not suppress its transcript, animation or original navigation action.
+    if ([name containsString:@"Discovery_DJElementKit"] || [name containsString:@"DJMDCElement"] ||
+        [name containsString:@"DJMDCView"]) return SGHidden(SGRKeyHomeHideDJ) ? SGRHomeKindDrop : SGRHomeKindKeep;
     if ([name containsString:@"MediumDensityCard"] || [name containsString:@"Discovery_Preview"]) {
         return SGHidden(SGRKeyHomePreviews) ? SGRHomeKindKeep : SGRHomeKindDrop;
     }
@@ -141,11 +146,58 @@ static SGRHomeKind optionalKind(NSString *name) {
     return SGRHomeKindDrop;
 }
 
-// A LazyElementView names the element it will hold before it holds it.
+// Spotify can wrap the DJ element in ordinary stacks/views. Recognize the original
+// card before treating its container as an optional preview. Nested shelves are separate sections.
+static BOOL containsDJCard(UIView *view) {
+    NSString *name = NSStringFromClass(view.class);
+    if ([name containsString:@"Discovery_DJElementKit"] || [name containsString:@"DJMDCElement"] ||
+        [name containsString:@"DJMDCView"]) return YES;
+    if ([view isKindOfClass:UICollectionView.class]) return NO;
+    for (UIView *child in view.subviews) if (containsDJCard(child)) return YES;
+    return NO;
+}
+
+// Cache at the *section cell* instead of searching through the DJ subtree on
+// every self-sizing pass. A shallow signature notices new LazyElementView
+// children without paying for a full recursive walk. Negative results are
+// short-lived because Spotify can populate deeper wrappers asynchronously.
+static NSUInteger djRootShape(UIView *root) {
+    NSUInteger shape = root.subviews.count * 131u + (uintptr_t)root.class;
+    for (UIView *child in root.subviews) {
+        shape = (shape * 33u) ^ (uintptr_t)child;
+        shape = (shape * 33u) ^ child.subviews.count;
+    }
+    return shape;
+}
+static void invalidateDJSectionCache(UICollectionViewCell *cell) {
+    objc_setAssociatedObject(cell, &kDJRootKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(cell, &kDJResultKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(cell, &kDJShapeKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(cell, &kDJCheckedAtKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+static BOOL sectionContainsDJ(UICollectionViewCell *cell, UIView *root) {
+    if (!root) { invalidateDJSectionCache(cell); return NO; }
+    NSUInteger shape = djRootShape(root);
+    NSValue *cachedRoot = objc_getAssociatedObject(cell, &kDJRootKey);
+    NSNumber *cachedShape = objc_getAssociatedObject(cell, &kDJShapeKey);
+    NSNumber *cachedResult = objc_getAssociatedObject(cell, &kDJResultKey);
+    NSNumber *checkedAt = objc_getAssociatedObject(cell, &kDJCheckedAtKey);
+    CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+    if (cachedResult && cachedRoot.nonretainedObjectValue == root && cachedShape.unsignedIntegerValue == shape &&
+        (cachedResult.boolValue || (checkedAt && now - checkedAt.doubleValue < 0.25))) return cachedResult.boolValue;
+    BOOL found = containsDJCard(root);
+    objc_setAssociatedObject(cell, &kDJRootKey, [NSValue valueWithNonretainedObject:root], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(cell, &kDJShapeKey, @(shape), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(cell, &kDJResultKey, @(found), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(cell, &kDJCheckedAtKey, @(now), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return found;
+}
+
+// The DJ subtree is recognized by the caller once for this sizing pass.
+// This helper only classifies the other optional stack contents.
 static SGRHomeKind stackKind(UIStackView *stack) {
     for (UIView *part in stack.arrangedSubviews) {
         NSString *name = NSStringFromClass(part.class);
-        if ([name containsString:@"Discovery_DJElementKit"]) return SGHidden(SGRKeyHomeHideDJ) ? SGRHomeKindDrop : SGRHomeKindKeep;
         SGRHomeKind optional = optionalKind(name);
         if (optional == SGRHomeKindKeep) return optional;
     }
@@ -162,9 +214,10 @@ static SGRHomeKind shelfKind(UIView *shelf) {
 }
 
 // Before the cell is measured, so the height it reports is without the heading.
-static void dropDJHeading(UIView *content) {
+static void dropDJHeading(UIView *content, BOOL isDJ) {
+    if (!isDJ) return;
     UIStackView *stack = (UIStackView *)content.subviews.firstObject.subviews.firstObject;
-    if (![stack isKindOfClass:UIStackView.class] || stackKind(stack) != SGRHomeKindKeep) return;
+    if (![stack isKindOfClass:UIStackView.class]) return;
     for (UIView *part in stack.arrangedSubviews) {
         if (part.hidden || ![NSStringFromClass(part.class) containsString:@"Home_HeadingElementKit"]) continue;
         part.hidden = YES;
@@ -172,10 +225,11 @@ static void dropDJHeading(UIView *content) {
     }
 }
 
-static SGRHomeKind kindOf(UIView *content, NSString **rootName) {
+static SGRHomeKind kindOf(UIView *content, NSString **rootName, BOOL isDJ) {
     UIView *root = content.subviews.firstObject.subviews.firstObject;
     if (!root) return SGRHomeKindPending;
     *rootName = NSStringFromClass(root.class);
+    if (isDJ) return SGHidden(SGRKeyHomeHideDJ) ? SGRHomeKindDrop : SGRHomeKindKeep;
     static Class shelf;
     if (!shelf) shelf = NSClassFromString(@"_TtC16Home_CarouselKit29TouchCancellingCollectionView");
     if (shelf && [root isKindOfClass:shelf]) return shelfKind(root);
@@ -239,11 +293,18 @@ static void expand(UICollectionViewCell *cell) {
     UIView *content = cell.contentView;
     if (!isSection(content)) return %orig;
     CFTimeInterval began = SGRHomeProbeBegin();
-    dropDJHeading(content);
+    UIView *rootBefore = content.subviews.firstObject.subviews.firstObject;
+    BOOL isDJ = sectionContainsDJ(cell, rootBefore);
+    dropDJHeading(content, isDJ);
     UICollectionViewLayoutAttributes *result = %orig;
 
+    // Reuse the subtree classification rather than rescanning every stack child.
+    // A lazy section can install a different root during Spotify's sizing call;
+    // only then must the new root be classified afresh.
+    UIView *rootAfter = content.subviews.firstObject.subviews.firstObject;
+    if (rootAfter != rootBefore) isDJ = sectionContainsDJ(cell, rootAfter);
     NSString *rootName = nil;
-    SGRHomeKind kind = kindOf(content, &rootName);
+    SGRHomeKind kind = kindOf(content, &rootName, isDJ);
     BOOL collapsed = objc_getAssociatedObject(cell, &kCollapsedKey) != nil;
     if (kind == SGRHomeKindDrop) {
         collapse(cell, MAX(1, result.size.height));
@@ -274,6 +335,7 @@ static void expand(UICollectionViewCell *cell) {
 
 - (void)prepareForReuse {
     %orig;
+    invalidateDJSectionCache((UICollectionViewCell *)self);
     if (objc_getAssociatedObject(self, &kCollapsedKey)) expand((UICollectionViewCell *)self);
 }
 %end
