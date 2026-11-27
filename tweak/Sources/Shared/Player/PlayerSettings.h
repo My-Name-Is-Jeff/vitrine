@@ -9,3 +9,6 @@ UIViewController *SGLockScreenWidgetPage(void);
 // A tap on the cover opens Spotify's full screen cover unless this is on, under either look: each look's
 // handleTap hook on CoverArtTiltView (PlayerGestures.x) returns before Spotify's. Off until switched on.
 #define SGKeyHideFullScreenCover @"spotifyglass.hide.fullScreenCover"
+
+@class SGModSection;
+SGModSection *SGDJSettingsSection(void);

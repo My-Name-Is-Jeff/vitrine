@@ -12,6 +12,8 @@
 // Where the track came from in the tracks to come: the album or playlist, a hand queue, autoplay
 // (Shared/Player/SleepTimer.m reads it).
 @property (nonatomic, readonly, copy) NSString *provider;
+// The core's id of the track's place in the list (Shared/Player/DJQueue.x tells the DJ's pages apart by it).
+@property (nonatomic, readonly, copy) NSString *UID;
 @end
 
 @interface SPTPlayerOptions : NSObject

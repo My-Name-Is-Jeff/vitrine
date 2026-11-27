@@ -16,6 +16,26 @@ static NSString *sg_stateTrack, *sg_stateContext;
 static int sg_stateBits;
 // Set once the now playing platform has reported; the mod's own observer on the player stands down.
 static BOOL sg_platformReported = NO;
+static SPTPlayerState *(*sg_lens)(SPTPlayerState *);
+
+void SGSetPlayerStateLens(SPTPlayerState *(*lens)(SPTPlayerState *state)) {
+    sg_lens = lens;
+}
+
+@protocol SGPlatformPlayerObserver <NSObject>
+- (void)player:(id)player stateDidChange:(id)state;
+@end
+
+// The platform's observer, the player it was told by and the last state, for SGRetellPlayerState.
+static __weak id sg_platform, sg_platformPlayer;
+static SPTPlayerState *sg_platformState;
+
+void SGRetellPlayerState(void) {
+    id platform = sg_platform, player = sg_platformPlayer;
+    SPTPlayerState *state = sg_platformState;
+    if (!platform || !player || !state) return;
+    [(id<SGPlatformPlayerObserver>)platform player:player stateDidChange:state];
+}
 
 void SGAddPlayerStateObserver(id<SGPlayerStateObserver> observer) {
     if (!observer) return;
@@ -80,7 +100,13 @@ id SGPlayer(void) {
 
 %hook _TtC23NowPlaying_PlatformImpl28StatefulPlayerImplementation
 - (void)player:(id)player stateDidChange:(id)state {
-    %orig;
+    if (sg_lens && NSThread.isMainThread && [state isKindOfClass:objc_getClass("SPTPlayerState")]) {
+        sg_platform = self;
+        sg_platformPlayer = player;
+        sg_platformState = state;
+    }
+    id shown = sg_lens && [state isKindOfClass:objc_getClass("SPTPlayerState")] ? sg_lens(state) : state;
+    %orig(player, shown ?: state);
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         SGLog(@"player state: from %@, a %@, on the main thread %d", [player class], [state class], NSThread.isMainThread);

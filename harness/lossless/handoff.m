@@ -5,6 +5,7 @@
 
 // SpeedPitch.x reads the player for its clock away from 1x; the harness has no player.
 void *SGPlayerState(void) { return NULL; }
+void SGAddPlayerStateObserver(id observer) { (void)observer; }
 
 static int failures;
 static SGPreparedPCM *asset;
@@ -235,10 +236,11 @@ static void realTests(void) {
             expect(atomic_load(&selected)==at,"native silent/stalled spans cannot be replaced");
             stallSelected=atomic_load(&selected);
             atomic_store(&mute,false);
+            // Chain from the actual recovery, not a wall-clock timer that can overtake this callback on a busy sim.
+            later(0.2,^{expect(atomic_load(&selected)==stallSelected,"native recovery cannot reuse the pre-stall anchor");});
         });
     });
     later(5.0,^{
-        expect(atomic_load(&selected)==stallSelected,"native recovery cannot reuse the pre-stall anchor");
         uint64_t epoch=SGPlayerSourceEpoch();
         AudioStreamBasicDescription format={44100,kAudioFormatLinearPCM,kAudioFormatFlagsNativeFloatPacked|kAudioFormatFlagIsNonInterleaved,4,1,4,2,32,0};
         check(AudioUnitSetProperty(output,kAudioUnitProperty_StreamFormat,kAudioUnitScope_Input,0,&format,sizeof format),"format notification");

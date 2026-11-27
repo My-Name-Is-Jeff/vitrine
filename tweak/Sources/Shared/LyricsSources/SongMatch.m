@@ -85,9 +85,7 @@ static NSArray<NSString *> *namesJoinedIn(NSString *name) {
     return [split componentsSeparatedByString:@"\n"];
 }
 
-// Whether one of the song's own artists is the track's lead, by either name of one written twice over
-// ("BTS (방탄소년단)", "Дора (Dora)"), by the name before its " feat.", or by one of the names joined in it;
-// a featured singer or a translation page's "Genius English Translations" never is.
+// Match the lead artist through parenthetical aliases, featured-artist names, or joined artist names.
 static BOOL byLead(NSArray<NSString *> *songArtists, NSSet<NSString *> *leads) {
     for (NSString *name in songArtists) {
         if (![name isKindOfClass:NSString.class]) continue;

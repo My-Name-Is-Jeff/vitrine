@@ -154,6 +154,7 @@ static NSArray *pair(CGPoint p) {
 
 // A finger down at `from`, moved to `to` over `duration` s at 60 Hz, held still `hold` s, lifted at `to`.
 // With no hold the last move is the lift, so a quick one flings.
+static NSTimeInterval sPress;
 static NSDictionary *finger(CGPoint from, CGPoint to, NSTimeInterval duration, NSTimeInterval hold) {
     requireTouches();
     __block UITouch *touch = nil;
@@ -184,6 +185,7 @@ static NSDictionary *finger(CGPoint from, CGPoint to, NSTimeInterval duration, N
         });
     };
     @try {
+        if (sPress > 0) { pause_(sPress); move(from, UITouchPhaseStationary); }
         NSUInteger steps = duration > 0 ? MAX(2, (NSUInteger)(duration * 60)) : 0;
         for (NSUInteger i = 1; i <= steps; i++) {
             pause_(1.0 / 60);
@@ -760,6 +762,7 @@ static NSDictionary<NSString *, SGCommand> *commands(void) {
                     fail(@"swipe takes to=x,y or by=dx,dy");
                 }
                 BOOL drag = [p[@"drag"] boolValue];
+                sPress = number(p, @"press", 0);
                 NSMutableDictionary *result = [finger(from, to, number(p, @"duration", drag ? 0.6 : 0.2), number(p, @"hold", drag ? 0.3 : 0)) mutableCopy];
                 result[@"from"] = pair(from);
                 result[@"to"] = pair(to);
@@ -996,6 +999,12 @@ static NSDictionary<NSString *, SGCommand> *commands(void) {
             @"pause" : ^NSDictionary *(NSDictionary *p) {
                 return onMain(^id {
                     [requirePlayer() pause:nil];
+                    return @{};
+                });
+            },
+            @"previous" : ^NSDictionary *(NSDictionary *p) {
+                return onMain(^id {
+                    [requirePlayer() skipToPreviousTrackWithOptions:nil];
                     return @{};
                 });
             },
